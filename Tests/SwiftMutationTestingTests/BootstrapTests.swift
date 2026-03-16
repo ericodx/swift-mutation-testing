@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Bootstrap")
 struct BootstrapTests {
-    @Test("RunnerInput is decodable")
+    @Test("Given a valid JSON payload, when decoded as RunnerInput, then scheme and mutants are correct")
     func runnerInputDecodable() throws {
         let json = Data(
             """
@@ -28,7 +28,7 @@ struct BootstrapTests {
         #expect(input.mutants.isEmpty)
     }
 
-    @Test("ExecutionStatus roundtrip Codable")
+    @Test("Given all ExecutionStatus cases, when encoded and decoded, then values are equal")
     func executionStatusRoundTrip() throws {
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
