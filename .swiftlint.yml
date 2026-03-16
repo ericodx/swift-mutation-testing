@@ -36,6 +36,7 @@ opt_in_rules:
 identifier_name:
   excluded:
     - id
+    - by
     - to
     - lhs
     - rhs
