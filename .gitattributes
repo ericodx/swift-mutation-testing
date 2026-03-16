@@ -1,0 +1,32 @@
+# Global defaults
+* text=auto eol=lf
+
+# Swift source files
+*.swift text diff=swift
+
+# Configuration & docs
+*.yml  text
+*.yaml text
+*.md   text
+*.txt  text
+
+# Snapshot tests
+*.snap text
+*.snapshot text
+
+# Build & tooling (do not count as language)
+Makefile linguist-detectable=false
+*.mk linguist-detectable=false
+
+# Generated / vendor files
+*.generated.swift linguist-generated=true
+DerivedData/** linguist-generated=true
+.build/** linguist-generated=true
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary

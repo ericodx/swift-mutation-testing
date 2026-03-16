@@ -1,0 +1,141 @@
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+
+repos:
+  # Conventional Commits
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        name: ✓ Check conventional commits
+        description: >
+          Enforces Conventional Commits specification to keep commit messages consistent and machine-readable.
+        always_run: true
+        stages: [commit-msg]
+        args:
+          [
+            build,
+            chore,
+            ci,
+            docs,
+            feat,
+            fix,
+            perf,
+            refactor,
+            revert,
+            style,
+            test,
+            "!",
+            "(\\w+)",
+          ]
+
+  # Core pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+        name: ✓ Validate YAML
+        description: Validate YAML files and fail on syntax errors.
+
+      - id: check-json
+        name: ✓ Validate JSON
+        description: Validate JSON files and fail on syntax errors.
+
+      - id: end-of-file-fixer
+        name: ✓ Ensure newline at EOF
+        description: Ensure files end with a single newline character.
+
+      - id: trailing-whitespace
+        name: ✓ Trim trailing whitespace
+        description: Remove trailing whitespace from all files automatically.
+
+      - id: check-merge-conflict
+        name: ✓ Detect merge conflicts
+        description: Detect unresolved merge conflict markers before commit.
+
+      - id: detect-private-key
+        name: ✓ Detect private keys
+        description: Prevent committing private keys or sensitive credentials.
+
+      - id: check-case-conflict
+        name: ✓ Check case conflicts
+        description: Detect files that would conflict on case-insensitive filesystems.
+
+      - id: mixed-line-ending
+        name: ✓ Check line endings
+        description: Enforce consistent LF line endings across files.
+        args: [--fix=lf]
+
+      - id: check-added-large-files
+        name: ✓ Check large files
+        description: Prevent committing files larger than the configured size.
+        args: ["--maxkb=1000"]
+
+      - id: no-commit-to-branch
+        name: ✓ Prevent commit to main
+        description: Block direct commits to the protected main branch.
+        args: [--branch, main]
+
+  # Codespell
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell
+        name: ✓ Codespell
+        description: Detect and fix common spelling mistakes in code and docs.
+        args:
+          - "--ignore-words=.codespellignore"
+        files: \.(swift|md|ya?ml|json)$
+
+  # SwiftLint
+  - repo: https://github.com/realm/SwiftLint
+    rev: 0.63.2
+    hooks:
+      - id: swiftlint
+        name: ✓ SwiftLint
+        description: Enforce Swift style and best practices using SwiftLint.
+        args: ["lint", "--strict", "--quiet"]
+        types: [swift]
+        pass_filenames: false
+
+  # Swift Format
+  - repo: https://github.com/apple/swift-format
+    rev: 602.0.0
+    hooks:
+      - id: swift-format
+        name: ✓ Swift Format
+        description: Automatically format Swift source files using swift-format.
+        args: ["format", "--in-place", "--parallel"]
+        types: [swift]
+
+  # Swift Clone & Pattern Detector
+  - repo: https://github.com/ericodx/swift-cpd
+    rev: v1.1.0
+    hooks:
+      - id: swift-cpd
+        name: ✓ Swift Clone & Pattern Detector
+        description: Detect duplicated code in Swift and Objective-C/C codebases.
+        types: [swift]
+
+  # Swift Marshal
+  - repo: https://github.com/ericodx/swift-marshal
+    rev: v1.0.0
+    hooks:
+      - id: swift-marshal
+        name: ✓ Swift Marshal
+        description: Reorder Swift type members without rewriting code.
+        types: [swift]
+
+  # Local hooks
+  - repo: local
+    hooks:
+      - id: no-coauthor-no-description
+        name: ✓ No co-author or description
+        description: >
+          Block commits that contain Co-Authored-By or a description body.
+          Only single-line commit messages are allowed.
+        entry: "bash -c 'MSG=$(cat \"$1\"); if echo \"$MSG\" | grep -iq \"Co-Authored-By:\"; then echo \"Error: Co-Authored-By is not allowed in commit messages.\" && exit 1; fi; BODY=$(echo \"$MSG\" | sed \"/^#/d\" | tail -n +2 | sed \"/^$/d\"); if [ -n \"$BODY\" ]; then echo \"Error: Description body is not allowed. Use single-line commits only.\" && exit 1; fi' --"
+        language: system
+        always_run: true
+        stages: [commit-msg]

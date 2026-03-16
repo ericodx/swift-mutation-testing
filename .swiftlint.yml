@@ -1,0 +1,68 @@
+# Project paths
+included:
+  - Sources
+  - Tests
+
+# Analyzer exclusions
+excluded:
+  - SourcePackages
+  - DerivedData
+  - .build
+
+# Analyzer rules
+analyzer_rules:
+  - unused_declaration
+  - unused_import
+
+# Disabled rules
+disabled_rules:
+  - sorted_imports
+  - file_types_order
+  - modifier_order
+  - attributes
+  - extension_access_modifier
+  - explicit_acl
+  - explicit_top_level_acl
+  - trailing_comma
+  - force_try
+  - opening_brace
+
+# Enabled opt-in rules
+opt_in_rules:
+  - force_cast
+  - unavailable_function
+
+# Naming rules
+identifier_name:
+  excluded:
+    - id
+    - to
+    - lhs
+    - rhs
+    - ctx
+    - node
+    - decl
+
+file_length:
+  warning: 600
+  error: 800
+
+type_body_length:
+  warning: 500
+  error: 600
+
+cyclomatic_complexity:
+  warning: 15
+  error: 20
+
+large_tuple:
+  warning: 3
+  error: 4
+
+function_parameter_count:
+  error: 6
+
+# Line length
+line_length:
+  warning: 120
+  error: 150

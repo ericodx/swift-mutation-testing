@@ -1,0 +1,15 @@
+paths:
+  - Sources/
+minimumTokenCount: 50
+minimumLineCount: 5
+outputFormat: text
+type3Similarity: 70
+type4Similarity: 80
+exclude: []
+ignoreSameFile: true
+ignoreStructural: true
+enabledCloneTypes:
+  - 1
+  - 2
+  - 3
+  - 4
