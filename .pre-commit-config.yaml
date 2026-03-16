@@ -126,6 +126,7 @@ repos:
         name: ✓ Swift Marshal
         description: Reorder Swift type members without rewriting code.
         types: [swift]
+        args: ["--path", "Sources"]
 
   # Local hooks
   - repo: local
