@@ -6,7 +6,7 @@ import Testing
 struct ConfigurationResolverTests {
     private let resolver = ConfigurationResolver()
 
-    @Test("uses CLI scheme and destination")
+    @Test("Given CLI scheme and destination, when resolved, then configuration uses CLI values")
     func usesCLIValues() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(scheme: "MyApp", destination: "platform=macOS"),
@@ -17,7 +17,7 @@ struct ConfigurationResolverTests {
         #expect(result.destination == "platform=macOS")
     }
 
-    @Test("falls back to file values when CLI omits scheme and destination")
+    @Test("Given scheme and destination only in file, when resolved, then configuration uses file values")
     func fallsBackToFileValues() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(),
@@ -28,7 +28,7 @@ struct ConfigurationResolverTests {
         #expect(result.destination == "platform=macOS")
     }
 
-    @Test("CLI scheme overrides file scheme")
+    @Test("Given scheme in both CLI and file, when resolved, then CLI scheme takes priority")
     func cliSchemeOverridesFile() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(scheme: "CLIApp", destination: "platform=macOS"),
@@ -38,7 +38,7 @@ struct ConfigurationResolverTests {
         #expect(result.scheme == "CLIApp")
     }
 
-    @Test("file timeout used when CLI omits it")
+    @Test("Given timeout only in file, when resolved, then configuration uses file timeout")
     func fileTimeoutUsedWhenCLIOmits() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(scheme: "App", destination: "d"),
@@ -48,7 +48,7 @@ struct ConfigurationResolverTests {
         #expect(result.timeout == 120)
     }
 
-    @Test("CLI timeout overrides file timeout")
+    @Test("Given timeout in both CLI and file, when resolved, then CLI timeout takes priority")
     func cliTimeoutOverridesFile() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(scheme: "App", destination: "d", timeout: 30),
@@ -58,7 +58,7 @@ struct ConfigurationResolverTests {
         #expect(result.timeout == 30)
     }
 
-    @Test("applies default timeout when neither CLI nor file provides one")
+    @Test("Given no timeout in CLI or file, when resolved, then default timeout is applied")
     func appliesDefaultTimeout() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(scheme: "App", destination: "d"),
@@ -68,7 +68,7 @@ struct ConfigurationResolverTests {
         #expect(result.timeout == RunnerConfiguration.defaultTimeout)
     }
 
-    @Test("applies default concurrency when neither CLI nor file provides one")
+    @Test("Given no concurrency in CLI or file, when resolved, then default concurrency is applied")
     func appliesDefaultConcurrency() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(scheme: "App", destination: "d"),
@@ -78,7 +78,7 @@ struct ConfigurationResolverTests {
         #expect(result.concurrency == RunnerConfiguration.defaultConcurrency)
     }
 
-    @Test("throws when scheme is missing in standalone mode")
+    @Test("Given no scheme in standalone mode, when resolved, then throws UsageError")
     func throwsWhenSchemeMissing() {
         #expect(throws: UsageError.self) {
             try resolver.resolve(
@@ -88,7 +88,7 @@ struct ConfigurationResolverTests {
         }
     }
 
-    @Test("throws when destination is missing in standalone mode")
+    @Test("Given no destination in standalone mode, when resolved, then throws UsageError")
     func throwsWhenDestinationMissing() {
         #expect(throws: UsageError.self) {
             try resolver.resolve(
@@ -98,7 +98,7 @@ struct ConfigurationResolverTests {
         }
     }
 
-    @Test("skips scheme and destination validation in integration mode")
+    @Test("Given input flag set, when resolved, then scheme and destination validation is skipped")
     func skipsValidationInIntegrationMode() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(input: "runner-input.json"),
@@ -108,7 +108,7 @@ struct ConfigurationResolverTests {
         #expect(result.projectPath == ".")
     }
 
-    @Test("throws when concurrency is less than one")
+    @Test("Given concurrency of zero, when resolved, then throws UsageError")
     func throwsWhenConcurrencyLessThanOne() {
         #expect(throws: UsageError.self) {
             try resolver.resolve(
