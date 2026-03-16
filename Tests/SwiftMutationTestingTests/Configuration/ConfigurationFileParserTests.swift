@@ -7,7 +7,7 @@ import Testing
 struct ConfigurationFileParserTests {
     private let parser = ConfigurationFileParser()
 
-    @Test("returns empty map when file does not exist")
+    @Test("Given no config file present, when parsed, then returns empty map")
     func returnsEmptyWhenFileAbsent() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -17,7 +17,7 @@ struct ConfigurationFileParserTests {
         #expect(result.isEmpty)
     }
 
-    @Test("parses scalar key-value pairs")
+    @Test("Given a config file with scalar key-value pairs, when parsed, then all pairs are returned")
     func parsesKeyValuePairs() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -36,7 +36,7 @@ struct ConfigurationFileParserTests {
         #expect(result["concurrency"] == "3")
     }
 
-    @Test("strips double quotes from values")
+    @Test("Given a config file with double-quoted values, when parsed, then quotes are stripped")
     func stripsDoubleQuotes() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -52,7 +52,7 @@ struct ConfigurationFileParserTests {
         #expect(result["destination"] == "platform=iOS Simulator,name=iPhone 15")
     }
 
-    @Test("strips single quotes from values")
+    @Test("Given a config file with single-quoted values, when parsed, then quotes are stripped")
     func stripsSingleQuotes() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -68,7 +68,7 @@ struct ConfigurationFileParserTests {
         #expect(result["scheme"] == "MyApp")
     }
 
-    @Test("skips comment lines")
+    @Test("Given a config file with comment lines, when parsed, then comments are ignored")
     func skipsCommentLines() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -85,7 +85,7 @@ struct ConfigurationFileParserTests {
         #expect(result["scheme"] == "MyApp")
     }
 
-    @Test("skips empty lines")
+    @Test("Given a config file with empty lines, when parsed, then empty lines are ignored")
     func skipsEmptyLines() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
