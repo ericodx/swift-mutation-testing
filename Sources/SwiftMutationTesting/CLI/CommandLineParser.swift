@@ -1,53 +1,18 @@
-struct ParsedArguments: Sendable {
-    init(
-        projectPath: String = ".",
-        scheme: String? = nil,
-        destination: String? = nil,
-        testTarget: String? = nil,
-        timeout: Double? = nil,
-        concurrency: Int? = nil,
-        noCache: Bool = false,
-        output: String? = nil,
-        htmlOutput: String? = nil,
-        sonarOutput: String? = nil,
-        quiet: Bool = false,
-        input: String? = nil,
-        showVersion: Bool = false,
-        showHelp: Bool = false
-    ) {
-        self.projectPath = projectPath
-        self.scheme = scheme
-        self.destination = destination
-        self.testTarget = testTarget
-        self.timeout = timeout
-        self.concurrency = concurrency
-        self.noCache = noCache
-        self.output = output
-        self.htmlOutput = htmlOutput
-        self.sonarOutput = sonarOutput
-        self.quiet = quiet
-        self.input = input
-        self.showVersion = showVersion
-        self.showHelp = showHelp
+struct CommandLineParser: Sendable {
+    private struct FlagValues {
+        var scheme: String?
+        var destination: String?
+        var testTarget: String?
+        var timeout: Double?
+        var concurrency: Int?
+        var noCache = false
+        var output: String?
+        var htmlOutput: String?
+        var sonarOutput: String?
+        var quiet = false
+        var input: String?
     }
 
-    let projectPath: String
-    let scheme: String?
-    let destination: String?
-    let testTarget: String?
-    let timeout: Double?
-    let concurrency: Int?
-    let noCache: Bool
-    let output: String?
-    let htmlOutput: String?
-    let sonarOutput: String?
-    let quiet: Bool
-    let input: String?
-    let showVersion: Bool
-    let showHelp: Bool
-}
-
-struct CommandLineParser: Sendable {
     func parse(_ arguments: [String]) throws -> ParsedArguments {
         guard !arguments.isEmpty else {
             return ParsedArguments(showHelp: true)
@@ -174,18 +139,5 @@ struct CommandLineParser: Sendable {
         }
         return value
     }
-}
 
-private struct FlagValues {
-    var scheme: String?
-    var destination: String?
-    var testTarget: String?
-    var timeout: Double?
-    var concurrency: Int?
-    var noCache = false
-    var output: String?
-    var htmlOutput: String?
-    var sonarOutput: String?
-    var quiet = false
-    var input: String?
 }
