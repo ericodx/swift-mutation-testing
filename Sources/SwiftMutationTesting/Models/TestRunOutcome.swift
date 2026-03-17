@@ -4,4 +4,5 @@ enum TestRunOutcome: Sendable {
     case crashed
     case timedOut
     case buildFailed
+    case unviable
 }
