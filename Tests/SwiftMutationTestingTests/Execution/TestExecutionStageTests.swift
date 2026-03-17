@@ -25,7 +25,7 @@ struct TestExecutionStageTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let cacheStore = CacheStore(cacheURL: dir.appendingPathComponent("cache.json"))
+        let cacheStore = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
         let pool = SimulatorPool(
             baseUDID: nil, size: 1,
             destination: "platform=macOS", launcher: MockProcessLauncher(exitCode: 0)
@@ -96,7 +96,7 @@ struct TestExecutionStageTests {
         )
         let stage = TestExecutionStage(
             launcher: launcher,
-            cacheStore: CacheStore(cacheURL: dir.appendingPathComponent("cache.json")),
+            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
             reporter: MockProgressReporter()
         )
         let context = TestExecutionContext(

@@ -69,7 +69,7 @@ struct PerFileBuildFallbackTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let cacheStore = CacheStore(cacheURL: dir.appendingPathComponent("cache.json"))
+        let cacheStore = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
         let pool = makePool()
         try await pool.setUp()
 
@@ -137,7 +137,7 @@ struct PerFileBuildFallbackTests {
         PerFileBuildFallback(
             launcher: MockProcessLauncher(exitCode: exitCode),
             sandboxFactory: SandboxFactory(),
-            cacheStore: CacheStore(cacheURL: dir.appendingPathComponent("cache.json")),
+            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
             reporter: MockProgressReporter()
         )
     }

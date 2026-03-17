@@ -89,7 +89,7 @@ struct IncompatibleMutantExecutor: Sendable {
         try? sandbox.cleanup()
 
         let status = outcome.asExecutionStatus
-        await cacheStore.store(status, for: key)
+        await cacheStore.store(status: status, for: key)
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: duration)
         await reporter.report(.mutantTested(result: result))
         return result
@@ -139,7 +139,7 @@ struct IncompatibleMutantExecutor: Sendable {
         sandbox: Sandbox?
     ) async -> ExecutionResult {
         try? sandbox?.cleanup()
-        await cacheStore.store(.unviable, for: key)
+        await cacheStore.store(status: .unviable, for: key)
         let result = ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
         await reporter.report(.mutantTested(result: result))
         return result

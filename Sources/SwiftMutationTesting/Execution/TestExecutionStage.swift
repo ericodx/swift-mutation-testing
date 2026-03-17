@@ -54,7 +54,7 @@ struct TestExecutionStage: Sendable {
 
         guard let plistData = context.artifact.plist.activating(mutant.id) else {
             let result = ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
-            await cacheStore.store(.unviable, for: key)
+            await cacheStore.store(status: .unviable, for: key)
             await reporter.report(.mutantTested(result: result))
             return result
         }
@@ -78,7 +78,7 @@ struct TestExecutionStage: Sendable {
 
         let status = outcome.asExecutionStatus
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
-        await cacheStore.store(status, for: key)
+        await cacheStore.store(status: status, for: key)
         await reporter.report(.mutantTested(result: result))
         return result
     }
