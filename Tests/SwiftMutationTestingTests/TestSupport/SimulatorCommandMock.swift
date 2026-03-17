@@ -3,14 +3,15 @@ import Foundation
 @testable import SwiftMutationTesting
 
 struct SimulatorCommandMock: ProcessLaunching {
+
+    let listOutput: String
+    let cloneUDID: String
+
     static func bootedDevicesJSON(udid: String, name: String = "Mock Device") -> String {
         """
         {"devices":{"com.apple.runtime.iOS":[{"udid":"\(udid)","name":"\(name)","state":"Booted"}]}}
         """
     }
-
-    let listOutput: String
-    let cloneUDID: String
 
     func launch(
         executableURL: URL,
