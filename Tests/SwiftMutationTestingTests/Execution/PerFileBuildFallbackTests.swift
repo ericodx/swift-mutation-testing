@@ -79,7 +79,8 @@ struct PerFileBuildFallbackTests {
             launcher: MockProcessLauncher(exitCode: 1),
             sandboxFactory: SandboxFactory(),
             cacheStore: cacheStore,
-            reporter: MockProgressReporter()
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
         )
         _ = try await firstFallback.execute(
             input: makeInput(projectPath: dir.path, files: ["/tmp/Foo.swift"], mutants: [mutant]),
@@ -92,7 +93,8 @@ struct PerFileBuildFallbackTests {
             launcher: MockProcessLauncher(exitCode: 1),
             sandboxFactory: SandboxFactory(),
             cacheStore: cacheStore,
-            reporter: MockProgressReporter()
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
         )
         let results = try await secondFallback.execute(
             input: makeInput(projectPath: "/non/existent/path", files: ["/tmp/Foo.swift"], mutants: [mutant]),
@@ -138,7 +140,8 @@ struct PerFileBuildFallbackTests {
             launcher: MockProcessLauncher(exitCode: exitCode),
             sandboxFactory: SandboxFactory(),
             cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter()
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 3)
         )
     }
 

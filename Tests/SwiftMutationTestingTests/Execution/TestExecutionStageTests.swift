@@ -43,14 +43,16 @@ struct TestExecutionStageTests {
         let successStage = TestExecutionStage(
             launcher: MockProcessLauncher(exitCode: 0),
             cacheStore: cacheStore,
-            reporter: MockProgressReporter()
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
         )
         _ = try await successStage.execute(mutants: [makeMutant(id: "m0")], in: context)
 
         let failStage = TestExecutionStage(
             launcher: MockProcessLauncher(exitCode: 1),
             cacheStore: cacheStore,
-            reporter: MockProgressReporter()
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
         )
         let results = try await failStage.execute(mutants: [makeMutant(id: "m0")], in: context)
 
@@ -97,7 +99,8 @@ struct TestExecutionStageTests {
         let stage = TestExecutionStage(
             launcher: launcher,
             cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter()
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 3)
         )
         let context = TestExecutionContext(
             artifact: makeBuildArtifact(in: dir),
