@@ -5,6 +5,7 @@ struct PerFileBuildFallback: Sendable {
     let sandboxFactory: SandboxFactory
     let cacheStore: CacheStore
     let reporter: any ProgressReporter
+    let counter: MutationCounter
 
     func execute(
         input: RunnerInput,
@@ -47,7 +48,12 @@ struct PerFileBuildFallback: Sendable {
                 cached.append(ExecutionResult(descriptor: mutant, status: status, testDuration: 0))
             }
             if cached.count == mutants.count {
-                for result in cached { await reporter.report(.mutantTested(result: result)) }
+                for result in cached {
+                    let index = await counter.increment()
+                    await reporter.report(
+                        .mutantFinished(
+                            descriptor: result.descriptor, status: result.status, index: index, total: counter.total))
+                }
                 return cached
             }
         }
@@ -58,6 +64,8 @@ struct PerFileBuildFallback: Sendable {
             supportFileContent: input.supportFileContent
         )
 
+        await reporter.report(.fallbackBuildStarted(filePath: file.originalPath))
+
         let artifact: BuildArtifact
         do {
             artifact = try await BuildStage(launcher: launcher).build(
@@ -66,7 +74,9 @@ struct PerFileBuildFallback: Sendable {
                 destination: configuration.destination,
                 timeout: configuration.timeout
             )
+            await reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
         } catch {
+            await reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
             try? sandbox.cleanup()
             return await markAllUnviable(mutants: mutants, testFilesHash: testFilesHash)
         }
@@ -79,7 +89,7 @@ struct PerFileBuildFallback: Sendable {
             testFilesHash: testFilesHash
         )
 
-        let stage = TestExecutionStage(launcher: launcher, cacheStore: cacheStore, reporter: reporter)
+        let stage = TestExecutionStage(launcher: launcher, cacheStore: cacheStore, reporter: reporter, counter: counter)
         let results = try await stage.execute(mutants: mutants, in: context)
         try? sandbox.cleanup()
         return results
@@ -93,9 +103,15 @@ struct PerFileBuildFallback: Sendable {
         for mutant in mutants {
             let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
             await cacheStore.store(status: .unviable, for: key)
-            let result = ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
-            await reporter.report(.mutantTested(result: result))
-            results.append(result)
+            await reporter.report(
+                .mutantFinished(
+                    descriptor: mutant,
+                    status: .unviable,
+                    index: await counter.increment(),
+                    total: counter.total
+                )
+            )
+            results.append(ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0))
         }
         return results
     }
