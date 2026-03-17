@@ -4,6 +4,12 @@ import Foundation
 
 struct MockProcessLauncher: ProcessLaunching {
     let exitCode: Int32
+    let output: String
+
+    init(exitCode: Int32, output: String = "") {
+        self.exitCode = exitCode
+        self.output = output
+    }
 
     func launch(
         executableURL: URL,
@@ -21,6 +27,6 @@ struct MockProcessLauncher: ProcessLaunching {
         workingDirectoryURL: URL,
         timeout: Double
     ) async throws -> (exitCode: Int32, output: String) {
-        (exitCode: exitCode, output: "")
+        (exitCode: exitCode, output: output)
     }
 }
