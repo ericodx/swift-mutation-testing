@@ -92,7 +92,7 @@ struct PerFileBuildFallback: Sendable {
         var results: [ExecutionResult] = []
         for mutant in mutants {
             let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
-            await cacheStore.store(.unviable, for: key)
+            await cacheStore.store(status: .unviable, for: key)
             let result = ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
             await reporter.report(.mutantTested(result: result))
             results.append(result)
