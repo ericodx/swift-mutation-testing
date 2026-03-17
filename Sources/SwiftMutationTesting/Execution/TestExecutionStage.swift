@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 private struct TestLaunchResult {
@@ -25,7 +24,7 @@ struct TestExecutionStage: Sendable {
             var iterator = mutants.makeIterator()
 
             while activeTasks < concurrency, let mutant = iterator.next() {
-                let key = cacheKey(for: mutant, testFilesHash: context.testFilesHash)
+                let key = MutantCacheKey.make(for: mutant, testFilesHash: context.testFilesHash)
                 group.addTask { try await self.run(mutant: mutant, key: key, in: context) }
                 activeTasks += 1
             }
@@ -33,7 +32,7 @@ struct TestExecutionStage: Sendable {
             for try await result in group {
                 results.append(result)
                 if let next = iterator.next() {
-                    let key = cacheKey(for: next, testFilesHash: context.testFilesHash)
+                    let key = MutantCacheKey.make(for: next, testFilesHash: context.testFilesHash)
                     group.addTask { try await self.run(mutant: next, key: key, in: context) }
                 }
             }
@@ -77,7 +76,7 @@ struct TestExecutionStage: Sendable {
             timeout: context.configuration.timeout
         )
 
-        let status = executionStatus(from: outcome)
+        let status = outcome.asExecutionStatus
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
         await cacheStore.store(status, for: key)
         await reporter.report(.mutantTested(result: result))
@@ -128,23 +127,5 @@ struct TestExecutionStage: Sendable {
             xcresultPath: xcresultPath,
             duration: Date().timeIntervalSince(start)
         )
-    }
-
-    private func cacheKey(for mutant: MutantDescriptor, testFilesHash: String) -> MutantCacheKey {
-        let content = mutant.mutatedSourceContent ?? mutant.filePath
-        let digest = SHA256.hash(data: Data(content.utf8))
-        let fileHash = digest.map { String(format: "%02x", $0) }.joined()
-        return MutantCacheKey(fileContentHash: fileHash, testFilesHash: testFilesHash, mutantID: mutant.id)
-    }
-
-    private func executionStatus(from outcome: TestRunOutcome) -> ExecutionStatus {
-        switch outcome {
-        case .testsFailed(let name): return .killed(by: name)
-        case .testsSucceeded: return .survived
-        case .crashed: return .killedByCrash
-        case .timedOut: return .timeout
-        case .buildFailed: return .unviable
-        case .unviable: return .unviable
-        }
     }
 }

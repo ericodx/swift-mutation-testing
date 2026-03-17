@@ -3,13 +3,14 @@ import Foundation
 @testable import SwiftMutationTesting
 
 struct MockProcessLauncher: ProcessLaunching {
-    let exitCode: Int32
-    let output: String
 
     init(exitCode: Int32, output: String = "") {
         self.exitCode = exitCode
         self.output = output
     }
+
+    let exitCode: Int32
+    let output: String
 
     func launch(
         executableURL: URL,
