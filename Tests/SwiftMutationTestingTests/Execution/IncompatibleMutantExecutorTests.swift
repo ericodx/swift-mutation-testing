@@ -84,7 +84,8 @@ struct IncompatibleMutantExecutorTests {
             launcher: MockProcessLauncher(exitCode: 1),
             sandboxFactory: SandboxFactory(),
             cacheStore: cacheStore,
-            reporter: MockProgressReporter()
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
         )
         _ = try await firstExecutor.execute(
             [mutant],
@@ -97,7 +98,8 @@ struct IncompatibleMutantExecutorTests {
             launcher: MockProcessLauncher(exitCode: 1),
             sandboxFactory: SandboxFactory(),
             cacheStore: cacheStore,
-            reporter: MockProgressReporter()
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
         )
         let results = try await secondExecutor.execute(
             [mutant],
@@ -114,7 +116,8 @@ struct IncompatibleMutantExecutorTests {
             launcher: MockProcessLauncher(exitCode: exitCode),
             sandboxFactory: SandboxFactory(),
             cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter()
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 3)
         )
     }
 

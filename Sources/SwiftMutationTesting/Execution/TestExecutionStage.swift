@@ -11,6 +11,7 @@ struct TestExecutionStage: Sendable {
     let launcher: any ProcessLaunching
     let cacheStore: CacheStore
     let reporter: any ProgressReporter
+    let counter: MutationCounter
 
     func execute(
         mutants: [MutantDescriptor],
@@ -48,14 +49,18 @@ struct TestExecutionStage: Sendable {
     ) async throws -> ExecutionResult {
         if !context.configuration.noCache, let cached = await cacheStore.result(for: key) {
             let result = ExecutionResult(descriptor: mutant, status: cached, testDuration: 0)
-            await reporter.report(.mutantTested(result: result))
+            let index = await counter.increment()
+            await reporter.report(
+                .mutantFinished(descriptor: mutant, status: cached, index: index, total: counter.total))
             return result
         }
 
         guard let plistData = context.artifact.plist.activating(mutant.id) else {
             let result = ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
             await cacheStore.store(status: .unviable, for: key)
-            await reporter.report(.mutantTested(result: result))
+            let index = await counter.increment()
+            await reporter.report(
+                .mutantFinished(descriptor: mutant, status: .unviable, index: index, total: counter.total))
             return result
         }
 
@@ -79,7 +84,8 @@ struct TestExecutionStage: Sendable {
         let status = outcome.asExecutionStatus
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
         await cacheStore.store(status: status, for: key)
-        await reporter.report(.mutantTested(result: result))
+        let index = await counter.increment()
+        await reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: counter.total))
         return result
     }
 

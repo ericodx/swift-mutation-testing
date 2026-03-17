@@ -12,6 +12,7 @@ struct IncompatibleMutantExecutor: Sendable {
     let sandboxFactory: SandboxFactory
     let cacheStore: CacheStore
     let reporter: any ProgressReporter
+    let counter: MutationCounter
 
     func execute(
         _ mutants: [MutantDescriptor],
@@ -25,9 +26,11 @@ struct IncompatibleMutantExecutor: Sendable {
             let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
 
             if !configuration.noCache, let cachedStatus = await cacheStore.result(for: key) {
-                let hit = ExecutionResult(descriptor: mutant, status: cachedStatus, testDuration: 0)
-                await reporter.report(.mutantTested(result: hit))
-                results.append(hit)
+                let total = counter.total
+                let index = await counter.increment()
+                await reporter.report(
+                    .mutantFinished(descriptor: mutant, status: cachedStatus, index: index, total: total))
+                results.append(ExecutionResult(descriptor: mutant, status: cachedStatus, testDuration: 0))
                 continue
             }
 
@@ -89,10 +92,11 @@ struct IncompatibleMutantExecutor: Sendable {
         try? sandbox.cleanup()
 
         let status = outcome.asExecutionStatus
+        let total = counter.total
+        let index = await counter.increment()
+        await reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: total))
         await cacheStore.store(status: status, for: key)
-        let result = ExecutionResult(descriptor: mutant, status: status, testDuration: duration)
-        await reporter.report(.mutantTested(result: result))
-        return result
+        return ExecutionResult(descriptor: mutant, status: status, testDuration: duration)
     }
 
     private func launch(
@@ -140,8 +144,9 @@ struct IncompatibleMutantExecutor: Sendable {
     ) async -> ExecutionResult {
         try? sandbox?.cleanup()
         await cacheStore.store(status: .unviable, for: key)
-        let result = ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
-        await reporter.report(.mutantTested(result: result))
-        return result
+        let total = counter.total
+        let index = await counter.increment()
+        await reporter.report(.mutantFinished(descriptor: mutant, status: .unviable, index: index, total: total))
+        return ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
     }
 }
