@@ -91,6 +91,22 @@ struct CommandLineParserTests {
         #expect(result.concurrency == 3)
     }
 
+    @Test("Given init command without path, when parsed, then showInit is true and projectPath defaults to dot")
+    func parsesInitWithDefaultPath() throws {
+        let result = try parser.parse(["init"])
+
+        #expect(result.showInit == true)
+        #expect(result.projectPath == ".")
+    }
+
+    @Test("Given init command with explicit path, when parsed, then showInit is true and projectPath is set")
+    func parsesInitWithExplicitPath() throws {
+        let result = try parser.parse(["init", "/my/project"])
+
+        #expect(result.showInit == true)
+        #expect(result.projectPath == "/my/project")
+    }
+
     @Test("Given an unknown flag, when parsed, then throws UsageError")
     func throwsForUnknownFlag() {
         #expect(throws: UsageError.self) {

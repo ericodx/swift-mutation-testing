@@ -40,13 +40,19 @@ struct SwiftMutationTesting {
             return .success
         }
 
+        if parsed.showInit {
+            let detected = await ProjectDetector(launcher: ProcessLauncher()).detect(at: parsed.projectPath)
+            try ConfigurationFileWriter().write(to: parsed.projectPath, project: detected)
+            return .success
+        }
+
         let fileValues = try ConfigurationFileParser().parse(at: parsed.projectPath)
         let configuration = try ConfigurationResolver().resolve(
             cliArguments: parsed,
             fileValues: fileValues
         )
 
-        guard let inputPath = parsed.input else {
+        guard let inputPath = parsed.input ?? fileValues["input"] else {
             throw UsageError(message: "--input is required")
         }
 
