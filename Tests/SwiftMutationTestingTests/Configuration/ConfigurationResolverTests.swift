@@ -98,7 +98,7 @@ struct ConfigurationResolverTests {
         }
     }
 
-    @Test("Given input flag set, when resolved, then scheme and destination validation is skipped")
+    @Test("Given input flag set via CLI, when resolved, then scheme and destination validation is skipped")
     func skipsValidationInIntegrationMode() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(input: "runner-input.json"),
@@ -106,6 +106,36 @@ struct ConfigurationResolverTests {
         )
 
         #expect(result.projectPath == ".")
+    }
+
+    @Test("Given input only in file, when resolved, then scheme and destination validation is skipped")
+    func skipsValidationWhenInputInFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(),
+            fileValues: ["input": "runner-input.json"]
+        )
+
+        #expect(result.projectPath == ".")
+    }
+
+    @Test("Given noCache true in file, when resolved, then noCache is true")
+    func noCacheFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: ["noCache": "true"]
+        )
+
+        #expect(result.noCache == true)
+    }
+
+    @Test("Given quiet true in file, when resolved, then quiet is true")
+    func quietFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: ["quiet": "true"]
+        )
+
+        #expect(result.quiet == true)
     }
 
     @Test("Given concurrency of zero, when resolved, then throws UsageError")
