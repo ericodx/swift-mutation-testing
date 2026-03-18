@@ -1,6 +1,6 @@
 paths:
   - Sources/
-minimumTokenCount: 50
+minimumTokenCount: 100
 minimumLineCount: 5
 outputFormat: text
 type3Similarity: 70
