@@ -1,4 +1,4 @@
-enum ExitCode {
-    static let success: Int32 = 0
-    static let error: Int32 = 1
+enum ExitCode: Int32 {
+    case success = 0
+    case error = 1
 }

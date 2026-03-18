@@ -3,35 +3,80 @@ import Foundation
 @main
 struct SwiftMutationTesting {
     static func main() async {
+        exit(await run(args: Array(CommandLine.arguments.dropFirst())).rawValue)
+    }
+
+    static func run(args: [String]) async -> ExitCode {
         do {
-            try await run()
+            return try await execute(args: args)
         } catch let error as UsageError {
-            fputs("error: \(error.message)\n", stderr)
-            exit(ExitCode.error)
+            fputs(error.message + "\n", stderr)
+            return .error
+        } catch BuildError.compilationFailed {
+            fputs("Build-for-testing failed. Check scheme and destination.\n", stderr)
+            return .error
+        } catch SimulatorError.deviceNotFound(let dest) {
+            fputs("Simulator not found for destination: \(dest)\n", stderr)
+            return .error
+        } catch SimulatorError.bootTimeout(let udid) {
+            fputs("Simulator boot timeout for UDID: \(udid)\n", stderr)
+            return .error
         } catch {
-            fputs("error: \(error.localizedDescription)\n", stderr)
-            exit(ExitCode.error)
+            fputs("Error: \(error.localizedDescription)\n", stderr)
+            return .error
         }
     }
 
-    private static func run() async throws {
-        let arguments = Array(CommandLine.arguments.dropFirst())
-        let parsed = try CommandLineParser().parse(arguments)
+    private static func execute(args: [String]) async throws -> ExitCode {
+        let parsed = try CommandLineParser().parse(args)
 
         if parsed.showHelp {
             print(HelpText.usage)
-            exit(ExitCode.success)
+            return .success
         }
 
         if parsed.showVersion {
             print("0.1.0")
-            exit(ExitCode.success)
+            return .success
         }
 
         let fileValues = try ConfigurationFileParser().parse(at: parsed.projectPath)
-        _ = try ConfigurationResolver().resolve(
+        let configuration = try ConfigurationResolver().resolve(
             cliArguments: parsed,
             fileValues: fileValues
         )
+
+        guard let inputPath = parsed.input else {
+            throw UsageError(message: "--input is required")
+        }
+
+        let inputData = try Data(contentsOf: URL(fileURLWithPath: inputPath))
+        let input = try JSONDecoder().decode(RunnerInput.self, from: inputData)
+
+        let start = Date()
+        let results = try await MutantExecutor(configuration: configuration).execute(input)
+        let duration = Date().timeIntervalSince(start)
+
+        let summary = RunnerSummary(results: results, totalDuration: duration)
+        TextReporter().report(summary)
+
+        if let output = configuration.output {
+            try JsonReporter(outputPath: output, projectRoot: configuration.projectPath).report(summary)
+        }
+
+        if let htmlOutput = configuration.htmlOutput {
+            try HtmlReporter(outputPath: htmlOutput).report(summary)
+        }
+
+        if let sonarOutput = configuration.sonarOutput {
+            try SonarReporter(outputPath: sonarOutput, projectRoot: configuration.projectPath).report(summary)
+        }
+
+        if parsed.input != nil {
+            let data = try JSONEncoder().encode(results)
+            print(String(data: data, encoding: .utf8) ?? "[]")
+        }
+
+        return .success
     }
 }
