@@ -22,11 +22,11 @@ struct ProjectDetector: Sendable {
             return .empty
         }
 
-        let (schemes, testTarget) = await listProject(container: container, workingDirectory: projectURL)
+        let (schemes, projectName, testTarget) = await listProject(container: container, workingDirectory: projectURL)
         let destination = detectDestination(in: projectURL)
 
         return DetectedProject(
-            scheme: schemes.first,
+            scheme: selectScheme(from: schemes, projectName: projectName),
             allSchemes: schemes,
             testTarget: testTarget,
             destination: destination
@@ -65,7 +65,7 @@ struct ProjectDetector: Sendable {
     private func listProject(
         container: (flag: String, path: String),
         workingDirectory: URL
-    ) async -> (schemes: [String], testTarget: String?) {
+    ) async -> (schemes: [String], projectName: String?, testTarget: String?) {
         guard
             let result = try? await launcher.launchCapturing(
                 executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
@@ -76,18 +76,18 @@ struct ProjectDetector: Sendable {
             ),
             result.exitCode == 0
         else {
-            return ([], nil)
+            return ([], nil, nil)
         }
 
         return parseListOutput(result.output)
     }
 
-    private func parseListOutput(_ output: String) -> (schemes: [String], testTarget: String?) {
+    private func parseListOutput(_ output: String) -> (schemes: [String], projectName: String?, testTarget: String?) {
         guard
             let data = output.data(using: .utf8),
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            return ([], nil)
+            return ([], nil, nil)
         }
 
         let container =
@@ -95,6 +95,7 @@ struct ProjectDetector: Sendable {
             ?? json["project"] as? [String: Any]
 
         let schemes = container?["schemes"] as? [String] ?? []
+        let projectName = container?["name"] as? String
         let targets = container?["targets"] as? [String] ?? []
         let candidates = targets.isEmpty ? schemes : targets
 
@@ -102,7 +103,12 @@ struct ProjectDetector: Sendable {
             candidates.first { $0.hasSuffix("Tests") && !$0.hasSuffix("UITests") }
             ?? candidates.first { $0.hasSuffix("Tests") }
 
-        return (schemes, testTarget)
+        return (schemes, projectName, testTarget)
+    }
+
+    private func selectScheme(from schemes: [String], projectName: String?) -> String? {
+        guard let projectName else { return schemes.first }
+        return schemes.first { $0 == projectName } ?? schemes.first
     }
 
     private func detectDestination(in projectURL: URL) -> String {
