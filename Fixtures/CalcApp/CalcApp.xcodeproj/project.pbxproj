@@ -1,0 +1,304 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AAAA001F000000000000AAAA /* Calculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA0011000000000000AAAA /* Calculator.swift */; };
+		AAAA0020000000000000AAAA /* Validator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA0012000000000000AAAA /* Validator.swift */; };
+		AAAA0021000000000000AAAA /* Logic.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA0013000000000000AAAA /* Logic.swift */; };
+		AAAA001B000000000000AAAA /* __SMTSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA001A000000000000AAAA /* __SMTSupport.swift */; };
+		AAAA0022000000000000AAAA /* CalcAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA001C000000000000AAAA /* CalcAppTests.swift */; };
+		AAAA0023000000000000AAAA /* CalcApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AAAA001D000000000000AAAA /* CalcApp.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AAAA0011000000000000AAAA /* Calculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Calculator.swift; sourceTree = "<group>"; };
+		AAAA0012000000000000AAAA /* Validator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Validator.swift; sourceTree = "<group>"; };
+		AAAA0013000000000000AAAA /* Logic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logic.swift; sourceTree = "<group>"; };
+		AAAA001A000000000000AAAA /* __SMTSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = __SMTSupport.swift; sourceTree = "<group>"; };
+		AAAA001C000000000000AAAA /* CalcAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalcAppTests.swift; sourceTree = "<group>"; };
+		AAAA001D000000000000AAAA /* CalcApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CalcApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		AAAA001E000000000000AAAA /* CalcAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CalcAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AAAA0025000000000000AAAA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AAAA0027000000000000AAAA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AAAA0023000000000000AAAA /* CalcApp.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AAAA0002000000000000AAAA = {
+			isa = PBXGroup;
+			children = (
+				AAAA0003000000000000AAAA /* Sources */,
+				AAAA0004000000000000AAAA /* Tests */,
+				AAAA0005000000000000AAAA /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AAAA0003000000000000AAAA /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				AAAA0011000000000000AAAA /* Calculator.swift */,
+				AAAA0012000000000000AAAA /* Validator.swift */,
+				AAAA0013000000000000AAAA /* Logic.swift */,
+				AAAA001A000000000000AAAA /* __SMTSupport.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		AAAA0004000000000000AAAA /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				AAAA001C000000000000AAAA /* CalcAppTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		AAAA0005000000000000AAAA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AAAA001D000000000000AAAA /* CalcApp.framework */,
+				AAAA001E000000000000AAAA /* CalcAppTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AAAA0006000000000000AAAA /* CalcApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AAAA0009000000000000AAAA /* Build configuration list for PBXNativeTarget "CalcApp" */;
+			buildPhases = (
+				AAAA0024000000000000AAAA /* Sources */,
+				AAAA0025000000000000AAAA /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CalcApp;
+			productName = CalcApp;
+			productReference = AAAA001D000000000000AAAA /* CalcApp.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		AAAA0007000000000000AAAA /* CalcAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AAAA000A000000000000AAAA /* Build configuration list for PBXNativeTarget "CalcAppTests" */;
+			buildPhases = (
+				AAAA0026000000000000AAAA /* Sources */,
+				AAAA0027000000000000AAAA /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CalcAppTests;
+			productName = CalcAppTests;
+			productReference = AAAA001E000000000000AAAA /* CalcAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AAAA0001000000000000AAAA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = AAAA0008000000000000AAAA /* Build configuration list for PBXProject "CalcApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = AAAA0002000000000000AAAA;
+			productRefGroup = AAAA0005000000000000AAAA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AAAA0006000000000000AAAA /* CalcApp */,
+				AAAA0007000000000000AAAA /* CalcAppTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AAAA0024000000000000AAAA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AAAA001F000000000000AAAA /* Calculator.swift in Sources */,
+				AAAA0020000000000000AAAA /* Validator.swift in Sources */,
+				AAAA0021000000000000AAAA /* Logic.swift in Sources */,
+				AAAA001B000000000000AAAA /* __SMTSupport.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AAAA0026000000000000AAAA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AAAA0022000000000000AAAA /* CalcAppTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AAAA000B000000000000AAAA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AAAA000C000000000000AAAA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		AAAA000D000000000000AAAA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.xmr.CalcApp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AAAA000E000000000000AAAA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.xmr.CalcApp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		AAAA000F000000000000AAAA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.xmr.CalcAppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "";
+			};
+			name = Debug;
+		};
+		AAAA0010000000000000AAAA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(BUILT_PRODUCTS_DIR)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.xmr.CalcAppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AAAA0008000000000000AAAA /* Build configuration list for PBXProject "CalcApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AAAA000B000000000000AAAA /* Debug */,
+				AAAA000C000000000000AAAA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AAAA0009000000000000AAAA /* Build configuration list for PBXNativeTarget "CalcApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AAAA000D000000000000AAAA /* Debug */,
+				AAAA000E000000000000AAAA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AAAA000A000000000000AAAA /* Build configuration list for PBXNativeTarget "CalcAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AAAA000F000000000000AAAA /* Debug */,
+				AAAA0010000000000000AAAA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = AAAA0001000000000000AAAA /* Project object */;
+}
