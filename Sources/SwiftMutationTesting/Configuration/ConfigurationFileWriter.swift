@@ -26,10 +26,16 @@ struct ConfigurationFileWriter: Sendable {
             lines.append("# scheme: MyApp")
         }
 
-        lines.append("destination: platform=macOS")
-        lines.append("# testTarget: MyAppTests")
-        lines.append("# timeout: 60")
-        lines.append("# concurrency: 4")
+        lines.append("destination: \(project.destination)")
+
+        if let testTarget = project.testTarget {
+            lines.append("testTarget: \(testTarget)")
+        } else {
+            lines.append("# testTarget: MyAppTests")
+        }
+
+        lines.append("timeout: 60")
+        lines.append("concurrency: 4")
         lines.append("# output: reports/mutations.json")
         lines.append("# htmlOutput: reports/mutations.html")
         lines.append("# sonarOutput: reports/sonar.json")
