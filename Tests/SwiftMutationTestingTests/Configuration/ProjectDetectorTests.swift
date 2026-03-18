@@ -111,6 +111,31 @@ struct ProjectDetectorTests {
         #expect(result.destination == "platform=macOS")
     }
 
+    @Test("Given aggregate and app schemes, when detect called, then app scheme matching project name is selected")
+    func selectsSchemeMatchingProjectName() async throws {
+        let json = """
+            {
+              "project": {
+                "name": "MyApp",
+                "schemes": ["AggregateAll", "MyApp"],
+                "targets": ["MyApp", "MyAppTests"]
+              }
+            }
+            """
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        try FileManager.default.createDirectory(
+            at: dir.appendingPathComponent("MyApp.xcodeproj"),
+            withIntermediateDirectories: true
+        )
+
+        let detector = ProjectDetector(launcher: MockProcessLauncher(exitCode: 0, output: json))
+        let result = await detector.detect(at: dir.path)
+
+        #expect(result.scheme == "MyApp")
+        #expect(result.allSchemes == ["AggregateAll", "MyApp"])
+    }
+
     @Test("Given xcodebuild exits with non-zero code, when detect called, then empty project is returned")
     func returnsEmptyWhenXcodebuildFails() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
