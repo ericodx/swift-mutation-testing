@@ -43,6 +43,7 @@ identifier_name:
     - ctx
     - node
     - decl
+    - op
 
 file_length:
   warning: 600
