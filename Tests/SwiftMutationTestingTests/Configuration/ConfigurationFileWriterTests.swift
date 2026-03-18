@@ -7,21 +7,54 @@ import Testing
 struct ConfigurationFileWriterTests {
     private let writer = ConfigurationFileWriter()
 
-    @Test("Given empty directory, when write called, then config file is created with all keys commented")
-    func createsConfigFileWithCommentedKeys() throws {
+    @Test("Given no detected scheme, when write called, then scheme line is commented")
+    func schemeLineIsCommentedWhenNotDetected() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        try writer.write(to: dir.path)
+        try writer.write(to: dir.path, project: .empty)
 
-        let fileURL = dir.appendingPathComponent(".swift-mutation-testing.yml")
-        #expect(FileManager.default.fileExists(atPath: fileURL.path))
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("# scheme: MyApp"))
+        #expect(!content.contains("\nscheme:"))
+    }
 
-        let content = try String(contentsOf: fileURL, encoding: .utf8)
-        #expect(content.contains("scheme"))
-        #expect(content.contains("destination"))
-        #expect(content.contains("timeout"))
-        #expect(content.contains("concurrency"))
+    @Test("Given detected scheme, when write called, then scheme line is filled and uncommented")
+    func schemeLineIsFilledWhenDetected() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(to: dir.path, project: DetectedProject(scheme: "MyApp", allSchemes: ["MyApp"]))
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("scheme: MyApp"))
+        #expect(!content.contains("# scheme:"))
+    }
+
+    @Test("Given multiple schemes detected, when write called, then available schemes comment is included")
+    func availableSchemesCommentIsIncludedForMultipleSchemes() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(
+            to: dir.path,
+            project: DetectedProject(scheme: "MyApp", allSchemes: ["MyApp", "MyAppTests"])
+        )
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("# Available schemes: MyApp, MyAppTests"))
+    }
+
+    @Test("Given generated config file, when parsed by ConfigurationFileParser, then destination key is present")
+    func generatedFileContainsDestination() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(to: dir.path, project: DetectedProject(scheme: "App", allSchemes: ["App"]))
+
+        let values = try ConfigurationFileParser().parse(at: dir.path)
+        #expect(values["scheme"] == "App")
+        #expect(values["destination"] == "platform=macOS")
     }
 
     @Test("Given existing config file, when write called, then throws UsageError")
@@ -29,21 +62,10 @@ struct ConfigurationFileWriterTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        try writer.write(to: dir.path)
+        try writer.write(to: dir.path, project: .empty)
 
         #expect(throws: UsageError.self) {
-            try writer.write(to: dir.path)
+            try writer.write(to: dir.path, project: .empty)
         }
-    }
-
-    @Test("Given generated config file, when parsed by ConfigurationFileParser, then returns empty map")
-    func generatedFileProducesEmptyMapWhenAllCommented() throws {
-        let dir = try FileHelpers.makeTemporaryDirectory()
-        defer { FileHelpers.cleanup(dir) }
-
-        try writer.write(to: dir.path)
-
-        let values = try ConfigurationFileParser().parse(at: dir.path)
-        #expect(values.isEmpty)
     }
 }
