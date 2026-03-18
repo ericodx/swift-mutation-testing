@@ -34,8 +34,11 @@ struct ConfigurationFileWriter: Sendable {
             lines.append("# testTarget: MyAppTests")
         }
 
+        lines.append("# input: runner-input.json")
         lines.append("timeout: 60")
         lines.append("concurrency: 4")
+        lines.append("# noCache: false")
+        lines.append("# quiet: false")
         lines.append("output: mutations.json")
         lines.append("# htmlOutput: mutations.html")
         lines.append("# sonarOutput: sonar.json")

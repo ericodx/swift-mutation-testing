@@ -52,7 +52,7 @@ struct SwiftMutationTesting {
             fileValues: fileValues
         )
 
-        guard let inputPath = parsed.input else {
+        guard let inputPath = parsed.input ?? fileValues["input"] else {
             throw UsageError(message: "--input is required")
         }
 

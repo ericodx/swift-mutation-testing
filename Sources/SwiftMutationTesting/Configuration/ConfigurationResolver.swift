@@ -25,7 +25,9 @@ struct ConfigurationResolver: Sendable {
             throw UsageError(message: "--concurrency must be >= 1")
         }
 
-        if cliArguments.input == nil {
+        let hasInput = cliArguments.input != nil || fileValues["input"] != nil
+
+        if !hasInput {
             guard cliArguments.scheme != nil || fileValues["scheme"] != nil else {
                 throw UsageError(message: "--scheme is required")
             }
@@ -42,11 +44,11 @@ struct ConfigurationResolver: Sendable {
             testTarget: cliArguments.testTarget ?? fileValues["testTarget"],
             timeout: timeout,
             concurrency: concurrency,
-            noCache: cliArguments.noCache,
+            noCache: cliArguments.noCache || fileValues["noCache"]?.lowercased() == "true",
             output: cliArguments.output ?? fileValues["output"],
             htmlOutput: cliArguments.htmlOutput ?? fileValues["htmlOutput"],
             sonarOutput: cliArguments.sonarOutput ?? fileValues["sonarOutput"],
-            quiet: cliArguments.quiet
+            quiet: cliArguments.quiet || fileValues["quiet"]?.lowercased() == "true"
         )
     }
 }
