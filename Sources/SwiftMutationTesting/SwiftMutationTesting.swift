@@ -40,6 +40,11 @@ struct SwiftMutationTesting {
             return .success
         }
 
+        if parsed.showInit {
+            try ConfigurationFileWriter().write(to: parsed.projectPath)
+            return .success
+        }
+
         let fileValues = try ConfigurationFileParser().parse(at: parsed.projectPath)
         let configuration = try ConfigurationResolver().resolve(
             cliArguments: parsed,

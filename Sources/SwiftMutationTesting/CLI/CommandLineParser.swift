@@ -32,6 +32,15 @@ struct CommandLineParser: Sendable {
         var remaining = arguments
         var projectPath = "."
 
+        if remaining[0] == "init" {
+            remaining.removeFirst()
+            if let next = remaining.first, !next.hasPrefix("-") {
+                projectPath = next
+            }
+
+            return ParsedArguments(projectPath: projectPath, showInit: true)
+        }
+
         if remaining[0] == "run" {
             remaining.removeFirst()
             if let next = remaining.first, !next.hasPrefix("-") {

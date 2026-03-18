@@ -1,6 +1,10 @@
 enum HelpText {
     static let usage = """
-        USAGE: swift-mutation-testing run [<project-path>] [options]
+        USAGE: swift-mutation-testing <command> [<project-path>] [options]
+
+        COMMANDS:
+          run                           Run mutation testing
+          init                          Generate a .swift-mutation-testing.yml config file
 
         ARGUMENTS:
           <project-path>                Path to the Xcode project root (default: .)

@@ -13,7 +13,8 @@ struct ParsedArguments: Sendable {
         quiet: Bool = false,
         input: String? = nil,
         showVersion: Bool = false,
-        showHelp: Bool = false
+        showHelp: Bool = false,
+        showInit: Bool = false
     ) {
         self.projectPath = projectPath
         self.scheme = scheme
@@ -29,6 +30,7 @@ struct ParsedArguments: Sendable {
         self.input = input
         self.showVersion = showVersion
         self.showHelp = showHelp
+        self.showInit = showInit
     }
 
     let projectPath: String
@@ -45,4 +47,5 @@ struct ParsedArguments: Sendable {
     let input: String?
     let showVersion: Bool
     let showHelp: Bool
+    let showInit: Bool
 }
