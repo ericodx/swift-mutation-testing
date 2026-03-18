@@ -36,9 +36,9 @@ struct ConfigurationFileWriter: Sendable {
 
         lines.append("timeout: 60")
         lines.append("concurrency: 4")
-        lines.append("# output: reports/mutations.json")
-        lines.append("# htmlOutput: reports/mutations.html")
-        lines.append("# sonarOutput: reports/sonar.json")
+        lines.append("output: mutations.json")
+        lines.append("# htmlOutput: mutations.html")
+        lines.append("# sonarOutput: sonar.json")
 
         return lines.joined(separator: "\n") + "\n"
     }
