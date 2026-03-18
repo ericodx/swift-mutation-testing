@@ -41,7 +41,8 @@ struct SwiftMutationTesting {
         }
 
         if parsed.showInit {
-            try ConfigurationFileWriter().write(to: parsed.projectPath)
+            let detected = await ProjectDetector(launcher: ProcessLauncher()).detect(at: parsed.projectPath)
+            try ConfigurationFileWriter().write(to: parsed.projectPath, project: detected)
             return .success
         }
 

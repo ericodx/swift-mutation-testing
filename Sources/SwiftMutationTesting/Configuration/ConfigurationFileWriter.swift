@@ -1,19 +1,7 @@
 import Foundation
 
 struct ConfigurationFileWriter: Sendable {
-
-    private let template = """
-        # scheme: MyApp
-        # destination: platform=macOS
-        # testTarget: MyAppTests
-        # timeout: 60
-        # concurrency: 4
-        # output: reports/mutations.json
-        # htmlOutput: reports/mutations.html
-        # sonarOutput: reports/sonar.json
-        """
-
-    func write(to projectPath: String) throws {
+    func write(to projectPath: String, project: DetectedProject) throws {
         let fileURL = URL(fileURLWithPath: projectPath)
             .appendingPathComponent(".swift-mutation-testing.yml")
 
@@ -21,7 +9,31 @@ struct ConfigurationFileWriter: Sendable {
             throw UsageError(message: ".swift-mutation-testing.yml already exists at \(fileURL.path)")
         }
 
-        try template.write(to: fileURL, atomically: true, encoding: .utf8)
+        try generateContent(project: project).write(to: fileURL, atomically: true, encoding: .utf8)
         print("Created \(fileURL.path)")
+    }
+
+    private func generateContent(project: DetectedProject) -> String {
+        var lines: [String] = []
+
+        if project.allSchemes.count > 1 {
+            lines.append("# Available schemes: \(project.allSchemes.joined(separator: ", "))")
+        }
+
+        if let scheme = project.scheme {
+            lines.append("scheme: \(scheme)")
+        } else {
+            lines.append("# scheme: MyApp")
+        }
+
+        lines.append("destination: platform=macOS")
+        lines.append("# testTarget: MyAppTests")
+        lines.append("# timeout: 60")
+        lines.append("# concurrency: 4")
+        lines.append("# output: reports/mutations.json")
+        lines.append("# htmlOutput: reports/mutations.html")
+        lines.append("# sonarOutput: reports/sonar.json")
+
+        return lines.joined(separator: "\n") + "\n"
     }
 }
