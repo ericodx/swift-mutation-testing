@@ -94,7 +94,7 @@ struct TestExecutionStage: Sendable {
         slot: SimulatorSlot,
         in context: TestExecutionContext
     ) async throws -> TestLaunchResult {
-        let xctestrunURL = context.sandbox.rootURL
+        let xctestrunURL = context.artifact.xctestrunURL.deletingLastPathComponent()
             .appendingPathComponent("\(UUID().uuidString).xctestrun")
         let xcresultPath = context.sandbox.rootURL
             .appendingPathComponent("\(UUID().uuidString).xcresult").path
