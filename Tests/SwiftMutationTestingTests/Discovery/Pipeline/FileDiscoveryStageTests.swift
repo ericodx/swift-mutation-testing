@@ -115,12 +115,12 @@ struct FileDiscoveryStageTests {
         #expect(result[0].path.hasSuffix("Source.swift"))
     }
 
-    @Test("Given file inside /.xmr-cache/, when run, then excludes it")
-    func excludesXmrCacheDirectory() throws {
+    @Test("Given file inside /.swift-mutation-testing-cache/, when run, then excludes it")
+    func excludesCacheDirectory() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let cacheDir = dir.appendingPathComponent(".xmr-cache")
+        let cacheDir = dir.appendingPathComponent(".swift-mutation-testing-cache")
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
         try FileHelpers.write("let x = 1", named: "Cached.swift", in: cacheDir)
         try FileHelpers.write("let y = 2", named: "Source.swift", in: dir)
@@ -140,6 +140,114 @@ struct FileDiscoveryStageTests {
         try FileManager.default.createDirectory(at: derivedData, withIntermediateDirectories: true)
         try FileHelpers.write("let x = 1", named: "Generated.swift", in: derivedData)
         try FileHelpers.write("let y = 2", named: "Source.swift", in: dir)
+
+        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+
+        #expect(result.count == 1)
+        #expect(result[0].path.hasSuffix("Source.swift"))
+    }
+
+    @Test("Given file ending with Mock.swift, when run, then excludes it")
+    func excludesMockSuffix() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try FileHelpers.write("class M {}", named: "UserMock.swift", in: dir)
+        try FileHelpers.write("class S {}", named: "Source.swift", in: dir)
+
+        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+
+        #expect(result.count == 1)
+        #expect(result[0].path.hasSuffix("Source.swift"))
+    }
+
+    @Test("Given file ending with Spec.swift, when run, then excludes it")
+    func excludesSpecSuffix() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try FileHelpers.write("class S {}", named: "UserSpec.swift", in: dir)
+        try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
+
+        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+
+        #expect(result.count == 1)
+        #expect(result[0].path.hasSuffix("Source.swift"))
+    }
+
+    @Test("Given file inside /Mocks/ directory, when run, then excludes it")
+    func excludesMocksDirectory() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let mocksDir = dir.appendingPathComponent("Mocks")
+        try FileManager.default.createDirectory(at: mocksDir, withIntermediateDirectories: true)
+        try FileHelpers.write("class M {}", named: "UserMock.swift", in: mocksDir)
+        try FileHelpers.write("class S {}", named: "Source.swift", in: dir)
+
+        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+
+        #expect(result.count == 1)
+        #expect(result[0].path.hasSuffix("Source.swift"))
+    }
+
+    @Test("Given file inside /Stubs/ directory, when run, then excludes it")
+    func excludesStubsDirectory() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let stubsDir = dir.appendingPathComponent("Stubs")
+        try FileManager.default.createDirectory(at: stubsDir, withIntermediateDirectories: true)
+        try FileHelpers.write("class S {}", named: "NetworkStub.swift", in: stubsDir)
+        try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
+
+        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+
+        #expect(result.count == 1)
+        #expect(result[0].path.hasSuffix("Source.swift"))
+    }
+
+    @Test("Given file inside /Fakes/ directory, when run, then excludes it")
+    func excludesFakesDirectory() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let fakesDir = dir.appendingPathComponent("Fakes")
+        try FileManager.default.createDirectory(at: fakesDir, withIntermediateDirectories: true)
+        try FileHelpers.write("class F {}", named: "ServiceFake.swift", in: fakesDir)
+        try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
+
+        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+
+        #expect(result.count == 1)
+        #expect(result[0].path.hasSuffix("Source.swift"))
+    }
+
+    @Test("Given file inside /TestHelpers/ directory, when run, then excludes it")
+    func excludesTestHelpersDirectory() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let helpersDir = dir.appendingPathComponent("TestHelpers")
+        try FileManager.default.createDirectory(at: helpersDir, withIntermediateDirectories: true)
+        try FileHelpers.write("class H {}", named: "Helper.swift", in: helpersDir)
+        try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
+
+        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+
+        #expect(result.count == 1)
+        #expect(result[0].path.hasSuffix("Source.swift"))
+    }
+
+    @Test("Given file inside /TestSupport/ directory, when run, then excludes it")
+    func excludesTestSupportDirectory() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let supportDir = dir.appendingPathComponent("TestSupport")
+        try FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
+        try FileHelpers.write("class H {}", named: "Support.swift", in: supportDir)
+        try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
 
         let result = try stage.run(input: makeInput(sourcesPath: dir.path))
 
