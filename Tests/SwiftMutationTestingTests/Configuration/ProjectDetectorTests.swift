@@ -93,6 +93,61 @@ struct ProjectDetectorTests {
         #expect(result.destination.contains("iOS Simulator"))
     }
 
+    @Test("Given iphoneos SDK and simctl returns iPhone 17 Pro, when detect called, then destination uses it")
+    func usesSimctlDeviceForIOSDestination() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let xcodeprojURL = dir.appendingPathComponent("MyApp.xcodeproj")
+        try FileManager.default.createDirectory(at: xcodeprojURL, withIntermediateDirectories: true)
+        try "SDKROOT = iphoneos;".write(
+            to: xcodeprojURL.appendingPathComponent("project.pbxproj"),
+            atomically: true, encoding: .utf8
+        )
+
+        let simctlJSON = """
+            {
+              "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-18-4": [
+                  { "name": "iPhone 17", "isAvailable": true },
+                  { "name": "iPhone 17 Pro", "isAvailable": true }
+                ]
+              }
+            }
+            """
+
+        let launcher = MockProcessLauncher(
+            exitCode: 0,
+            output: projectJSON,
+            responses: ["xcrun": (exitCode: 0, output: simctlJSON)]
+        )
+        let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
+
+        #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 17 Pro")
+    }
+
+    @Test("Given iphoneos SDK and simctl fails, when detect called, then destination uses fallback device")
+    func fallsBackToHardcodedDeviceWhenSimctlFails() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let xcodeprojURL = dir.appendingPathComponent("MyApp.xcodeproj")
+        try FileManager.default.createDirectory(at: xcodeprojURL, withIntermediateDirectories: true)
+        try "SDKROOT = iphoneos;".write(
+            to: xcodeprojURL.appendingPathComponent("project.pbxproj"),
+            atomically: true, encoding: .utf8
+        )
+
+        let launcher = MockProcessLauncher(
+            exitCode: 0,
+            output: projectJSON,
+            responses: ["xcrun": (exitCode: 1, output: "")]
+        )
+        let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
+
+        #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro")
+    }
+
     @Test("Given xcodeproj with macosx SDKROOT, when detect called, then destination is macOS")
     func detectsmacOSDestinationFromPbxproj() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
