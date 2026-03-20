@@ -1,3 +1,4 @@
+import SwiftParser
 import Testing
 
 @testable import SwiftMutationTesting
@@ -79,5 +80,13 @@ struct SchemataGeneratorTests {
         let mutations = mutationsWithIndices(source, startIndex: 5)
         let result = generator.generate(source: source, mutations: mutations)
         #expect(result.contains("swift-mutation-testing_5"))
+    }
+
+    @Test("Given generated content, when parsed by SwiftSyntax, then has no syntax errors")
+    func generatedContentIsParseableBySwiftSyntax() {
+        let source = makeParsedSource("func f() { let x = true; let y = false }")
+        let mutations = mutationsWithIndices(source)
+        let result = generator.generate(source: source, mutations: mutations)
+        #expect(!Parser.parse(source: result).hasError)
     }
 }
