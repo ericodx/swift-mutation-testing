@@ -13,6 +13,11 @@ struct FileDiscoveryStageTests {
     ) -> DiscoveryInput {
         DiscoveryInput(
             projectPath: sourcesPath,
+            scheme: "Scheme",
+            destination: "platform=macOS",
+            timeout: 60,
+            concurrency: 4,
+            noCache: false,
             sourcesPath: sourcesPath,
             excludePatterns: excludePatterns,
             operators: []
