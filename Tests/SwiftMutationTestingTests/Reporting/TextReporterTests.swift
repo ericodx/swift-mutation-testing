@@ -61,7 +61,23 @@ struct TextReporterTests {
         #expect(output.contains("/abs/Sources/Calc.swift"))
     }
 
-    private func makeResult(filePath: String = "/tmp/Foo.swift", status: ExecutionStatus) -> ExecutionResult {
+    @Test("Given projectRoot set, when format called, then file paths are shown relative to root")
+    func formatShowsRelativePaths() {
+        let summary = RunnerSummary(
+            results: [makeResult(filePath: "/proj/Sources/Calc.swift", status: .survived)],
+            totalDuration: 0
+        )
+
+        let output = TextReporter(projectRoot: "/proj").format(summary)
+
+        #expect(output.contains("Sources/Calc.swift"))
+        #expect(!output.contains("/proj/Sources/Calc.swift"))
+    }
+
+    private func makeResult(
+        filePath: String = "/tmp/Foo.swift",
+        status: ExecutionStatus
+    ) -> ExecutionResult {
         ExecutionResult(
             descriptor: MutantDescriptor(
                 id: "m0",
