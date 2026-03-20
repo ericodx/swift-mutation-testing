@@ -69,14 +69,12 @@ struct CommandLineParserTests {
             "--output", "out.json",
             "--html-output", "report.html",
             "--sonar-output", "sonar.json",
-            "--input", "input.json",
         ])
 
         #expect(result.testTarget == "AppTests")
         #expect(result.output == "out.json")
         #expect(result.htmlOutput == "report.html")
         #expect(result.sonarOutput == "sonar.json")
-        #expect(result.input == "input.json")
     }
 
     @Test("Given --timeout and --concurrency flags, when parsed, then numeric values are set")

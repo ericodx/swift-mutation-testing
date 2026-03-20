@@ -23,7 +23,6 @@ enum HelpText {
           --sources-path <path>         Root directory to discover Swift source files (default: project path)
           --exclude <pattern>           Exclude files matching pattern (repeatable)
           --operator <id>               Mutation operator to apply (repeatable, default: all)
-          --input <json-path>           Load RunnerInput from JSON (SMT integration mode)
           --version                     Print version and exit
           --help                        Print this help and exit
         """

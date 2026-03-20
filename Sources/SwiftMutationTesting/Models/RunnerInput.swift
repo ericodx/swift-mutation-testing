@@ -1,4 +1,4 @@
-struct RunnerInput: Sendable, Codable {
+struct RunnerInput: Sendable {
     let projectPath: String
     let scheme: String
     let destination: String

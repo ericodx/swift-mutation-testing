@@ -98,15 +98,14 @@ struct ConfigurationFileWriterTests {
         #expect(content.contains("# Available schemes: MyApp, MyAppTests"))
     }
 
-    @Test("Given any project, when write called, then input noCache and quiet are commented")
-    func inputNoCacheAndQuietAreCommented() throws {
+    @Test("Given any project, when write called, then noCache and quiet are commented")
+    func noCacheAndQuietAreCommented() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
         try writer.write(to: dir.path, project: .empty)
 
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
-        #expect(content.contains("# input:"))
         #expect(content.contains("# noCache:"))
         #expect(content.contains("# quiet:"))
     }

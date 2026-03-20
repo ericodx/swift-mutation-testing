@@ -10,7 +10,6 @@ struct CommandLineParser: Sendable {
         var htmlOutput: String?
         var sonarOutput: String?
         var quiet = false
-        var input: String?
         var sourcesPath: String?
         var excludePatterns: [String] = []
         var operators: [String] = []
@@ -66,7 +65,6 @@ struct CommandLineParser: Sendable {
             htmlOutput: flags.htmlOutput,
             sonarOutput: flags.sonarOutput,
             quiet: flags.quiet,
-            input: flags.input,
             sourcesPath: flags.sourcesPath,
             excludePatterns: flags.excludePatterns,
             operators: flags.operators
@@ -121,9 +119,6 @@ struct CommandLineParser: Sendable {
 
         case "--quiet":
             values.quiet = true
-
-        case "--input":
-            values.input = try nextValue(for: flag, at: &index, in: arguments)
 
         case "--sources-path":
             values.sourcesPath = try nextValue(for: flag, at: &index, in: arguments)

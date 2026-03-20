@@ -11,7 +11,6 @@ struct ParsedArguments: Sendable {
         htmlOutput: String? = nil,
         sonarOutput: String? = nil,
         quiet: Bool = false,
-        input: String? = nil,
         sourcesPath: String? = nil,
         excludePatterns: [String] = [],
         operators: [String] = [],
@@ -30,7 +29,6 @@ struct ParsedArguments: Sendable {
         self.htmlOutput = htmlOutput
         self.sonarOutput = sonarOutput
         self.quiet = quiet
-        self.input = input
         self.sourcesPath = sourcesPath
         self.excludePatterns = excludePatterns
         self.operators = operators
@@ -50,7 +48,6 @@ struct ParsedArguments: Sendable {
     let htmlOutput: String?
     let sonarOutput: String?
     let quiet: Bool
-    let input: String?
     let sourcesPath: String?
     let excludePatterns: [String]
     let operators: [String]
