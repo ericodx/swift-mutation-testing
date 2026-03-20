@@ -64,6 +64,39 @@ struct TypeScopeVisitorTests {
         #expect(!visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
     }
 
+    @Test("Given computed property with implicit getter, when walked, then mutation inside is not schematizable")
+    func computedPropertyImplicitGetterIsNotSchematizable() {
+        let code = "struct S { var x: Bool { return true } }"
+        let source = makeParsedSource(code)
+        let visitor = TypeScopeVisitor()
+        visitor.walk(source.syntax)
+
+        let mutation = BooleanLiteralReplacement().mutations(in: source)[0]
+        #expect(!visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
+    }
+
+    @Test("Given computed property with explicit getter, when walked, then mutation inside is schematizable")
+    func computedPropertyExplicitGetterIsSchematizable() {
+        let code = "struct S { var x: Bool { get { return true } } }"
+        let source = makeParsedSource(code)
+        let visitor = TypeScopeVisitor()
+        visitor.walk(source.syntax)
+
+        let mutation = BooleanLiteralReplacement().mutations(in: source)[0]
+        #expect(visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
+    }
+
+    @Test("Given mutation inside global-scope closure, when checked, then isSchematizable returns false")
+    func mutationInsideGlobalScopeClosureIsNotSchematizable() {
+        let code = "let compute: () -> Bool = { return true }"
+        let source = makeParsedSource(code)
+        let visitor = TypeScopeVisitor()
+        visitor.walk(source.syntax)
+
+        let mutation = BooleanLiteralReplacement().mutations(in: source)[0]
+        #expect(!visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
+    }
+
     @Test("Given nested function, when innermostScope queried, then returns smallest containing scope")
     func innermostScopeReturnsSmallestContainingScope() {
         let code = "func outer() { func inner() { let x = 1 } }"
