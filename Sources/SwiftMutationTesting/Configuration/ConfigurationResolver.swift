@@ -25,16 +25,12 @@ struct ConfigurationResolver: Sendable {
             throw UsageError(message: "--concurrency must be >= 1")
         }
 
-        let hasInput = cliArguments.input != nil || fileValues["input"] != nil
+        guard cliArguments.scheme != nil || fileValues["scheme"] != nil else {
+            throw UsageError(message: "--scheme is required")
+        }
 
-        if !hasInput {
-            guard cliArguments.scheme != nil || fileValues["scheme"] != nil else {
-                throw UsageError(message: "--scheme is required")
-            }
-
-            guard cliArguments.destination != nil || fileValues["destination"] != nil else {
-                throw UsageError(message: "--destination is required")
-            }
+        guard cliArguments.destination != nil || fileValues["destination"] != nil else {
+            throw UsageError(message: "--destination is required")
         }
 
         return RunnerConfiguration(
