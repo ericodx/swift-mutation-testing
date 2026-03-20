@@ -52,13 +52,8 @@ struct SwiftMutationTesting {
             fileValues: fileValues
         )
 
-        guard let inputPath = parsed.input ?? fileValues["input"] else {
-            throw UsageError(message: "--input is required")
-        }
-
-        let inputData = try Data(contentsOf: URL(fileURLWithPath: inputPath))
-        let input = try JSONDecoder().decode(RunnerInput.self, from: inputData)
-
+        let legacyMode = parsed.input != nil || fileValues["input"] != nil
+        let input = try await buildRunnerInput(parsed: parsed, fileValues: fileValues, configuration: configuration)
         let start = Date()
         let results = try await MutantExecutor(configuration: configuration).execute(input)
         let duration = Date().timeIntervalSince(start)
@@ -78,11 +73,36 @@ struct SwiftMutationTesting {
             try SonarReporter(outputPath: sonarOutput, projectRoot: configuration.projectPath).report(summary)
         }
 
-        if parsed.input != nil {
+        if legacyMode {
             let data = try JSONEncoder().encode(results)
             print(String(data: data, encoding: .utf8) ?? "[]")
         }
 
         return .success
+    }
+
+    private static func buildRunnerInput(
+        parsed: ParsedArguments,
+        fileValues: [String: String],
+        configuration: RunnerConfiguration
+    ) async throws -> RunnerInput {
+        if let inputPath = parsed.input ?? fileValues["input"] {
+            let inputData = try Data(contentsOf: URL(fileURLWithPath: inputPath))
+            return try JSONDecoder().decode(RunnerInput.self, from: inputData)
+        }
+
+        let discoveryInput = DiscoveryInput(
+            projectPath: configuration.projectPath,
+            scheme: configuration.scheme,
+            destination: configuration.destination,
+            timeout: configuration.timeout,
+            concurrency: configuration.concurrency,
+            noCache: configuration.noCache,
+            sourcesPath: configuration.sourcesPath ?? configuration.projectPath,
+            excludePatterns: configuration.excludePatterns,
+            operators: configuration.operators
+        )
+
+        return try await DiscoveryPipeline().run(input: discoveryInput)
     }
 }

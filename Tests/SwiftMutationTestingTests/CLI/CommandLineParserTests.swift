@@ -134,4 +134,43 @@ struct CommandLineParserTests {
             try parser.parse(["run", "--concurrency", "abc"])
         }
     }
+
+    @Test("Given --sources-path flag, when parsed, then sourcesPath is set")
+    func parsesSourcesPath() throws {
+        let result = try parser.parse([
+            "run", "--scheme", "App", "--destination", "d", "--sources-path", "/my/sources",
+        ])
+
+        #expect(result.sourcesPath == "/my/sources")
+    }
+
+    @Test("Given repeated --exclude flags, when parsed, then all patterns are collected")
+    func parsesMultipleExcludePatterns() throws {
+        let result = try parser.parse([
+            "run", "--scheme", "App", "--destination", "d",
+            "--exclude", "/Generated/",
+            "--exclude", "/Pods/",
+        ])
+
+        #expect(result.excludePatterns == ["/Generated/", "/Pods/"])
+    }
+
+    @Test("Given repeated --operator flags, when parsed, then all operators are collected")
+    func parsesMultipleOperators() throws {
+        let result = try parser.parse([
+            "run", "--scheme", "App", "--destination", "d",
+            "--operator", "BooleanLiteralReplacement",
+            "--operator", "NegateConditional",
+        ])
+
+        #expect(result.operators == ["BooleanLiteralReplacement", "NegateConditional"])
+    }
+
+    @Test("Given no --exclude or --operator flags, when parsed, then defaults are empty arrays")
+    func defaultsToEmptyArraysForListFlags() throws {
+        let result = try parser.parse(["run", "--scheme", "App", "--destination", "d"])
+
+        #expect(result.excludePatterns.isEmpty)
+        #expect(result.operators.isEmpty)
+    }
 }

@@ -100,4 +100,36 @@ struct ConfigurationFileParserTests {
 
         #expect(result.count == 1)
     }
+
+    @Test("Given a config file with YAML list items, when parsed, then items are joined with comma")
+    func parsesYamlListItems() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try FileHelpers.write(
+            "excludePatterns:\n  - /Generated/\n  - /Pods/\n",
+            named: ".swift-mutation-testing.yml",
+            in: dir
+        )
+
+        let result = try parser.parse(at: dir.path)
+
+        #expect(result["excludePatterns"] == "/Generated/,/Pods/")
+    }
+
+    @Test("Given a config file with sourcesPath key, when parsed, then value is returned")
+    func parsesSourcesPath() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try FileHelpers.write(
+            "sourcesPath: /my/sources\n",
+            named: ".swift-mutation-testing.yml",
+            in: dir
+        )
+
+        let result = try parser.parse(at: dir.path)
+
+        #expect(result["sourcesPath"] == "/my/sources")
+    }
 }

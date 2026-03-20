@@ -12,6 +12,9 @@ struct ParsedArguments: Sendable {
         sonarOutput: String? = nil,
         quiet: Bool = false,
         input: String? = nil,
+        sourcesPath: String? = nil,
+        excludePatterns: [String] = [],
+        operators: [String] = [],
         showVersion: Bool = false,
         showHelp: Bool = false,
         showInit: Bool = false
@@ -28,6 +31,9 @@ struct ParsedArguments: Sendable {
         self.sonarOutput = sonarOutput
         self.quiet = quiet
         self.input = input
+        self.sourcesPath = sourcesPath
+        self.excludePatterns = excludePatterns
+        self.operators = operators
         self.showVersion = showVersion
         self.showHelp = showHelp
         self.showInit = showInit
@@ -45,6 +51,9 @@ struct ParsedArguments: Sendable {
     let sonarOutput: String?
     let quiet: Bool
     let input: String?
+    let sourcesPath: String?
+    let excludePatterns: [String]
+    let operators: [String]
     let showVersion: Bool
     let showHelp: Bool
     let showInit: Bool

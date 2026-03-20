@@ -20,6 +20,9 @@ enum HelpText {
           --html-output <html-path>     Write HTML report to path
           --sonar-output <json-path>    Write Sonar Generic Coverage report to path
           --quiet                       Suppress progress output
+          --sources-path <path>         Root directory to discover Swift source files (default: project path)
+          --exclude <pattern>           Exclude files matching pattern (repeatable)
+          --operator <id>               Mutation operator to apply (repeatable, default: all)
           --input <json-path>           Load RunnerInput from JSON (SMT integration mode)
           --version                     Print version and exit
           --help                        Print this help and exit
