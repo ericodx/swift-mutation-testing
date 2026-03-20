@@ -11,6 +11,9 @@ struct CommandLineParser: Sendable {
         var sonarOutput: String?
         var quiet = false
         var input: String?
+        var sourcesPath: String?
+        var excludePatterns: [String] = []
+        var operators: [String] = []
     }
 
     func parse(_ arguments: [String]) throws -> ParsedArguments {
@@ -63,7 +66,10 @@ struct CommandLineParser: Sendable {
             htmlOutput: flags.htmlOutput,
             sonarOutput: flags.sonarOutput,
             quiet: flags.quiet,
-            input: flags.input
+            input: flags.input,
+            sourcesPath: flags.sourcesPath,
+            excludePatterns: flags.excludePatterns,
+            operators: flags.operators
         )
     }
 
@@ -118,6 +124,15 @@ struct CommandLineParser: Sendable {
 
         case "--input":
             values.input = try nextValue(for: flag, at: &index, in: arguments)
+
+        case "--sources-path":
+            values.sourcesPath = try nextValue(for: flag, at: &index, in: arguments)
+
+        case "--exclude":
+            values.excludePatterns.append(try nextValue(for: flag, at: &index, in: arguments))
+
+        case "--operator":
+            values.operators.append(try nextValue(for: flag, at: &index, in: arguments))
 
         default:
             throw UsageError(message: "unknown option '\(flag)'")

@@ -11,11 +11,21 @@ struct ConfigurationFileParser: Sendable {
 
         let content = try String(contentsOf: fileURL, encoding: .utf8)
         var result: [String: String] = [:]
+        var lastKey: String?
+        var listValues: [String: [String]] = [:]
 
         for line in content.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
-            guard !trimmed.isEmpty, !trimmed.hasPrefix("#"), !trimmed.hasPrefix("-") else {
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else {
+                continue
+            }
+
+            if trimmed.hasPrefix("- ") {
+                guard let key = lastKey else { continue }
+                let item = String(trimmed.dropFirst(2))
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                listValues[key, default: []].append(item)
                 continue
             }
 
@@ -28,11 +38,17 @@ struct ConfigurationFileParser: Sendable {
                 .trimmingCharacters(in: .whitespaces)
             let value = rawValue.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
 
-            guard !key.isEmpty, !value.isEmpty else {
-                continue
-            }
+            guard !key.isEmpty else { continue }
 
-            result[key] = value
+            lastKey = key
+
+            if !value.isEmpty {
+                result[key] = value
+            }
+        }
+
+        for (key, items) in listValues {
+            result[key] = items.joined(separator: ",")
         }
 
         return result
