@@ -3,6 +3,12 @@ import Foundation
 struct ConsoleProgressReporter: ProgressReporter {
     func report(_ event: RunnerEvent) async {
         switch event {
+        case .discoveryFinished(let mutantCount, let schematizableCount, let incompatibleCount, let duration):
+            let schema = "\(schematizableCount) schematizable"
+            let extra = incompatibleCount > 0 ? ", \(incompatibleCount) incompatible" : ""
+            let dur = String(format: "%.1f", duration)
+            print("  ✓ Discovery: \(mutantCount) mutants (\(schema)\(extra)) in \(dur)s")
+
         case .buildStarted:
             print("Building for testing...")
 
