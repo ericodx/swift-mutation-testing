@@ -1,4 +1,6 @@
 enum RunnerEvent: Sendable {
+    case discoveryFinished(mutantCount: Int, schematizableCount: Int, incompatibleCount: Int, duration: Double)
+
     case buildStarted
     case buildFinished(duration: Double)
     case simulatorPoolReady(size: Int)

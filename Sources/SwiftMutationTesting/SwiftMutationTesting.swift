@@ -53,7 +53,9 @@ struct SwiftMutationTesting {
         )
 
         let legacyMode = parsed.input != nil || fileValues["input"] != nil
-        let input = try await buildRunnerInput(parsed: parsed, fileValues: fileValues, configuration: configuration)
+        let input = try await discover(
+            parsed: parsed, fileValues: fileValues, configuration: configuration, legacyMode: legacyMode
+        )
         let start = Date()
         let results = try await MutantExecutor(configuration: configuration).execute(input)
         let duration = Date().timeIntervalSince(start)
@@ -79,6 +81,30 @@ struct SwiftMutationTesting {
         }
 
         return .success
+    }
+
+    private static func discover(
+        parsed: ParsedArguments,
+        fileValues: [String: String],
+        configuration: RunnerConfiguration,
+        legacyMode: Bool
+    ) async throws -> RunnerInput {
+        let start = Date()
+        let input = try await buildRunnerInput(parsed: parsed, fileValues: fileValues, configuration: configuration)
+
+        if !legacyMode && !configuration.quiet {
+            let schematizable = input.mutants.filter { $0.isSchematizable }.count
+            let incompatible = input.mutants.filter { !$0.isSchematizable }.count
+            await ConsoleProgressReporter().report(
+                .discoveryFinished(
+                    mutantCount: input.mutants.count,
+                    schematizableCount: schematizable,
+                    incompatibleCount: incompatible,
+                    duration: Date().timeIntervalSince(start)
+                ))
+        }
+
+        return input
     }
 
     private static func buildRunnerInput(
