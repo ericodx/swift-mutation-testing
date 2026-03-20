@@ -98,6 +98,35 @@ struct ConfigurationFileWriterTests {
         #expect(content.contains("# Available schemes: MyApp, MyAppTests"))
     }
 
+    @Test("Given detected testTarget, when write called, then excludePatterns uses it as default")
+    func excludePatternsUsesTestTargetAsDefault() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(
+            to: dir.path,
+            project: DetectedProject(
+                scheme: "MyApp", allSchemes: ["MyApp"], testTarget: "MyAppTests", destination: "platform=macOS"
+            )
+        )
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("excludePatterns: /MyAppTests/"))
+        #expect(!content.contains("# excludePatterns:"))
+    }
+
+    @Test("Given no testTarget, when write called, then excludePatterns line is commented")
+    func excludePatternsIsCommentedWhenNoTestTarget() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(to: dir.path, project: .empty)
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("# excludePatterns:"))
+        #expect(!content.contains("\nexcludePatterns:"))
+    }
+
     @Test("Given any project, when write called, then noCache and quiet are commented")
     func noCacheAndQuietAreCommented() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

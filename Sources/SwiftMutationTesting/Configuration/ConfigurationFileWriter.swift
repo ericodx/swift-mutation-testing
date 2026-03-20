@@ -38,6 +38,12 @@ struct ConfigurationFileWriter: Sendable {
         lines.append("concurrency: 4")
         lines.append("# noCache: false")
         lines.append("# quiet: false")
+
+        if let testTarget = project.testTarget {
+            lines.append("excludePatterns: /\(testTarget)/")
+        } else {
+            lines.append("# excludePatterns: /MyAppTests/")
+        }
         lines.append("output: mutations.json")
         lines.append("# htmlOutput: mutations.html")
         lines.append("# sonarOutput: sonar.json")
