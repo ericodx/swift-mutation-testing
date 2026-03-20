@@ -94,7 +94,7 @@ struct SwiftMutationTesting {
 
         if !legacyMode && !configuration.quiet {
             let schematizable = input.mutants.filter { $0.isSchematizable }.count
-            let incompatible = input.mutants.filter { !$0.isSchematizable }.count
+            let incompatible = input.mutants.count - schematizable
             await ConsoleProgressReporter().report(
                 .discoveryFinished(
                     mutantCount: input.mutants.count,
