@@ -147,4 +147,87 @@ struct ConfigurationResolverTests {
             )
         }
     }
+
+    @Test("Given --sources-path via CLI, when resolved, then sourcesPath is set")
+    func sourcesPathFromCLI() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d", sourcesPath: "/my/sources"),
+            fileValues: [:]
+        )
+
+        #expect(result.sourcesPath == "/my/sources")
+    }
+
+    @Test("Given sourcesPath only in file, when resolved, then sourcesPath uses file value")
+    func sourcesPathFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: ["sourcesPath": "/file/sources"]
+        )
+
+        #expect(result.sourcesPath == "/file/sources")
+    }
+
+    @Test("Given no sourcesPath anywhere, when resolved, then sourcesPath is nil")
+    func sourcesPathDefaultsToNil() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: [:]
+        )
+
+        #expect(result.sourcesPath == nil)
+    }
+
+    @Test("Given --exclude patterns via CLI, when resolved, then excludePatterns are set")
+    func excludePatternsFromCLI() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(
+                scheme: "App", destination: "d", excludePatterns: ["/Generated/", "/Pods/"]),
+            fileValues: [:]
+        )
+
+        #expect(result.excludePatterns == ["/Generated/", "/Pods/"])
+    }
+
+    @Test("Given excludePatterns only in file as comma-separated, when resolved, then list is split")
+    func excludePatternsFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: ["excludePatterns": "/Generated/,/Pods/"]
+        )
+
+        #expect(result.excludePatterns == ["/Generated/", "/Pods/"])
+    }
+
+    @Test("Given --operator via CLI, when resolved, then operators are set")
+    func operatorsFromCLI() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(
+                scheme: "App", destination: "d",
+                operators: ["BooleanLiteralReplacement", "NegateConditional"]),
+            fileValues: [:]
+        )
+
+        #expect(result.operators == ["BooleanLiteralReplacement", "NegateConditional"])
+    }
+
+    @Test("Given operators only in file as comma-separated, when resolved, then list is split")
+    func operatorsFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: ["operators": "BooleanLiteralReplacement,NegateConditional"]
+        )
+
+        #expect(result.operators == ["BooleanLiteralReplacement", "NegateConditional"])
+    }
+
+    @Test("Given no operators anywhere, when resolved, then operators defaults to empty array")
+    func operatorsDefaultsToEmpty() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: [:]
+        )
+
+        #expect(result.operators.isEmpty)
+    }
 }
