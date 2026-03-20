@@ -11,6 +11,8 @@ actor CacheStore {
         self.entries = [:]
     }
 
+    static let directoryName = ".swift-mutation-testing-cache"
+
     private let storePath: String
     private var entries: [MutantCacheKey: ExecutionStatus]
 

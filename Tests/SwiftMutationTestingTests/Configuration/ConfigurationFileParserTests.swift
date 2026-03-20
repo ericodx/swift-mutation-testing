@@ -117,6 +117,46 @@ struct ConfigurationFileParserTests {
         #expect(result["excludePatterns"] == "/Generated/,/Pods/")
     }
 
+    @Test("Given mutators block with all active true, when parsed, then disabledMutators is absent")
+    func parsesAllActiveMutators() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let yaml = """
+            mutators:
+              - name: NegateConditional
+                active: true
+              - name: RemoveSideEffects
+                active: true
+            """
+        try FileHelpers.write(yaml, named: ".swift-mutation-testing.yml", in: dir)
+
+        let result = try parser.parse(at: dir.path)
+
+        #expect(result["disabledMutators"] == nil)
+    }
+
+    @Test("Given mutators block with some active false, when parsed, then disabledMutators lists them")
+    func parsesDisabledMutators() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let yaml = """
+            mutators:
+              - name: NegateConditional
+                active: true
+              - name: RemoveSideEffects
+                active: false
+              - name: SwapTernary
+                active: false
+            """
+        try FileHelpers.write(yaml, named: ".swift-mutation-testing.yml", in: dir)
+
+        let result = try parser.parse(at: dir.path)
+
+        #expect(result["disabledMutators"] == "RemoveSideEffects,SwapTernary")
+    }
+
     @Test("Given a config file with sourcesPath key, when parsed, then value is returned")
     func parsesSourcesPath() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

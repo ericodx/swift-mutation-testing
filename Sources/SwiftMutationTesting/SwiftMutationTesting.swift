@@ -58,7 +58,7 @@ struct SwiftMutationTesting {
         let duration = Date().timeIntervalSince(start)
 
         let summary = RunnerSummary(results: results, totalDuration: duration)
-        TextReporter().report(summary)
+        TextReporter(projectRoot: configuration.projectPath).report(summary)
 
         if let output = configuration.output {
             try JsonReporter(outputPath: output, projectRoot: configuration.projectPath).report(summary)

@@ -1,6 +1,8 @@
 import Foundation
 
-struct ConsoleProgressReporter: ProgressReporter {
+actor ConsoleProgressReporter: ProgressReporter {
+    private var lastFile: String?
+
     func report(_ event: RunnerEvent) async {
         switch event {
         case .discoveryFinished(let mutantCount, let schematizableCount, let incompatibleCount, let duration):
@@ -10,6 +12,7 @@ struct ConsoleProgressReporter: ProgressReporter {
             print("  ✓ Discovery: \(mutantCount) mutants (\(schema)\(extra)) in \(dur)s")
 
         case .buildStarted:
+            print("")
             print("Building for testing...")
 
         case .buildFinished(let duration):
@@ -17,15 +20,19 @@ struct ConsoleProgressReporter: ProgressReporter {
 
         case .simulatorPoolReady(let size):
             print("  ✓ \(size) simulators ready")
+            print("\nTesting mutants...")
 
         case .mutantStarted:
             break
 
         case .mutantFinished(let descriptor, let status, let index, let total):
             let file = URL(fileURLWithPath: descriptor.filePath).lastPathComponent
-            let operatorName = descriptor.operatorIdentifier
-            let line = "  \(status.progressIcon) \(index)/\(total)  \(operatorName)  \(file):\(descriptor.line)"
-            print(line)
+            if file != lastFile {
+                if lastFile != nil { print("") }
+                print("  \(file)")
+                lastFile = file
+            }
+            print("    \(status.progressIcon) \(index)/\(total)  \(descriptor.operatorIdentifier)  :\(descriptor.line)")
 
         case .fallbackBuildStarted:
             break

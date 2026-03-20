@@ -4,13 +4,19 @@ import Foundation
 
 struct MockProcessLauncher: ProcessLaunching {
 
-    init(exitCode: Int32, output: String = "") {
+    init(
+        exitCode: Int32,
+        output: String = "",
+        responses: [String: (exitCode: Int32, output: String)] = [:]
+    ) {
         self.exitCode = exitCode
         self.output = output
+        self.responses = responses
     }
 
     let exitCode: Int32
     let output: String
+    let responses: [String: (exitCode: Int32, output: String)]
 
     func launch(
         executableURL: URL,
@@ -28,6 +34,7 @@ struct MockProcessLauncher: ProcessLaunching {
         workingDirectoryURL: URL,
         timeout: Double
     ) async throws -> (exitCode: Int32, output: String) {
-        (exitCode: exitCode, output: output)
+        let key = executableURL.lastPathComponent
+        return responses[key] ?? (exitCode: exitCode, output: output)
     }
 }

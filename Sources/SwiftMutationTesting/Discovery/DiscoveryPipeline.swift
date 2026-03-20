@@ -1,4 +1,14 @@
 struct DiscoveryPipeline {
+    static let allOperatorNames: [String] = [
+        "RelationalOperatorReplacement",
+        "BooleanLiteralReplacement",
+        "LogicalOperatorReplacement",
+        "ArithmeticOperatorReplacement",
+        "NegateConditional",
+        "SwapTernary",
+        "RemoveSideEffects",
+    ]
+
     func run(input: DiscoveryInput) async throws -> RunnerInput {
         let sourceFiles = try FileDiscoveryStage().run(input: input)
         let parsedSources = await ParsingStage().run(sourceFiles: sourceFiles)

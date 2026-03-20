@@ -19,7 +19,6 @@ struct SimulatorManager: Sendable {
             throw SimulatorError.deviceNotFound(destination: destination)
         }
 
-        try await bootIfNeeded(udid: udid)
         return udid
     }
 

@@ -56,4 +56,86 @@ struct ConsoleProgressReporterTests {
         #expect(output.contains("0 mutants"))
         #expect(output.contains("0 schematizable"))
     }
+
+    @Test("Given simulatorPoolReady, when reported, then Testing mutants header is printed")
+    func simulatorPoolReadyPrintsTestingMutantsHeader() async {
+        let output = await captureOutput {
+            await reporter.report(.simulatorPoolReady(size: 4))
+        }
+
+        #expect(output.contains("Testing mutants..."))
+        #expect(output.contains("4 simulators ready"))
+    }
+
+    @Test("Given mutantFinished for first mutant, when reported, then file header and mutant line are printed")
+    func mutantFinishedPrintsFileHeaderForFirstMutant() async {
+        let descriptor = MutantDescriptor(
+            id: "1", filePath: "/project/Sources/Foo.swift",
+            line: 10, column: 5, utf8Offset: 0,
+            originalText: "true", mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral, description: "",
+            isSchematizable: true, mutatedSourceContent: nil
+        )
+
+        let output = await captureOutput {
+            await reporter.report(.mutantFinished(descriptor: descriptor, status: .survived, index: 1, total: 4))
+        }
+
+        #expect(output.contains("Foo.swift"))
+        #expect(output.contains("1/4"))
+        #expect(output.contains("BooleanLiteralReplacement"))
+        #expect(output.contains(":10"))
+    }
+
+    @Test("Given two mutants in same file, when reported, then file header appears only once")
+    func mutantFinishedSameFileNoDuplicateHeader() async {
+        let reporter2 = ConsoleProgressReporter()
+        let descriptor = MutantDescriptor(
+            id: "1", filePath: "/project/Sources/Bar.swift",
+            line: 5, column: 1, utf8Offset: 0,
+            originalText: "a", mutatedText: "b",
+            operatorIdentifier: "NegateConditional",
+            replacementKind: .binaryOperator, description: "",
+            isSchematizable: true, mutatedSourceContent: nil
+        )
+
+        let output = await captureOutput {
+            await reporter2.report(
+                .mutantFinished(descriptor: descriptor, status: .killed(by: "t"), index: 1, total: 2))
+            await reporter2.report(
+                .mutantFinished(descriptor: descriptor, status: .survived, index: 2, total: 2))
+        }
+
+        #expect(output.components(separatedBy: "Bar.swift").count == 2)
+    }
+
+    @Test("Given mutants from two different files, when reported, then each file gets its own header")
+    func mutantFinishedDifferentFilesGetSeparateHeaders() async {
+        let reporter3 = ConsoleProgressReporter()
+        let alpha = MutantDescriptor(
+            id: "1", filePath: "/project/Sources/Alpha.swift",
+            line: 1, column: 1, utf8Offset: 0,
+            originalText: "", mutatedText: "",
+            operatorIdentifier: "NegateConditional",
+            replacementKind: .binaryOperator, description: "",
+            isSchematizable: true, mutatedSourceContent: nil
+        )
+        let beta = MutantDescriptor(
+            id: "2", filePath: "/project/Sources/Beta.swift",
+            line: 2, column: 1, utf8Offset: 0,
+            originalText: "", mutatedText: "",
+            operatorIdentifier: "RemoveSideEffects",
+            replacementKind: .removeStatement, description: "",
+            isSchematizable: true, mutatedSourceContent: nil
+        )
+
+        let output = await captureOutput {
+            await reporter3.report(.mutantFinished(descriptor: alpha, status: .killed(by: "t"), index: 1, total: 2))
+            await reporter3.report(.mutantFinished(descriptor: beta, status: .survived, index: 2, total: 2))
+        }
+
+        #expect(output.contains("Alpha.swift"))
+        #expect(output.contains("Beta.swift"))
+    }
 }

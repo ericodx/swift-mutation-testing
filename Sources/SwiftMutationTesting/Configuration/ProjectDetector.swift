@@ -23,7 +23,7 @@ struct ProjectDetector: Sendable {
         }
 
         let (schemes, projectName, testTarget) = await listProject(container: container, workingDirectory: projectURL)
-        let destination = detectDestination(in: projectURL)
+        let destination = await detectDestination(in: projectURL)
 
         return DetectedProject(
             scheme: selectScheme(from: schemes, projectName: projectName),
@@ -111,7 +111,7 @@ struct ProjectDetector: Sendable {
         return schemes.first { $0 == projectName } ?? schemes.first
     }
 
-    private func detectDestination(in projectURL: URL) -> String {
+    private func detectDestination(in projectURL: URL) async -> String {
         guard
             let items = try? FileManager.default.contentsOfDirectory(
                 at: projectURL,
@@ -127,17 +127,89 @@ struct ProjectDetector: Sendable {
         }
 
         if content.range(of: #"SDKROOT\s*=\s*iphoneos"#, options: .regularExpression) != nil {
-            return "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro"
+            let device = await queryBestDevice(for: "iOS")
+            return "platform=iOS Simulator,OS=latest,name=\(device)"
         }
 
         if content.range(of: #"SDKROOT\s*=\s*appletvos"#, options: .regularExpression) != nil {
-            return "platform=tvOS Simulator,OS=latest,name=Apple TV 4K (3rd generation)"
+            let device = await queryBestDevice(for: "tvOS")
+            return "platform=tvOS Simulator,OS=latest,name=\(device)"
         }
 
         if content.range(of: #"SDKROOT\s*=\s*watchos"#, options: .regularExpression) != nil {
-            return "platform=watchOS Simulator,OS=latest,name=Apple Watch Series 10 (46mm)"
+            let device = await queryBestDevice(for: "watchOS")
+            return "platform=watchOS Simulator,OS=latest,name=\(device)"
         }
 
         return "platform=macOS"
+    }
+
+    private func queryBestDevice(for platform: String) async -> String {
+        guard
+            let result = try? await launcher.launchCapturing(
+                executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                arguments: ["simctl", "list", "devices", "available", "--json"],
+                environment: nil,
+                workingDirectoryURL: URL(fileURLWithPath: "."),
+                timeout: 10
+            ),
+            result.exitCode == 0,
+            let data = result.output.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let devices = json["devices"] as? [String: Any]
+        else {
+            return fallbackDevice(for: platform)
+        }
+
+        let runtimeKey = ".\(platform)-"
+        let sorted = devices.keys
+            .filter { $0.contains(runtimeKey) }
+            .sorted { runtimeVersion(from: $0) > runtimeVersion(from: $1) }
+
+        for key in sorted {
+            guard let deviceList = devices[key] as? [[String: Any]] else { continue }
+            let names = deviceList.compactMap { $0["name"] as? String }
+            if let name = preferredDevice(from: names, for: platform) {
+                return name
+            }
+        }
+
+        return fallbackDevice(for: platform)
+    }
+
+    private func runtimeVersion(from key: String) -> (Int, Int) {
+        let parts = key.components(separatedBy: "-")
+        guard parts.count >= 2,
+            let major = Int(parts[parts.count - 2]),
+            let minor = Int(parts[parts.count - 1])
+        else { return (0, 0) }
+        return (major, minor)
+    }
+
+    private func preferredDevice(from names: [String], for platform: String) -> String? {
+        switch platform {
+        case "iOS":
+            return names.first { $0.hasPrefix("iPhone") && $0.contains("Pro") }
+                ?? names.first { $0.hasPrefix("iPhone") }
+
+        case "tvOS":
+            return names.first { $0.contains("Apple TV 4K") }
+                ?? names.first { $0.contains("Apple TV") }
+
+        case "watchOS":
+            return names.first { $0.contains("Apple Watch") }
+
+        default:
+            return nil
+        }
+    }
+
+    private func fallbackDevice(for platform: String) -> String {
+        switch platform {
+        case "iOS": return "iPhone 16 Pro"
+        case "tvOS": return "Apple TV 4K (3rd generation)"
+        case "watchOS": return "Apple Watch Series 10 (46mm)"
+        default: return ""
+        }
     }
 }

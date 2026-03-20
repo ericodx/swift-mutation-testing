@@ -16,7 +16,7 @@ struct MutantExecutor: Sendable {
             : ConsoleProgressReporter()
 
         let cachePath = URL(fileURLWithPath: configuration.projectPath)
-            .appendingPathComponent(".xmr-cache/results.json").path
+            .appendingPathComponent("\(CacheStore.directoryName)/results.json").path
         let cacheStore = CacheStore(storePath: cachePath)
         try await cacheStore.load()
 

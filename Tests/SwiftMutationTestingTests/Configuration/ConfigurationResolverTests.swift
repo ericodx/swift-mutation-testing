@@ -179,6 +179,16 @@ struct ConfigurationResolverTests {
         #expect(result.excludePatterns == ["/Generated/", "/Pods/"])
     }
 
+    @Test("Given exclude as YAML list key in file, when resolved, then list is parsed")
+    func excludeFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: ["exclude": "/Generated/,/Pods/"]
+        )
+
+        #expect(result.excludePatterns == ["/Generated/", "/Pods/"])
+    }
+
     @Test("Given --operator via CLI, when resolved, then operators are set")
     func operatorsFromCLI() throws {
         let result = try resolver.resolve(
@@ -199,6 +209,39 @@ struct ConfigurationResolverTests {
         )
 
         #expect(result.operators == ["BooleanLiteralReplacement", "NegateConditional"])
+    }
+
+    @Test("Given disabledMutators in file, when resolved, then operators excludes them")
+    func disabledMutatorsFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: ["disabledMutators": "RemoveSideEffects,SwapTernary"]
+        )
+
+        #expect(!result.operators.contains("RemoveSideEffects"))
+        #expect(!result.operators.contains("SwapTernary"))
+        #expect(result.operators.contains("NegateConditional"))
+    }
+
+    @Test("Given --disable-mutator via CLI, when resolved, then operators excludes it")
+    func disabledMutatorsFromCLI() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d", disabledMutators: ["RemoveSideEffects"]),
+            fileValues: [:]
+        )
+
+        #expect(!result.operators.contains("RemoveSideEffects"))
+        #expect(result.operators.contains("NegateConditional"))
+    }
+
+    @Test("Given --operator via CLI and disabledMutators in file, when resolved, then CLI --operator wins")
+    func cliOperatorOverridesDisabledMutators() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d", operators: ["NegateConditional"]),
+            fileValues: ["disabledMutators": "NegateConditional"]
+        )
+
+        #expect(result.operators == ["NegateConditional"])
     }
 
     @Test("Given no operators anywhere, when resolved, then operators defaults to empty array")

@@ -3,10 +3,17 @@ import Foundation
 struct FileDiscoveryStage {
     private static let fixedExclusions: [String] = [
         "/Tests/",
+        "/Mocks/",
+        "/Stubs/",
+        "/Fakes/",
+        "/TestHelpers/",
+        "/TestSupport/",
         "Tests.swift",
+        "Mock.swift",
+        "Spec.swift",
         "/.build/",
         "/.swift-mutation-testing-derived-data/",
-        "/.xmr-cache/",
+        "/\(CacheStore.directoryName)/",
         "/DerivedData/",
     ]
 
