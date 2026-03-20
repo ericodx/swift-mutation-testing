@@ -46,16 +46,45 @@ struct ConfigurationResolver: Sendable {
             sonarOutput: cliArguments.sonarOutput ?? fileValues["sonarOutput"],
             quiet: cliArguments.quiet || fileValues["quiet"]?.lowercased() == "true",
             sourcesPath: cliArguments.sourcesPath ?? fileValues["sourcesPath"],
-            excludePatterns: resolveList(cli: cliArguments.excludePatterns, key: "excludePatterns", from: fileValues),
-            operators: resolveList(cli: cliArguments.operators, key: "operators", from: fileValues)
+            excludePatterns: resolveList(
+                cli: cliArguments.excludePatterns,
+                keys: ["exclude", "excludePatterns"],
+                from: fileValues
+            ),
+            operators: resolveOperators(cli: cliArguments, fileValues: fileValues)
         )
     }
 
-    private func resolveList(cli: [String], key: String, from fileValues: [String: String]) -> [String] {
+    private func resolveOperators(cli: ParsedArguments, fileValues: [String: String]) -> [String] {
+        if !cli.operators.isEmpty {
+            return cli.operators
+        }
+
+        if !cli.disabledMutators.isEmpty {
+            let disabled = Set(cli.disabledMutators)
+            return DiscoveryPipeline.allOperatorNames.filter { !disabled.contains($0) }
+        }
+
+        let fileDisabled = resolveList(cli: [], keys: ["disabledMutators"], from: fileValues)
+        if !fileDisabled.isEmpty {
+            let disabled = Set(fileDisabled)
+            return DiscoveryPipeline.allOperatorNames.filter { !disabled.contains($0) }
+        }
+
+        return resolveList(cli: [], keys: ["operators"], from: fileValues)
+    }
+
+    private func resolveList(cli: [String], keys: [String], from fileValues: [String: String]) -> [String] {
         guard cli.isEmpty else { return cli }
-        return fileValues[key]?
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty } ?? []
+        for key in keys {
+            if let raw = fileValues[key] {
+                return
+                    raw
+                    .components(separatedBy: ",")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+            }
+        }
+        return []
     }
 }
