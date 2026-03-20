@@ -13,6 +13,7 @@ struct CommandLineParser: Sendable {
         var sourcesPath: String?
         var excludePatterns: [String] = []
         var operators: [String] = []
+        var disabledMutators: [String] = []
     }
 
     func parse(_ arguments: [String]) throws -> ParsedArguments {
@@ -67,7 +68,8 @@ struct CommandLineParser: Sendable {
             quiet: flags.quiet,
             sourcesPath: flags.sourcesPath,
             excludePatterns: flags.excludePatterns,
-            operators: flags.operators
+            operators: flags.operators,
+            disabledMutators: flags.disabledMutators
         )
     }
 
@@ -128,6 +130,9 @@ struct CommandLineParser: Sendable {
 
         case "--operator":
             values.operators.append(try nextValue(for: flag, at: &index, in: arguments))
+
+        case "--disable-mutator":
+            values.disabledMutators.append(try nextValue(for: flag, at: &index, in: arguments))
 
         default:
             throw UsageError(message: "unknown option '\(flag)'")

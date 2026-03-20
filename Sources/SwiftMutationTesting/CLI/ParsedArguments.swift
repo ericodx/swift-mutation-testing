@@ -14,6 +14,7 @@ struct ParsedArguments: Sendable {
         sourcesPath: String? = nil,
         excludePatterns: [String] = [],
         operators: [String] = [],
+        disabledMutators: [String] = [],
         showVersion: Bool = false,
         showHelp: Bool = false,
         showInit: Bool = false
@@ -32,6 +33,7 @@ struct ParsedArguments: Sendable {
         self.sourcesPath = sourcesPath
         self.excludePatterns = excludePatterns
         self.operators = operators
+        self.disabledMutators = disabledMutators
         self.showVersion = showVersion
         self.showHelp = showHelp
         self.showInit = showInit
@@ -51,6 +53,7 @@ struct ParsedArguments: Sendable {
     let sourcesPath: String?
     let excludePatterns: [String]
     let operators: [String]
+    let disabledMutators: [String]
     let showVersion: Bool
     let showHelp: Bool
     let showInit: Bool
