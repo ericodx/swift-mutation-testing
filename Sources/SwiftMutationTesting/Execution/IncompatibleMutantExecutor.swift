@@ -57,22 +57,10 @@ struct IncompatibleMutantExecutor: Sendable {
             mutatedContent: content
         )
 
-        let artifact: BuildArtifact
-        do {
-            artifact = try await BuildStage(launcher: launcher).build(
-                sandbox: sandbox,
-                scheme: configuration.scheme,
-                destination: configuration.destination,
-                timeout: configuration.timeout
-            )
-        } catch {
-            return await storeAndReport(mutant: mutant, key: key, sandbox: sandbox)
-        }
-
         let slot = try await pool.acquire()
         let launched: IncompatibleTestLaunchResult
         do {
-            launched = try await launch(artifact: artifact, slot: slot, sandbox: sandbox, configuration: configuration)
+            launched = try await launch(slot: slot, sandbox: sandbox, configuration: configuration)
         } catch {
             await pool.release(slot)
             try? sandbox.cleanup()
@@ -100,20 +88,22 @@ struct IncompatibleMutantExecutor: Sendable {
     }
 
     private func launch(
-        artifact: BuildArtifact,
         slot: SimulatorSlot,
         sandbox: Sandbox,
         configuration: RunnerConfiguration
     ) async throws -> IncompatibleTestLaunchResult {
+        let derivedDataPath = sandbox.rootURL
+            .appendingPathComponent(".derived-data").path
         let xcresultPath = sandbox.rootURL
             .appendingPathComponent("\(UUID().uuidString).xcresult").path
 
         var arguments = [
-            "test-without-building",
-            "-xctestrun", artifact.xctestrunURL.path,
+            "test",
+            "-scheme", configuration.scheme,
             "-destination", slot.destination,
+            "-derivedDataPath", derivedDataPath,
             "-resultBundlePath", xcresultPath,
-            "-derivedDataPath", artifact.derivedDataPath,
+            "-parallel-testing-enabled", "NO",
         ]
 
         if let testTarget = configuration.testTarget {
