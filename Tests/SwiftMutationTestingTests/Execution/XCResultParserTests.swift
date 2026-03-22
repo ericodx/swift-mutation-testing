@@ -4,21 +4,25 @@ import Testing
 
 @Suite("XCResultParser")
 struct XCResultParserTests {
-    @Test("Given valid xcresult JSON with test failure, when parsed, then returns killed with test name")
-    func parsesValidXCResultJSON() {
+    @Test("Given test-results JSON with failed test case, when parsed, then returns killed with nodeIdentifier")
+    func parsesFailedTestCase() {
         let json = """
             {
-              "issues": {
-                "testFailureSummaries": {
-                  "_values": [
+              "testNodes": [
+                {
+                  "nodeType": "Test Suite",
+                  "name": "MySuite",
+                  "result": "Failed",
+                  "children": [
                     {
-                      "testCaseName": {
-                        "_value": "MySuite.myTest()"
-                      }
+                      "nodeType": "Test Case",
+                      "name": "myTest()",
+                      "nodeIdentifier": "MySuite/myTest()",
+                      "result": "Failed"
                     }
                   ]
                 }
-              }
+              ]
             }
             """
 
@@ -28,14 +32,69 @@ struct XCResultParserTests {
             Issue.record("Expected .killed but got \(result)")
             return
         }
-        #expect(name == "MySuite.myTest()")
+        #expect(name == "MySuite/myTest()")
     }
 
-    @Test("Given JSON missing testCaseName, when parsed, then returns crashed")
-    func parsesInvalidStructureAsCrashed() {
-        let json = #"{"issues":{}}"#
+    @Test("Given test-results JSON with deeply nested failed test case, when parsed, then returns killed")
+    func parsesDeeplyNestedFailedTestCase() {
+        let json = """
+            {
+              "testNodes": [
+                {
+                  "nodeType": "Unit test bundle",
+                  "name": "MyTests",
+                  "result": "Failed",
+                  "children": [
+                    {
+                      "nodeType": "Test Suite",
+                      "name": "MySuite",
+                      "result": "Failed",
+                      "children": [
+                        {
+                          "nodeType": "Test Case",
+                          "name": "myTest()",
+                          "nodeIdentifier": "MySuite/myTest()",
+                          "result": "Failed"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+            """
 
         let result = XCResultParser().parse(json)
+
+        guard case .killed(let name) = result else {
+            Issue.record("Expected .killed but got \(result)")
+            return
+        }
+        #expect(name == "MySuite/myTest()")
+    }
+
+    @Test("Given test-results JSON with no failed test cases, when parsed, then returns crashed")
+    func parsesNoFailuresAsCrashed() {
+        let json = """
+            {
+              "testNodes": [
+                {
+                  "nodeType": "Test Suite",
+                  "name": "MySuite",
+                  "result": "Passed"
+                }
+              ]
+            }
+            """
+
+        let result = XCResultParser().parse(json)
+
+        #expect(result == .crashed)
+    }
+
+    @Test("Given JSON missing testNodes, when parsed, then returns crashed")
+    func parsesMissingTestNodesAsCrashed() {
+        let result = XCResultParser().parse("{}")
 
         #expect(result == .crashed)
     }
