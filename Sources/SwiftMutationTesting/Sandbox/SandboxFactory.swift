@@ -29,6 +29,8 @@ struct SandboxFactory: Sendable {
             projectURL: projectURL
         )
 
+        try disableSwiftLintBuildPhases(in: sandboxURL)
+
         return Sandbox(rootURL: sandboxURL)
     }
 
@@ -142,7 +144,7 @@ struct SandboxFactory: Sendable {
         let canonicalPath = source.resolvingSymlinksInPath().path
 
         if let content = schematizedPaths[canonicalPath] {
-            try content.write(to: destination, atomically: true, encoding: .utf8)
+            try fixEmptySwitchCaseBodies(content).write(to: destination, atomically: true, encoding: .utf8)
             return
         }
 
@@ -159,12 +161,110 @@ struct SandboxFactory: Sendable {
         try FileManager.default.createSymbolicLink(at: destination, withDestinationURL: source)
     }
 
+    private func disableSwiftLintBuildPhases(in sandboxURL: URL) throws {
+        guard let xcodeprojURL = findXcodeproj(in: sandboxURL) else { return }
+
+        let pbxprojURL = xcodeprojURL.appendingPathComponent("project.pbxproj")
+
+        guard FileManager.default.fileExists(atPath: pbxprojURL.path) else { return }
+
+        let data = try Data(contentsOf: pbxprojURL.resolvingSymlinksInPath())
+
+        var format = PropertyListSerialization.PropertyListFormat.xml
+
+        guard
+            var plist = try? PropertyListSerialization.propertyList(
+                from: data, options: [], format: &format
+            ) as? [String: Any]
+        else { return }
+
+        guard var objects = plist["objects"] as? [String: Any] else { return }
+
+        var modified = false
+
+        for (key, value) in objects {
+            guard var phase = value as? [String: Any],
+                let isa = phase["isa"] as? String,
+                isa == "PBXShellScriptBuildPhase",
+                let script = phase["shellScript"] as? String,
+                script.lowercased().contains("swiftlint")
+            else { continue }
+
+            phase["shellScript"] = "exit 0\n"
+            objects[key] = phase
+            modified = true
+        }
+
+        guard modified else { return }
+
+        plist["objects"] = objects
+
+        let xmlData = try PropertyListSerialization.data(
+            fromPropertyList: plist, format: .xml, options: 0
+        )
+
+        if (try? pbxprojURL.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
+            try FileManager.default.removeItem(at: pbxprojURL)
+        }
+
+        try xmlData.write(to: pbxprojURL, options: .atomic)
+    }
+
+    private func findXcodeproj(in directory: URL) -> URL? {
+        let items =
+            (try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil
+            )) ?? []
+
+        return items.first { $0.pathExtension == "xcodeproj" }
+    }
+
+    private func fixEmptySwitchCaseBodies(_ content: String) -> String {
+        let lines = content.components(separatedBy: "\n")
+        var result: [String] = []
+
+        for idx in 0 ..< lines.count {
+            result.append(lines[idx])
+
+            let trimmed = lines[idx].trimmingCharacters(in: .whitespaces)
+
+            guard trimmed.hasPrefix("case \""), trimmed.hasSuffix(":") else { continue }
+
+            var nextIdx = idx + 1
+            while nextIdx < lines.count, lines[nextIdx].trimmingCharacters(in: .whitespaces).isEmpty {
+                nextIdx += 1
+            }
+
+            guard nextIdx < lines.count else { continue }
+
+            let next = lines[nextIdx].trimmingCharacters(in: .whitespaces)
+            guard next.hasPrefix("case ") || next.hasPrefix("default") || next == "}" else { continue }
+
+            let indent = String(lines[idx].prefix { $0 == " " || $0 == "\t" })
+            result.append(indent + "    break")
+        }
+
+        return result.joined(separator: "\n")
+    }
+
     private func injectSupportFile(
         content: String,
         into sandboxURL: URL,
         schematizedFiles: [SchematizedFile],
         projectURL: URL
     ) throws {
+        guard !content.isEmpty else { return }
+
+        let computedForm =
+            "var __swiftMutationTestingID: String {\n"
+            + "    ProcessInfo.processInfo.environment[\"__SWIFT_MUTATION_TESTING_ACTIVE\"] ?? \"\"\n"
+            + "}"
+        let storedForm =
+            "nonisolated(unsafe) var __swiftMutationTestingID: String"
+            + " = ProcessInfo.processInfo.environment[\"__SWIFT_MUTATION_TESTING_ACTIVE\"] ?? \"\""
+        let content = content.replacingOccurrences(of: computedForm, with: storedForm)
+
         let sourcesURL = sandboxURL.appendingPathComponent("Sources")
 
         if FileManager.default.fileExists(atPath: sourcesURL.path) {
@@ -184,12 +284,14 @@ struct SandboxFactory: Sendable {
         guard originalPath.hasPrefix(projectPath) else { return }
 
         let relative = String(originalPath.dropFirst(projectPath.count + 1))
-        let sandboxDirURL = sandboxURL.appendingPathComponent(relative).deletingLastPathComponent()
+        let sandboxFileURL = sandboxURL.appendingPathComponent(relative)
+        let resolvedURL = sandboxFileURL.resolvingSymlinksInPath()
+        let existing = (try? String(contentsOf: resolvedURL, encoding: .utf8)) ?? ""
 
-        try content.write(
-            to: sandboxDirURL.appendingPathComponent("__SMTSupport.swift"),
-            atomically: true,
-            encoding: .utf8
-        )
+        if (try? sandboxFileURL.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
+            try FileManager.default.removeItem(at: sandboxFileURL)
+        }
+
+        try (existing + "\n" + content).write(to: sandboxFileURL, atomically: true, encoding: .utf8)
     }
 }

@@ -90,7 +90,7 @@ struct ConfigurationFileWriterTests {
         try writer.write(to: dir.path, project: .empty)
 
         let values = try ConfigurationFileParser().parse(at: dir.path)
-        #expect(values["timeout"] == "60")
+        #expect(values["timeout"] == "120")
         #expect(values["concurrency"] == "4")
     }
 
@@ -138,6 +138,18 @@ struct ConfigurationFileWriterTests {
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
         #expect(content.contains("# exclude:"))
         #expect(!content.contains("\nexclude:"))
+    }
+
+    @Test("Given any project, when write called, then noCache option is commented")
+    func noCacheOptionIsCommented() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(to: dir.path, project: .empty)
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("# noCache: true"))
+        #expect(!content.contains("\nnoCache:"))
     }
 
     @Test("Given any project, when write called, then output is set to mutation-report.json")

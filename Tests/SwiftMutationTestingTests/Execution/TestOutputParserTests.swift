@@ -28,6 +28,18 @@ struct TestOutputParserTests {
         #expect(name == "myTestFunction")
     }
 
+    @Test("Given indented Swift Testing failure line from xcodebuild, when parsed, then returns killed with test name")
+    func parsesIndentedSwiftTestingFailureLine() {
+        let output = "    ✗ Test \"myTestFunction\" failed after 0.001 seconds"
+        let result = TestOutputParser().parse(output)
+
+        guard case .killed(let name) = result else {
+            Issue.record("Expected .killed but got \(result)")
+            return
+        }
+        #expect(name == "myTestFunction")
+    }
+
     @Test("Given Swift Testing failure line without prefix, when parsed, then returns killed with test name")
     func parsesSwiftTestingFailureLineWithoutPrefix() {
         let output = "Test \"myTestFunction\" failed after 0.001 seconds"
@@ -51,6 +63,22 @@ struct TestOutputParserTests {
     @Test("Given output with TEST FAILED but no test name, when parsed, then returns crashed")
     func parsesTestFailedWithoutNameAsCrashed() {
         let output = "** TEST FAILED **\nExecuted 0 tests"
+        let result = TestOutputParser().parse(output)
+
+        #expect(result == .crashed)
+    }
+
+    @Test("Given output with Testing started marker, when parsed, then returns crashed")
+    func parsesTestingStartedAsCrashed() {
+        let output = "Testing started\nsome other output"
+        let result = TestOutputParser().parse(output)
+
+        #expect(result == .crashed)
+    }
+
+    @Test("Given output with Test run started marker, when parsed, then returns crashed")
+    func parsesTestRunStartedAsCrashed() {
+        let output = "Test run started.\nsome other output"
         let result = TestOutputParser().parse(output)
 
         #expect(result == .crashed)

@@ -7,18 +7,32 @@ struct XCResultParser: Sendable {
     }
 
     func parse(_ json: String) -> Result {
-        let data = Data(json.utf8)
-
         guard
+            let data = json.data(using: .utf8),
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let issues = root["issues"] as? [String: Any],
-            let summaries = issues["testFailureSummaries"] as? [String: Any],
-            let values = summaries["_values"] as? [[String: Any]],
-            let first = values.first,
-            let nameDict = first["testCaseName"] as? [String: Any],
-            let name = nameDict["_value"] as? String
+            let nodes = root["testNodes"] as? [[String: Any]],
+            let identifier = firstFailedTestCase(in: nodes)
         else { return .crashed }
 
-        return .killed(by: name)
+        return .killed(by: identifier)
+    }
+
+    private func firstFailedTestCase(in nodes: [[String: Any]]) -> String? {
+        for node in nodes {
+            if node["nodeType"] as? String == "Test Case",
+                node["result"] as? String == "Failed",
+                let identifier = node["nodeIdentifier"] as? String
+            {
+                return identifier
+            }
+
+            if let children = node["children"] as? [[String: Any]],
+                let found = firstFailedTestCase(in: children)
+            {
+                return found
+            }
+        }
+
+        return nil
     }
 }

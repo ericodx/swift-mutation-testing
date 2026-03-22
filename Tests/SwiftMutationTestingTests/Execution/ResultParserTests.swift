@@ -5,16 +5,32 @@ import Testing
 
 @Suite("ResultParser")
 struct ResultParserTests {
+    private let xcresultJSON = """
+        {
+          "testNodes": [
+            {
+              "nodeType": "Test Suite",
+              "name": "Suite",
+              "result": "Failed",
+              "children": [
+                {
+                  "nodeType": "Test Case",
+                  "name": "test()",
+                  "nodeIdentifier": "Suite/test()",
+                  "result": "Failed"
+                }
+              ]
+            }
+          ]
+        }
+        """
+
     @Test("Given exit code minus one, when parsed, then returns timedOut")
     func exitCodeMinusOneReturnsTimedOut() async throws {
         let parser = ResultParser(launcher: MockProcessLauncher(exitCode: 0))
 
         let outcome = try await parser.parse(
-            exitCode: -1,
-            output: "",
-            xcresultPath: "/tmp/test.xcresult",
-            timeout: 60
-        )
+            exitCode: -1, output: "", xcresultPath: "/tmp/test.xcresult", timeout: 60)
 
         #expect(outcome == .timedOut)
     }
@@ -24,63 +40,69 @@ struct ResultParserTests {
         let parser = ResultParser(launcher: MockProcessLauncher(exitCode: 0))
 
         let outcome = try await parser.parse(
-            exitCode: 0,
-            output: "",
-            xcresultPath: "/tmp/test.xcresult",
-            timeout: 60
-        )
+            exitCode: 0, output: "", xcresultPath: "/tmp/test.xcresult", timeout: 60)
 
         #expect(outcome == .testsSucceeded)
     }
 
-    @Test("Given failing stdout with test name, when parsed, then returns testsFailed without calling xcresulttool")
-    func stdoutWithTestNameReturnsKilled() async throws {
+    @Test("Given xcresulttool returns valid JSON with test name, when parsed, then returns testsFailed")
+    func xcresultPrimaryReturnsKilledWhenJSONValid() async throws {
+        let parser = ResultParser(
+            launcher: MockProcessLauncher(
+                exitCode: 1,
+                responses: ["xcrun": (exitCode: 0, output: xcresultJSON)]
+            )
+        )
+
+        let outcome = try await parser.parse(
+            exitCode: 1, output: "", xcresultPath: "/tmp/test.xcresult", timeout: 60)
+
+        #expect(outcome == .testsFailed(failingTest: "Suite/test()"))
+    }
+
+    @Test("Given xcresulttool returns JSON with no test failures, when parsed, then returns crashed")
+    func xcresultPrimaryReturnsCrashedWhenNoTestName() async throws {
+        let parser = ResultParser(
+            launcher: MockProcessLauncher(
+                exitCode: 1,
+                responses: ["xcrun": (exitCode: 0, output: "{}")]
+            )
+        )
+
+        let outcome = try await parser.parse(
+            exitCode: 1, output: "", xcresultPath: "/tmp/test.xcresult", timeout: 60)
+
+        #expect(outcome == .crashed)
+    }
+
+    @Test("Given xcresulttool fails and stdout has XCTest failure, when parsed, then returns testsFailed")
+    func xcresultFailsFallsBackToStdoutKilled() async throws {
         let output = "Test Case '-[MySuite myTest]' failed (0.001 seconds)."
         let parser = ResultParser(launcher: MockProcessLauncher(exitCode: 1))
 
         let outcome = try await parser.parse(
-            exitCode: 1,
-            output: output,
-            xcresultPath: "/tmp/test.xcresult",
-            timeout: 60
-        )
+            exitCode: 1, output: output, xcresultPath: "/tmp/test.xcresult", timeout: 60)
 
         #expect(outcome == .testsFailed(failingTest: "MySuite.myTest"))
     }
 
-    @Test("Given empty stdout and xcresulttool returns valid JSON, when parsed, then returns testsFailed")
-    func xcresultFallbackReturnsKilledWhenJSONValid() async throws {
-        let xcresultJSON = """
-            {
-              "issues": {
-                "testFailureSummaries": {
-                  "_values": [{"testCaseName": {"_value": "Suite.test()"}}]
-                }
-              }
-            }
-            """
-        let parser = ResultParser(launcher: MockProcessLauncher(exitCode: 0, output: xcresultJSON))
-
-        let outcome = try await parser.parse(
-            exitCode: 1,
-            output: "",
-            xcresultPath: "/tmp/test.xcresult",
-            timeout: 60
-        )
-
-        #expect(outcome == .testsFailed(failingTest: "Suite.test()"))
-    }
-
-    @Test("Given empty stdout and xcresulttool fails, when parsed, then returns unviable")
-    func xcresultFallbackReturnsUnviableWhenToolFails() async throws {
+    @Test("Given xcresulttool fails and stdout has test activity, when parsed, then returns crashed")
+    func xcresultFailsFallsBackToStdoutCrashed() async throws {
+        let output = "Testing started\nFatal error: unexpected"
         let parser = ResultParser(launcher: MockProcessLauncher(exitCode: 1))
 
         let outcome = try await parser.parse(
-            exitCode: 1,
-            output: "",
-            xcresultPath: "/tmp/test.xcresult",
-            timeout: 60
-        )
+            exitCode: 1, output: output, xcresultPath: "/tmp/test.xcresult", timeout: 60)
+
+        #expect(outcome == .crashed)
+    }
+
+    @Test("Given xcresulttool fails and stdout is empty, when parsed, then returns unviable")
+    func xcresultFailsAndEmptyStdoutReturnsUnviable() async throws {
+        let parser = ResultParser(launcher: MockProcessLauncher(exitCode: 1))
+
+        let outcome = try await parser.parse(
+            exitCode: 1, output: "", xcresultPath: "/tmp/test.xcresult", timeout: 60)
 
         #expect(outcome == .unviable)
     }

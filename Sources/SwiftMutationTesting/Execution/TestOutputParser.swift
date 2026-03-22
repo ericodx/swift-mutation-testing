@@ -18,6 +18,8 @@ struct TestOutputParser: Sendable {
             }
 
             if line.contains("Test Suite")
+                || line.contains("Test run started")
+                || line.contains("Testing started")
                 || line.contains("** TEST FAILED **")
                 || line.contains("Executed")
                 || line.contains("◇ Suite")
@@ -63,16 +65,14 @@ struct TestOutputParser: Sendable {
     }
 
     private func extractSwiftTestingFailure(from line: String) -> String? {
-        for prefix in ["✗ Test \"", "Test \""] {
-            guard line.hasPrefix(prefix) else { continue }
+        guard line.contains("Test \""), line.contains("\" failed") else { return nil }
 
-            let afterPrefix = line.dropFirst(prefix.count)
+        guard
+            let start = line.range(of: "Test \"")?.upperBound,
+            let end = line.range(of: "\" failed")?.lowerBound,
+            start < end
+        else { return nil }
 
-            guard let end = afterPrefix.range(of: "\" failed") else { continue }
-
-            return String(afterPrefix[..<end.lowerBound])
-        }
-
-        return nil
+        return String(line[start ..< end])
     }
 }
