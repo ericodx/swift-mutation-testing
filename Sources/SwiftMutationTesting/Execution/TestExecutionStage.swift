@@ -80,6 +80,7 @@ struct TestExecutionStage: Sendable {
             xcresultPath: launched.xcresultPath,
             timeout: context.configuration.timeout
         )
+        try? FileManager.default.removeItem(atPath: launched.xcresultPath)
 
         let status = outcome.asExecutionStatus
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
@@ -99,10 +100,7 @@ struct TestExecutionStage: Sendable {
         let xcresultPath = context.sandbox.rootURL
             .appendingPathComponent("\(UUID().uuidString).xcresult").path
 
-        defer {
-            try? FileManager.default.removeItem(at: xctestrunURL)
-            try? FileManager.default.removeItem(atPath: xcresultPath)
-        }
+        defer { try? FileManager.default.removeItem(at: xctestrunURL) }
 
         try plistData.write(to: xctestrunURL)
 
