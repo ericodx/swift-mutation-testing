@@ -45,11 +45,14 @@ struct ConfigurationFileWriter: Sendable {
         }
 
         lines.append("")
-        lines.append("# Per-mutant test timeout in seconds (default: 60)")
-        lines.append("timeout: 60")
+        lines.append("# Per-mutant test timeout in seconds (default: 120)")
+        lines.append("timeout: 120")
         lines.append("")
         lines.append("# Parallel simulators (4 recommended for Xcode)")
         lines.append("concurrency: 4")
+        lines.append("")
+        lines.append("# Disable result cache (re-runs all mutants on every execution)")
+        lines.append("# noCache: true")
         lines.append("")
         lines.append("# Report output paths")
         lines.append("# output: mutation-report.json")
