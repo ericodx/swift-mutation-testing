@@ -44,10 +44,10 @@ extension ExecutionStatus {
     fileprivate var progressIcon: String {
         switch self {
         case .killed, .killedByCrash:
-            return "✗"
+            return "✓"
 
         case .survived:
-            return "~"
+            return "✗"
 
         case .unviable:
             return "⚠"
