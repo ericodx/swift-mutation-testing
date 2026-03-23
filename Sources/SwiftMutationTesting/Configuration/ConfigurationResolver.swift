@@ -1,8 +1,11 @@
+import Foundation
+
 struct ConfigurationResolver: Sendable {
     func resolve(
         cliArguments: ParsedArguments,
         fileValues: [String: String]
     ) throws -> RunnerConfiguration {
+        let projectPath = resolvedPath(cliArguments.projectPath)
         let timeout: Double
         if let cliTimeout = cliArguments.timeout {
             timeout = cliTimeout
@@ -34,7 +37,7 @@ struct ConfigurationResolver: Sendable {
         }
 
         return RunnerConfiguration(
-            projectPath: cliArguments.projectPath,
+            projectPath: projectPath,
             scheme: cliArguments.scheme ?? fileValues["scheme"] ?? "",
             destination: cliArguments.destination ?? fileValues["destination"] ?? "",
             testTarget: cliArguments.testTarget ?? fileValues["testTarget"],
@@ -72,6 +75,14 @@ struct ConfigurationResolver: Sendable {
         }
 
         return resolveList(cli: [], keys: ["operators"], from: fileValues)
+    }
+
+    private func resolvedPath(_ path: String) -> String {
+        if path == "." || path.isEmpty {
+            return FileManager.default.currentDirectoryPath
+        }
+
+        return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path
     }
 
     private func resolveList(cli: [String], keys: [String], from fileValues: [String: String]) -> [String] {
