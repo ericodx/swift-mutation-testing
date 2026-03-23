@@ -67,8 +67,8 @@ struct ConsoleProgressReporterTests {
         #expect(output.contains("4 simulators ready"))
     }
 
-    @Test("Given mutantFinished for first mutant, when reported, then file header and mutant line are printed")
-    func mutantFinishedPrintsFileHeaderForFirstMutant() async {
+    @Test("Given mutantFinished, when reported, then line contains filename and line number inline")
+    func mutantFinishedPrintsInlineFilenameAndLine() async {
         let descriptor = MutantDescriptor(
             id: "1", filePath: "/project/Sources/Foo.swift",
             line: 10, column: 5, utf8Offset: 0,
@@ -82,14 +82,13 @@ struct ConsoleProgressReporterTests {
             await reporter.report(.mutantFinished(descriptor: descriptor, status: .survived, index: 1, total: 4))
         }
 
-        #expect(output.contains("Foo.swift"))
         #expect(output.contains("1/4"))
         #expect(output.contains("BooleanLiteralReplacement"))
-        #expect(output.contains(":10"))
+        #expect(output.contains("Foo.swift:10"))
     }
 
-    @Test("Given two mutants in same file, when reported, then file header appears only once")
-    func mutantFinishedSameFileNoDuplicateHeader() async {
+    @Test("Given two mutants in same file, when reported, then each line shows filename and line number")
+    func mutantFinishedSameFileEachLineShowsFilename() async {
         let reporter2 = ConsoleProgressReporter()
         let descriptor = MutantDescriptor(
             id: "1", filePath: "/project/Sources/Bar.swift",
@@ -107,11 +106,11 @@ struct ConsoleProgressReporterTests {
                 .mutantFinished(descriptor: descriptor, status: .survived, index: 2, total: 2))
         }
 
-        #expect(output.components(separatedBy: "Bar.swift").count == 2)
+        #expect(output.components(separatedBy: "Bar.swift:5").count == 3)
     }
 
-    @Test("Given mutants from two different files, when reported, then each file gets its own header")
-    func mutantFinishedDifferentFilesGetSeparateHeaders() async {
+    @Test("Given mutants from two different files, when reported, then each line shows its own filename")
+    func mutantFinishedDifferentFilesEachLineShowsOwnFilename() async {
         let reporter3 = ConsoleProgressReporter()
         let alpha = MutantDescriptor(
             id: "1", filePath: "/project/Sources/Alpha.swift",
@@ -135,7 +134,7 @@ struct ConsoleProgressReporterTests {
             await reporter3.report(.mutantFinished(descriptor: beta, status: .survived, index: 2, total: 2))
         }
 
-        #expect(output.contains("Alpha.swift"))
-        #expect(output.contains("Beta.swift"))
+        #expect(output.contains("Alpha.swift:1"))
+        #expect(output.contains("Beta.swift:2"))
     }
 }
