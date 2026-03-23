@@ -23,6 +23,7 @@ struct MutantExecutor: Sendable {
         let testFilesHash = TestFilesHasher().hash(projectPath: input.projectPath)
 
         if let cached = await allCached(mutants: input.mutants, cacheStore: cacheStore, testFilesHash: testFilesHash) {
+            await reporter.report(.loadedFromCache(mutantCount: cached.count))
             return cached
         }
 
