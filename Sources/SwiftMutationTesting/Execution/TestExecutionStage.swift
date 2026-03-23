@@ -1,12 +1,5 @@
 import Foundation
 
-private struct TestLaunchResult {
-    let exitCode: Int32
-    let output: String
-    let xcresultPath: String
-    let duration: Double
-}
-
 struct TestExecutionStage: Sendable {
     let launcher: any ProcessLaunching
     let cacheStore: CacheStore

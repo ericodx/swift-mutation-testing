@@ -36,28 +36,3 @@ struct SonarReporter {
         }
     }
 }
-
-private struct SonarPayload: Encodable {
-    let issues: [SonarIssue]
-}
-
-private struct SonarIssue: Encodable {
-    let engineId: String
-    let ruleId: String
-    let severity: String
-    let type: String
-    let primaryLocation: SonarLocation
-}
-
-private struct SonarLocation: Encodable {
-    let message: String
-    let filePath: String
-    let textRange: SonarRange
-}
-
-private struct SonarRange: Encodable {
-    let startLine: Int
-    let endLine: Int
-    let startColumn: Int
-    let endColumn: Int
-}
