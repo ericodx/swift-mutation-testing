@@ -1,12 +1,5 @@
 import Foundation
 
-private struct IncompatibleTestLaunchResult {
-    let exitCode: Int32
-    let output: String
-    let xcresultPath: String
-    let duration: Double
-}
-
 struct IncompatibleMutantExecutor: Sendable {
     let launcher: any ProcessLaunching
     let sandboxFactory: SandboxFactory

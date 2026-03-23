@@ -1,12 +1,5 @@
 import SwiftSyntax
 
-struct FunctionBodyScope {
-    let bodyStartOffset: Int
-    let bodyEndOffset: Int
-    let statementsStartOffset: Int
-    let statementsEndOffset: Int
-}
-
 final class TypeScopeVisitor: SyntaxVisitor {
 
     init() {
