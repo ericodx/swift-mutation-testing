@@ -24,10 +24,9 @@ struct TextReporter {
             let score = String(format: "%.1f", file.score)
             let stats = [
                 "killed: \(file.killed.count)",
-                "crashes: \(file.crashes.count)",
                 "survived: \(file.survived.count)",
-                "unviable: \(file.unviable.count)",
                 "timeout: \(file.timeouts.count)",
+                "unviable: \(file.unviable.count)",
             ].joined(separator: "   ")
             lines.append("  \(relative(filePath))    score: \(score)%   \(stats)")
         }
@@ -52,10 +51,9 @@ struct TextReporter {
         lines.append("Overall mutation score: \(String(format: "%.1f", summary.score))%")
         lines.append(
             "Killed: \(summary.killed.count)"
-                + " / Crashes: \(summary.crashes.count)"
                 + " / Survived: \(summary.survived.count)"
-                + " / Unviable: \(summary.unviable.count)"
                 + " / Timeouts: \(summary.timeouts.count)"
+                + " / Unviable: \(summary.unviable.count)"
                 + " / NoCoverage: \(summary.noCoverage.count)"
         )
         lines.append("Total duration: \(String(format: "%.1f", summary.totalDuration))s")

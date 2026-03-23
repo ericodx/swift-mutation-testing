@@ -1,8 +1,6 @@
 import Foundation
 
 actor ConsoleProgressReporter: ProgressReporter {
-    private var lastFile: String?
-
     func report(_ event: RunnerEvent) async {
         switch event {
         case .discoveryFinished(let mutantCount, let schematizableCount, let incompatibleCount, let duration):
@@ -10,6 +8,9 @@ actor ConsoleProgressReporter: ProgressReporter {
             let extra = incompatibleCount > 0 ? ", \(incompatibleCount) incompatible" : ""
             let dur = String(format: "%.1f", duration)
             print("  ✓ Discovery: \(mutantCount) mutants (\(schema)\(extra)) in \(dur)s")
+
+        case .loadedFromCache(let mutantCount):
+            print("  ✓ Loaded \(mutantCount) mutants from cache")
 
         case .buildStarted:
             print("")
@@ -27,12 +28,8 @@ actor ConsoleProgressReporter: ProgressReporter {
 
         case .mutantFinished(let descriptor, let status, let index, let total):
             let file = URL(fileURLWithPath: descriptor.filePath).lastPathComponent
-            if file != lastFile {
-                if lastFile != nil { print("") }
-                print("  \(file)")
-                lastFile = file
-            }
-            print("    \(status.progressIcon) \(index)/\(total)  \(descriptor.operatorIdentifier)  :\(descriptor.line)")
+            let op = descriptor.operatorIdentifier
+            print("  \(status.progressIcon) \(index)/\(total)  \(op)  \(file):\(descriptor.line)")
 
         case .fallbackBuildStarted:
             break
@@ -47,10 +44,10 @@ extension ExecutionStatus {
     fileprivate var progressIcon: String {
         switch self {
         case .killed, .killedByCrash:
-            return "✗"
+            return "✓"
 
         case .survived:
-            return "~"
+            return "✗"
 
         case .unviable:
             return "⚠"

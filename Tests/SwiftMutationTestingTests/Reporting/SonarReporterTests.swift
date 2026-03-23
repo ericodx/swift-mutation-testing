@@ -95,7 +95,7 @@ struct SonarReporterTests {
         let issues = json?["issues"] as? [[String: Any]]
         let location = issues?.first?["primaryLocation"] as? [String: Any]
 
-        #expect(location?["filePath"] as? String == "Sources/Calc.swift")
+        #expect(location?["filePath"] as? String == "/Sources/Calc.swift")
     }
 
     private func makeResult(filePath: String, status: ExecutionStatus) -> ExecutionResult {

@@ -4,13 +4,11 @@ struct RunnerSummary: Sendable {
 
     var killed: [ExecutionResult] {
         results.filter {
-            guard case .killed = $0.status else { return false }
-            return true
+            switch $0.status {
+            case .killed, .killedByCrash: return true
+            default: return false
+            }
         }
-    }
-
-    var crashes: [ExecutionResult] {
-        results.filter { $0.status == .killedByCrash }
     }
 
     var survived: [ExecutionResult] {
@@ -30,8 +28,8 @@ struct RunnerSummary: Sendable {
     }
 
     var score: Double {
-        let numerator = killed.count + crashes.count
-        let denominator = killed.count + crashes.count + survived.count + timeouts.count + noCoverage.count
+        let numerator = killed.count
+        let denominator = killed.count + survived.count + timeouts.count + noCoverage.count
 
         guard denominator > 0 else { return 100.0 }
 

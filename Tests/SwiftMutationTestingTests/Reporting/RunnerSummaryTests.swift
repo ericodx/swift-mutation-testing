@@ -4,12 +4,11 @@ import Testing
 
 @Suite("RunnerSummary")
 struct RunnerSummaryTests {
-    @Test("Given results with all statuses, when properties accessed, then each group contains only matching results")
+    @Test("Given results with all statuses, when properties accessed, then killed includes crashes")
     func groupsPartitionResultsByStatus() {
         let summary = RunnerSummary(results: makeResults(), totalDuration: 10)
 
-        #expect(summary.killed.count == 1)
-        #expect(summary.crashes.count == 1)
+        #expect(summary.killed.count == 2)
         #expect(summary.survived.count == 1)
         #expect(summary.unviable.count == 1)
         #expect(summary.timeouts.count == 1)

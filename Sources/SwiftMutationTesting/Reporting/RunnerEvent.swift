@@ -1,5 +1,6 @@
 enum RunnerEvent: Sendable {
     case discoveryFinished(mutantCount: Int, schematizableCount: Int, incompatibleCount: Int, duration: Double)
+    case loadedFromCache(mutantCount: Int)
 
     case buildStarted
     case buildFinished(duration: Double)

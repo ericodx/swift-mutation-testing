@@ -27,7 +27,7 @@ struct JsonReporterTests {
         #expect(json?["schemaVersion"] as? String == "1")
         #expect(json?["projectRoot"] as? String == projectRoot)
         let files = json?["files"] as? [String: Any]
-        #expect(files?["Sources/Calc.swift"] != nil)
+        #expect(files?["/Sources/Calc.swift"] != nil)
     }
 
     @Test("Given a killed mutant, when report called, then status string is Killed")
@@ -47,10 +47,32 @@ struct JsonReporterTests {
         let data = try Data(contentsOf: URL(fileURLWithPath: outputPath))
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let files = json?["files"] as? [String: Any]
-        let file = files?["Sources/Calc.swift"] as? [String: Any]
+        let file = files?["/Sources/Calc.swift"] as? [String: Any]
         let mutants = file?["mutants"] as? [[String: Any]]
 
         #expect(mutants?.first?["status"] as? String == "Killed")
+    }
+
+    @Test("Given a mutant, when report called, then file key includes leading slash relative to project root")
+    func fileKeyIncludesLeadingSlashRelativeToProjectRoot() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let outputPath = dir.appendingPathComponent("mutation.json").path
+        let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
+        let summary = RunnerSummary(
+            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            totalDuration: 0
+        )
+
+        try reporter.report(summary)
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: outputPath))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let files = json?["files"] as? [String: Any]
+
+        #expect(files?["/Sources/Calc.swift"] != nil)
+        #expect(files?["Sources/Calc.swift"] == nil)
     }
 
     @Test("Given a mutant, when report called, then end column equals start column plus original text length")
@@ -70,7 +92,7 @@ struct JsonReporterTests {
         let data = try Data(contentsOf: URL(fileURLWithPath: outputPath))
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let files = json?["files"] as? [String: Any]
-        let file = files?["Sources/Calc.swift"] as? [String: Any]
+        let file = files?["/Sources/Calc.swift"] as? [String: Any]
         let mutants = file?["mutants"] as? [[String: Any]]
         let location = mutants?.first?["location"] as? [String: Any]
         let start = location?["start"] as? [String: Any]

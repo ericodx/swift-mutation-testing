@@ -59,18 +59,7 @@ struct SwiftMutationTesting {
 
         let summary = RunnerSummary(results: results, totalDuration: duration)
         TextReporter(projectRoot: configuration.projectPath).report(summary)
-
-        if let output = configuration.output {
-            try JsonReporter(outputPath: output, projectRoot: configuration.projectPath).report(summary)
-        }
-
-        if let htmlOutput = configuration.htmlOutput {
-            try HtmlReporter(outputPath: htmlOutput).report(summary)
-        }
-
-        if let sonarOutput = configuration.sonarOutput {
-            try SonarReporter(outputPath: sonarOutput, projectRoot: configuration.projectPath).report(summary)
-        }
+        writeReports(summary, configuration: configuration)
 
         return .success
     }
@@ -106,5 +95,43 @@ struct SwiftMutationTesting {
         }
 
         return input
+    }
+
+    private static func writeReports(_ summary: RunnerSummary, configuration: RunnerConfiguration) {
+        let hasReports =
+            configuration.output != nil
+            || configuration.htmlOutput != nil
+            || configuration.sonarOutput != nil
+        guard hasReports else { return }
+        print("")
+
+        if let output = configuration.output {
+            do {
+                try JsonReporter(outputPath: output, projectRoot: configuration.projectPath).report(summary)
+                print("  ✓ JSON report: \(output)")
+            } catch {
+                fputs("Warning: could not write JSON report to '\(output)': \(error.localizedDescription)\n", stderr)
+            }
+        }
+
+        if let htmlOutput = configuration.htmlOutput {
+            do {
+                try HtmlReporter(outputPath: htmlOutput, projectRoot: configuration.projectPath).report(summary)
+                print("  ✓ HTML report: \(htmlOutput)")
+            } catch {
+                let msg = "Warning: could not write HTML report to '\(htmlOutput)': \(error.localizedDescription)\n"
+                fputs(msg, stderr)
+            }
+        }
+
+        if let sonarOutput = configuration.sonarOutput {
+            do {
+                try SonarReporter(outputPath: sonarOutput, projectRoot: configuration.projectPath).report(summary)
+                print("  ✓ Sonar report: \(sonarOutput)")
+            } catch {
+                let msg = "Warning: could not write Sonar report to '\(sonarOutput)': \(error.localizedDescription)\n"
+                fputs(msg, stderr)
+            }
+        }
     }
 }

@@ -16,7 +16,7 @@ struct JsonReporter {
         var fileEntries: [String: StrykerFile] = [:]
 
         for (filePath, results) in summary.resultsByFile {
-            let relativePath = String(filePath.dropFirst(projectRoot.count + 1))
+            let relativePath = String(filePath.dropFirst(projectRoot.count))
             let source = (try? String(contentsOfFile: filePath, encoding: .utf8)) ?? ""
             let mutants = results.map { strykerMutant(from: $0) }
             fileEntries[relativePath] = StrykerFile(language: "swift", source: source, mutants: mutants)
