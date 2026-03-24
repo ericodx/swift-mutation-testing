@@ -1,6 +1,6 @@
 import Foundation
 
-struct SchematizationStage {
+struct SchematizationStage: Sendable {
     private static let supportFileContent = """
         import Foundation
 

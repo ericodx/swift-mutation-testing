@@ -1,6 +1,6 @@
 import Foundation
 
-struct TextReporter {
+struct TextReporter: Sendable {
     init(projectRoot: String = "") {
         resolvedRoot =
             projectRoot.isEmpty

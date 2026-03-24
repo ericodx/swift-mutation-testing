@@ -1,4 +1,4 @@
-struct SonarLocation: Encodable {
+struct SonarLocation: Sendable, Encodable {
     let message: String
     let filePath: String
     let textRange: SonarRange

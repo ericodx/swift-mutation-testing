@@ -1,4 +1,4 @@
-struct LogicalOperatorReplacement: MutationOperator {
+struct LogicalOperatorReplacement: Sendable, MutationOperator {
     func mutations(in source: ParsedSource) -> [MutationPoint] {
         let visitor = LogicalOperatorVisitor(source: source)
         visitor.walk(source.syntax)

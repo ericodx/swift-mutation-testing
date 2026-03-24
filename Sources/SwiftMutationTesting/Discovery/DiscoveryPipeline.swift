@@ -1,4 +1,4 @@
-struct DiscoveryPipeline {
+struct DiscoveryPipeline: Sendable {
     static let allOperatorNames: [String] = [
         "RelationalOperatorReplacement",
         "BooleanLiteralReplacement",

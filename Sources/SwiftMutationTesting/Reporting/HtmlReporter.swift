@@ -1,6 +1,6 @@
 import Foundation
 
-struct HtmlReporter {
+struct HtmlReporter: Sendable {
     let outputPath: String
     let projectRoot: String
 

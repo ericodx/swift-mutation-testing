@@ -1,4 +1,4 @@
-struct MutantDiscoveryStage {
+struct MutantDiscoveryStage: Sendable {
     let operators: [any MutationOperator]
 
     func run(sources: [ParsedSource]) async -> [MutationPoint] {

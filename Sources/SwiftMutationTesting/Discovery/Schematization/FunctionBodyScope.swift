@@ -1,4 +1,4 @@
-struct FunctionBodyScope {
+struct FunctionBodyScope: Sendable {
     let bodyStartOffset: Int
     let bodyEndOffset: Int
     let statementsStartOffset: Int

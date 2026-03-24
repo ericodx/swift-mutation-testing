@@ -1,6 +1,6 @@
 import SwiftSyntax
 
-struct SuppressionFilter {
+struct SuppressionFilter: Sendable {
     func filter(
         _ mutationPoints: [MutationPoint],
         suppressedRanges: [Range<AbsolutePosition>]
