@@ -74,25 +74,6 @@ struct SimulatorManager: Sendable {
         throw SimulatorError.deviceNotFound(destination: destination)
     }
 
-    private func bootIfNeeded(udid: String) async throws {
-        let result = try await launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: ["simctl", "list", "devices", "--json"],
-            environment: nil,
-            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
-            timeout: 10
-        )
-
-        guard !isBooted(udid: udid, in: result.output) else { return }
-
-        _ = try await launcher.launch(
-            executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: ["simctl", "boot", udid],
-            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
-            timeout: 60
-        )
-    }
-
     private func isBooted(udid: String, in output: String) -> Bool {
         guard
             let data = output.data(using: .utf8),
