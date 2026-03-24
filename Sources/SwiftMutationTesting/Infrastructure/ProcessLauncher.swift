@@ -1,6 +1,6 @@
 import Foundation
 
-struct ProcessLauncher: ProcessLaunching {
+struct ProcessLauncher: Sendable, ProcessLaunching {
     func launch(
         executableURL: URL,
         arguments: [String],

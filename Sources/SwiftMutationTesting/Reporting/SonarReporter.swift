@@ -1,6 +1,6 @@
 import Foundation
 
-struct SonarReporter {
+struct SonarReporter: Sendable {
     let outputPath: String
     let projectRoot: String
 

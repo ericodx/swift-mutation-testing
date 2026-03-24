@@ -1,6 +1,6 @@
 import Foundation
 
-struct JsonReporter {
+struct JsonReporter: Sendable {
     let outputPath: String
     let projectRoot: String
 
@@ -12,35 +12,36 @@ struct JsonReporter {
         try data.write(to: URL(fileURLWithPath: outputPath))
     }
 
-    private func buildPayload(_ summary: RunnerSummary) -> StrykerPayload {
-        var fileEntries: [String: StrykerFile] = [:]
+    private func buildPayload(_ summary: RunnerSummary) -> MutationReportPayload {
+        var fileEntries: [String: MutationReportFile] = [:]
 
         for (filePath, results) in summary.resultsByFile {
             let relativePath = String(filePath.dropFirst(projectRoot.count))
             let source = (try? String(contentsOfFile: filePath, encoding: .utf8)) ?? ""
-            let mutants = results.map { strykerMutant(from: $0) }
-            fileEntries[relativePath] = StrykerFile(language: "swift", source: source, mutants: mutants)
+            let mutants = results.map { mutationReportMutant(from: $0) }
+            fileEntries[relativePath] = MutationReportFile(language: "swift", source: source, mutants: mutants)
         }
 
-        return StrykerPayload(
+        return MutationReportPayload(
             schemaVersion: "1",
-            thresholds: StrykerThresholds(high: 80, low: 60),
+            thresholds: MutationReportThresholds(high: 80, low: 60),
             projectRoot: projectRoot,
             files: fileEntries
         )
     }
 
-    private func strykerMutant(from result: ExecutionResult) -> StrykerMutant {
+    private func mutationReportMutant(from result: ExecutionResult) -> MutationReportMutant {
         let descriptor = result.descriptor
-        return StrykerMutant(
+        return MutationReportMutant(
             id: descriptor.id,
             mutatorName: descriptor.operatorIdentifier,
             replacement: descriptor.mutatedText,
-            location: StrykerLocation(
-                start: StrykerPosition(line: descriptor.line, column: descriptor.column),
-                end: StrykerPosition(line: descriptor.line, column: descriptor.column + descriptor.originalText.count)
+            location: MutationReportLocation(
+                start: MutationReportPosition(line: descriptor.line, column: descriptor.column),
+                end: MutationReportPosition(
+                    line: descriptor.line, column: descriptor.column + descriptor.originalText.count)
             ),
-            status: result.status.strykerStatus,
+            status: result.status.mutationReportStatus,
             description: descriptor.description
         )
     }

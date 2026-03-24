@@ -1,6 +1,6 @@
 import SwiftParser
 
-struct ParsingStage {
+struct ParsingStage: Sendable {
     func run(sourceFiles: [SourceFile]) async -> [ParsedSource] {
         await withTaskGroup(of: ParsedSource.self) { group in
             for file in sourceFiles {

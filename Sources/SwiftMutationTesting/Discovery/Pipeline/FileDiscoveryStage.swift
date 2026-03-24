@@ -1,6 +1,6 @@
 import Foundation
 
-struct FileDiscoveryStage {
+struct FileDiscoveryStage: Sendable {
     private static let fixedExclusions: [String] = [
         "/Tests/",
         "/Mocks/",

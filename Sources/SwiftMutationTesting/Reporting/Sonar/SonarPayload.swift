@@ -1,3 +1,3 @@
-struct SonarPayload: Encodable {
+struct SonarPayload: Sendable, Encodable {
     let issues: [SonarIssue]
 }

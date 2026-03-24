@@ -1,4 +1,4 @@
-struct MutationRewriter {
+struct MutationRewriter: Sendable {
     func rewrite(source: String, applying mutation: MutationPoint) -> String {
         guard let sourceData = source.data(using: .utf8),
             let originalData = mutation.originalText.data(using: .utf8),

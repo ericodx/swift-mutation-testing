@@ -1,5 +1,5 @@
 extension ExecutionStatus {
-    var strykerStatus: String {
+    var mutationReportStatus: String {
         switch self {
         case .killed:
             return "Killed"

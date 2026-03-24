@@ -1,6 +1,6 @@
 import SwiftSyntax
 
-struct SuppressionAnnotationExtractor {
+struct SuppressionAnnotationExtractor: Sendable {
     func extractSuppressedRanges(from syntax: SourceFileSyntax) -> [Range<AbsolutePosition>] {
         let visitor = SuppressionVisitor()
         visitor.walk(syntax)

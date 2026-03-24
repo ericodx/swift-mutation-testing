@@ -16,7 +16,7 @@ enum HelpText {
           --timeout <seconds>           Per-mutant test timeout in seconds (default: 60)
           --concurrency <n>             Number of parallel test workers (default: CPUs - 1)
           --no-cache                    Disable the result cache
-          --output <json-path>          Write Stryker-compatible JSON report to path
+          --output <json-path>          Write mutation report JSON to path
           --html-output <html-path>     Write HTML report to path
           --sonar-output <json-path>    Write Sonar Generic Coverage report to path
           --quiet                       Suppress progress output

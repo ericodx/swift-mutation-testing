@@ -5,8 +5,8 @@ import Testing
 
 @Suite("JsonReporter")
 struct JsonReporterTests {
-    @Test("Given a summary, when report called, then output is parseable JSON with Stryker v1 schema")
-    func reportProducesParseableStrykerJson() throws {
+    @Test("Given a summary, when report called, then output is parseable JSON with mutation report schema")
+    func reportProducesParseableMutationJson() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 

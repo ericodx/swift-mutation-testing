@@ -1,4 +1,4 @@
-struct SonarRange: Encodable {
+struct SonarRange: Sendable, Encodable {
     let startLine: Int
     let endLine: Int
     let startColumn: Int

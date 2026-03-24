@@ -1,4 +1,4 @@
-struct SonarIssue: Encodable {
+struct SonarIssue: Sendable, Encodable {
     let engineId: String
     let ruleId: String
     let severity: String

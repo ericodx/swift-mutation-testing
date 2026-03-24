@@ -1,4 +1,4 @@
-struct SchemataGenerator {
+struct SchemataGenerator: Sendable {
     func generate(source: ParsedSource, mutations: [(index: Int, point: MutationPoint)]) -> String {
         let visitor = TypeScopeVisitor()
         visitor.walk(source.syntax)
