@@ -29,15 +29,29 @@ struct HtmlReporter: Sendable {
             let fileScore = String(format: "%.1f", file.score)
             let colorClass = scoreColorClass(file.score)
             let relativePath = String(filePath.dropFirst(projectRoot.count))
+            let details = buildSurvivedDetails(file.survived)
             rows +=
                 "<tr>"
-                + "<td>\(relativePath)</td><td class=\"\(colorClass)\">\(fileScore)%</td>"
+                + "<td>\(relativePath)\(details)</td><td class=\"\(colorClass)\">\(fileScore)%</td>"
                 + "<td>\(file.killed.count)</td><td>\(file.survived.count)</td>"
                 + "<td>\(file.timeouts.count)</td><td>\(file.unviable.count)</td>"
                 + "<td>\(file.noCoverage.count)</td>"
                 + "</tr>\n"
         }
         return rows
+    }
+
+    private func buildSurvivedDetails(_ survived: [ExecutionResult]) -> String {
+        guard !survived.isEmpty else { return "" }
+        let mutantRows = survived.sorted { $0.descriptor.line < $1.descriptor.line }.map { result in
+            let descriptor = result.descriptor
+            return "<tr><td>\(descriptor.line)</td><td>\(descriptor.column)</td>"
+                + "<td>\(descriptor.operatorIdentifier)</td><td>\(descriptor.description)</td></tr>"
+        }.joined()
+        return "<details><summary>Survived mutants (\(survived.count))</summary>"
+            + "<table class=\"mutant-table\"><thead><tr>"
+            + "<th>Line</th><th>Col</th><th>Operator</th><th>Mutation</th>"
+            + "</tr></thead><tbody>\(mutantRows)</tbody></table></details>"
     }
 
     private func buildTotals(_ summary: RunnerSummary) -> String {
@@ -69,6 +83,11 @@ struct HtmlReporter: Sendable {
                 .score-green { background: #d4f1dc; }
                 .score-yellow { background: #fef9c3; }
                 .score-red { background: #fde8e8; }
+                details { margin-top: 0.5rem; font-size: 0.85rem; }
+                details summary { cursor: pointer; color: #555; }
+                .mutant-table { margin-top: 0.25rem; width: 100%; font-size: 0.8rem; }
+                .mutant-table th, .mutant-table td { border: 1px solid #e0e0e0; padding: 0.2rem 0.4rem; }
+                .mutant-table th { background: #fafafa; }
             </style>
         </head>
         <body>
