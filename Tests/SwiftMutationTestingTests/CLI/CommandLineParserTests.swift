@@ -39,11 +39,12 @@ struct CommandLineParserTests {
         #expect(result.showHelp == true)
     }
 
-    @Test("Given empty arguments, when parsed, then showHelp is true")
-    func returnsShowHelpWhenEmpty() throws {
+    @Test("Given empty arguments, when parsed, then execution is attempted with default project path")
+    func attemptsExecutionWhenEmpty() throws {
         let result = try parser.parse([])
 
-        #expect(result.showHelp == true)
+        #expect(result.showHelp == false)
+        #expect(result.projectPath == ".")
     }
 
     @Test("Given --version flag, when parsed, then showVersion is true")
@@ -103,6 +104,23 @@ struct CommandLineParserTests {
 
         #expect(result.showInit == true)
         #expect(result.projectPath == "/my/project")
+    }
+
+    @Test("Given flags without run command, when parsed, then projectPath scheme and destination are set")
+    func parsesDirectFlagsWithoutRunCommand() throws {
+        let result = try parser.parse(["--scheme", "MyApp", "--destination", "platform=macOS"])
+
+        #expect(result.projectPath == ".")
+        #expect(result.scheme == "MyApp")
+        #expect(result.destination == "platform=macOS")
+    }
+
+    @Test("Given project path without run command, when parsed, then projectPath is set")
+    func parsesProjectPathWithoutRunCommand() throws {
+        let result = try parser.parse(["/my/project", "--scheme", "App", "--destination", "platform=macOS"])
+
+        #expect(result.projectPath == "/my/project")
+        #expect(result.scheme == "App")
     }
 
     @Test("Given an unknown flag, when parsed, then throws UsageError")

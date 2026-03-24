@@ -23,7 +23,7 @@ struct SonarReporter: Sendable {
                 severity: severity,
                 type: "CODE_SMELL",
                 primaryLocation: SonarLocation(
-                    message: descriptor.description,
+                    message: "[\(descriptor.operatorIdentifier)] \(descriptor.description)",
                     filePath: relativePath,
                     textRange: SonarRange(
                         startLine: descriptor.line,

@@ -18,7 +18,7 @@ struct CommandLineParser: Sendable {
 
     func parse(_ arguments: [String]) throws -> ParsedArguments {
         guard !arguments.isEmpty else {
-            return ParsedArguments(showHelp: true)
+            return ParsedArguments()
         }
 
         switch arguments[0] {
@@ -46,10 +46,11 @@ struct CommandLineParser: Sendable {
 
         if remaining[0] == "run" {
             remaining.removeFirst()
-            if let next = remaining.first, !next.hasPrefix("-") {
-                projectPath = next
-                remaining.removeFirst()
-            }
+        }
+
+        if let next = remaining.first, !next.hasPrefix("-") {
+            projectPath = next
+            remaining.removeFirst()
         }
 
         let flags = try parseFlags(remaining)

@@ -52,7 +52,7 @@ struct SwiftMutationTesting {
             fileValues: fileValues
         )
 
-        let input = try await discover(parsed: parsed, configuration: configuration)
+        let input = try await discover(configuration: configuration)
         let start = Date()
         let results = try await MutantExecutor(configuration: configuration).execute(input)
         let duration = Date().timeIntervalSince(start)
@@ -64,10 +64,7 @@ struct SwiftMutationTesting {
         return .success
     }
 
-    private static func discover(
-        parsed: ParsedArguments,
-        configuration: RunnerConfiguration
-    ) async throws -> RunnerInput {
+    private static func discover(configuration: RunnerConfiguration) async throws -> RunnerInput {
         let start = Date()
         let discoveryInput = DiscoveryInput(
             projectPath: configuration.projectPath,

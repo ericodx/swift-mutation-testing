@@ -75,6 +75,76 @@ struct JsonReporterTests {
         #expect(files?["Sources/Calc.swift"] == nil)
     }
 
+    @Test("Given a killed mutant, when report called, then killedBy contains the test name")
+    func killedMutantPopulatesKilledBy() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let outputPath = dir.appendingPathComponent("mutation.json").path
+        let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
+        let summary = RunnerSummary(
+            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "MySuite.myTest"))],
+            totalDuration: 0
+        )
+
+        try reporter.report(summary)
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: outputPath))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let files = json?["files"] as? [String: Any]
+        let file = files?["/Sources/Calc.swift"] as? [String: Any]
+        let mutants = file?["mutants"] as? [[String: Any]]
+
+        #expect(mutants?.first?["killedBy"] as? String == "MySuite.myTest")
+    }
+
+    @Test("Given a survived mutant, when report called, then killedBy is nil")
+    func survivedMutantHasNilKilledBy() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let outputPath = dir.appendingPathComponent("mutation.json").path
+        let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
+        let summary = RunnerSummary(
+            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            totalDuration: 0
+        )
+
+        try reporter.report(summary)
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: outputPath))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let files = json?["files"] as? [String: Any]
+        let file = files?["/Sources/Calc.swift"] as? [String: Any]
+        let mutants = file?["mutants"] as? [[String: Any]]
+        let killedBy = mutants?.first?["killedBy"]
+
+        #expect(killedBy == nil || killedBy is NSNull)
+    }
+
+    @Test("Given a mutant, when report called, then originalText is present in the mutant entry")
+    func mutantEntryContainsOriginalText() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let outputPath = dir.appendingPathComponent("mutation.json").path
+        let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
+        let summary = RunnerSummary(
+            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            totalDuration: 0
+        )
+
+        try reporter.report(summary)
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: outputPath))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let files = json?["files"] as? [String: Any]
+        let file = files?["/Sources/Calc.swift"] as? [String: Any]
+        let mutants = file?["mutants"] as? [[String: Any]]
+
+        #expect(mutants?.first?["originalText"] as? String == "+")
+    }
+
     @Test("Given a mutant, when report called, then end column equals start column plus original text length")
     func endColumnEqualsStartColumnPlusOriginalTextLength() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
