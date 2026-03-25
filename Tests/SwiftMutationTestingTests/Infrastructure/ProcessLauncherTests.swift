@@ -83,4 +83,79 @@ struct ProcessLauncherTests {
 
         #expect(exitCode == -1)
     }
+
+    @Test("Given non-existent executable, when launched, then throws")
+    func launchThrowsForNonExistentExecutable() async {
+        await #expect(throws: (any Error).self) {
+            try await launcher.launch(
+                executableURL: URL(fileURLWithPath: "/nonexistent/binary"),
+                arguments: [],
+                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                timeout: 10
+            )
+        }
+    }
+
+    @Test("Given non-existent executable, when launchCapturing called, then throws")
+    func launchCapturingThrowsForNonExistentExecutable() async {
+        await #expect(throws: (any Error).self) {
+            try await launcher.launchCapturing(
+                executableURL: URL(fileURLWithPath: "/nonexistent/binary"),
+                arguments: [],
+                environment: nil,
+                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                timeout: 10
+            )
+        }
+    }
+
+    @Test("Given long-running process and short timeout, when launchCapturing times out, then returns minus one")
+    func launchCapturingTimesOut() async throws {
+        let result = try await launcher.launchCapturing(
+            executableURL: URL(fileURLWithPath: "/bin/sleep"),
+            arguments: ["60"],
+            environment: nil,
+            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+            timeout: 0.5
+        )
+
+        #expect(result.exitCode == -1)
+    }
+
+    @Test("Given task is cancelled while launch running, when cancelled, then process is terminated")
+    func cancelledLaunchTerminatesProcess() async throws {
+        let task = Task {
+            try await launcher.launch(
+                executableURL: URL(fileURLWithPath: "/bin/sleep"),
+                arguments: ["60"],
+                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                timeout: 60
+            )
+        }
+
+        try await Task.sleep(for: .milliseconds(100))
+        task.cancel()
+
+        let exitCode = try await task.value
+        #expect(exitCode == -1)
+    }
+
+    @Test("Given task is cancelled while launchCapturing running, when cancelled, then process is terminated")
+    func cancelledLaunchCapturingTerminatesProcess() async throws {
+        let task = Task {
+            try await launcher.launchCapturing(
+                executableURL: URL(fileURLWithPath: "/bin/sleep"),
+                arguments: ["60"],
+                environment: nil,
+                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                timeout: 60
+            )
+        }
+
+        try await Task.sleep(for: .milliseconds(100))
+        task.cancel()
+
+        let result = try await task.value
+        #expect(result.exitCode == -1)
+    }
 }
