@@ -16,14 +16,17 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                let timedOut = TimeoutFlag()
+
                 let timeoutTask = Task {
                     try await Task.sleep(for: .seconds(timeout))
+                    timedOut.mark()
                     terminateProcessGroup(pid: process.processIdentifier)
                 }
 
                 process.terminationHandler = { proc in
                     timeoutTask.cancel()
-                    let exitCode: Int32 = proc.terminationReason == .uncaughtSignal ? -1 : proc.terminationStatus
+                    let exitCode: Int32 = timedOut.value ? -1 : proc.terminationStatus
                     continuation.resume(returning: exitCode)
                 }
 
@@ -65,8 +68,11 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                let timedOut = TimeoutFlag()
+
                 let timeoutTask = Task {
                     try await Task.sleep(for: .seconds(timeout))
+                    timedOut.mark()
                     terminateProcessGroup(pid: process.processIdentifier)
                 }
 
@@ -75,8 +81,7 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
                     fileHandle.closeFile()
                     let output = (try? String(contentsOf: tempURL, encoding: .utf8)) ?? ""
                     try? FileManager.default.removeItem(at: tempURL)
-                    let exitCode: Int32 =
-                        terminated.terminationReason == .uncaughtSignal ? -1 : terminated.terminationStatus
+                    let exitCode: Int32 = timedOut.value ? -1 : terminated.terminationStatus
                     continuation.resume(returning: (exitCode: exitCode, output: output))
                 }
 
@@ -102,5 +107,22 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
             try? await Task.sleep(for: .seconds(5))
             kill(-pid, SIGKILL)
         }
+    }
+}
+
+private final class TimeoutFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+
+    func mark() {
+        lock.lock()
+        _value = true
+        lock.unlock()
+    }
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _value
     }
 }
