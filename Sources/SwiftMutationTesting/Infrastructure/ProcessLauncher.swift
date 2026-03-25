@@ -114,15 +114,15 @@ private final class TimeoutFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var _value = false
 
-    func mark() {
-        lock.lock()
-        _value = true
-        lock.unlock()
-    }
-
     var value: Bool {
         lock.lock()
         defer { lock.unlock() }
         return _value
+    }
+
+    func mark() {
+        lock.lock()
+        _value = true
+        lock.unlock()
     }
 }
