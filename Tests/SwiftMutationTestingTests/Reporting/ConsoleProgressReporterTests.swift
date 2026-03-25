@@ -137,4 +137,68 @@ struct ConsoleProgressReporterTests {
         #expect(output.contains("Alpha.swift:1"))
         #expect(output.contains("Beta.swift:2"))
     }
+
+    @Test("Given loadedFromCache event, when reported, then output contains mutant count")
+    func loadedFromCachePrintsMutantCount() async {
+        let output = await captureOutput {
+            await reporter.report(.loadedFromCache(mutantCount: 42))
+        }
+
+        #expect(output.contains("42"))
+        #expect(output.contains("cache"))
+    }
+
+    @Test("Given buildStarted event, when reported, then output contains building message")
+    func buildStartedPrintsBuildingMessage() async {
+        let output = await captureOutput {
+            await reporter.report(.buildStarted)
+        }
+
+        #expect(output.contains("Building for testing"))
+    }
+
+    @Test("Given buildFinished event, when reported, then output contains duration")
+    func buildFinishedPrintsDuration() async {
+        let output = await captureOutput {
+            await reporter.report(.buildFinished(duration: 3.7))
+        }
+
+        #expect(output.contains("3.7s"))
+    }
+
+    @Test("Given mutantStarted event, when reported, then no output is produced")
+    func mutantStartedProducesNoOutput() async {
+        let descriptor = MutantDescriptor(
+            id: "1", filePath: "/project/Sources/Foo.swift",
+            line: 1, column: 1, utf8Offset: 0,
+            originalText: "a", mutatedText: "b",
+            operatorIdentifier: "NegateConditional",
+            replacementKind: .binaryOperator, description: "",
+            isSchematizable: true, mutatedSourceContent: nil
+        )
+
+        let output = await captureOutput {
+            await reporter.report(.mutantStarted(descriptor: descriptor, index: 1, total: 2))
+        }
+
+        #expect(output.isEmpty)
+    }
+
+    @Test("Given fallbackBuildStarted event, when reported, then no output is produced")
+    func fallbackBuildStartedProducesNoOutput() async {
+        let output = await captureOutput {
+            await reporter.report(.fallbackBuildStarted(filePath: "/project/Sources/Foo.swift"))
+        }
+
+        #expect(output.isEmpty)
+    }
+
+    @Test("Given fallbackBuildFinished event, when reported, then no output is produced")
+    func fallbackBuildFinishedProducesNoOutput() async {
+        let output = await captureOutput {
+            await reporter.report(.fallbackBuildFinished(filePath: "/project/Sources/Foo.swift", success: true))
+        }
+
+        #expect(output.isEmpty)
+    }
 }

@@ -74,6 +74,89 @@ struct TextReporterTests {
         #expect(!output.contains("/proj/Sources/Calc.swift"))
     }
 
+    @Test("Given path outside project root, when format called, then full path is shown unchanged")
+    func formatShowsFullPathWhenOutsideRoot() {
+        let summary = RunnerSummary(
+            results: [makeResult(filePath: "/other/Sources/Calc.swift", status: .survived)],
+            totalDuration: 0
+        )
+
+        let output = TextReporter(projectRoot: "/proj").format(summary)
+
+        #expect(output.contains("/other/Sources/Calc.swift"))
+    }
+
+    @Test("Given a summary, when report called, then output is printed to stdout")
+    func reportPrintsToStdout() async {
+        let summary = RunnerSummary(
+            results: [makeResult(filePath: "/tmp/Foo.swift", status: .killed(by: "t"))],
+            totalDuration: 1.0
+        )
+
+        let output = await captureOutput {
+            TextReporter().report(summary)
+        }
+
+        #expect(output.contains("Overall mutation score:"))
+    }
+
+    @Test("Given timeout mutant, when format called, then timeout count appears in results by file")
+    func formatShowsTimeoutInResultsByFile() {
+        let summary = RunnerSummary(
+            results: [makeResult(filePath: "/abs/Sources/Foo.swift", status: .timeout)],
+            totalDuration: 0
+        )
+
+        let output = TextReporter().format(summary)
+
+        #expect(output.contains("timeout: 1"))
+        #expect(output.contains("Timeouts: 1"))
+    }
+
+    @Test("Given killedByCrash mutant, when format called, then killed count includes crash")
+    func formatCountsKilledByCrashAsKilled() {
+        let summary = RunnerSummary(
+            results: [makeResult(status: .killedByCrash)],
+            totalDuration: 0
+        )
+
+        let output = TextReporter().format(summary)
+
+        #expect(output.contains("killed: 1"))
+    }
+
+    @Test("Given two survived mutants in different files, when format called, then both sorted in survived section")
+    func twoSurvivedMutantsAreSortedInOutput() {
+        let summary = RunnerSummary(
+            results: [
+                makeResult(filePath: "/abs/Sources/Z.swift", status: .survived),
+                makeResult(filePath: "/abs/Sources/A.swift", status: .survived),
+            ],
+            totalDuration: 0
+        )
+
+        let output = TextReporter().format(summary)
+
+        #expect(output.contains("Survived mutants:"))
+        let aIndex = output.range(of: "/abs/Sources/A.swift")?.lowerBound
+        let zIndex = output.range(of: "/abs/Sources/Z.swift")?.lowerBound
+        #expect(aIndex != nil && zIndex != nil)
+        #expect(aIndex! < zIndex!)
+    }
+
+    @Test("Given noCoverage mutant, when format called, then it appears in survived section")
+    func noCoverageAppearsInSurvivedSection() {
+        let summary = RunnerSummary(
+            results: [makeResult(filePath: "/abs/Foo.swift", status: .noCoverage)],
+            totalDuration: 0
+        )
+
+        let output = TextReporter().format(summary)
+
+        #expect(output.contains("Survived mutants:"))
+        #expect(output.contains("/abs/Foo.swift"))
+    }
+
     private func makeResult(
         filePath: String = "/tmp/Foo.swift",
         status: ExecutionStatus

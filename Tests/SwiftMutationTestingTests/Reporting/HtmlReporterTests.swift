@@ -130,12 +130,42 @@ struct HtmlReporterTests {
         #expect(html.contains("class=\"score-red\""))
     }
 
+    @Test("Given two survived mutants at different lines in same file, when report called, then sorted by line")
+    func survivedMutantsSortedByLineInDetails() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let outputPath = dir.appendingPathComponent("report.html").path
+        let reporter = HtmlReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
+
+        let summary = RunnerSummary(
+            results: [
+                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", line: 20, status: .survived),
+                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", line: 5, status: .survived),
+            ],
+            totalDuration: 0
+        )
+
+        try reporter.report(summary)
+
+        let html = try String(contentsOfFile: outputPath, encoding: .utf8)
+        #expect(html.contains("Survived mutants (2)"))
+        let line5Index = html.range(of: "<td>5</td>")?.lowerBound
+        let line20Index = html.range(of: "<td>20</td>")?.lowerBound
+        #expect(line5Index != nil && line20Index != nil)
+        #expect(line5Index! < line20Index!)
+    }
+
     private func makeResult(filePath: String, status: ExecutionStatus) -> ExecutionResult {
+        makeResult(filePath: filePath, line: 3, status: status)
+    }
+
+    private func makeResult(filePath: String, line: Int, status: ExecutionStatus) -> ExecutionResult {
         ExecutionResult(
             descriptor: MutantDescriptor(
                 id: "1",
                 filePath: filePath,
-                line: 3,
+                line: line,
                 column: 10,
                 utf8Offset: 0,
                 originalText: "+",
