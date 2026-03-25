@@ -9,11 +9,11 @@ struct XCTestRunPlist: Sendable, Equatable {
 
     private let data: Data
 
-    func activating(_ mutantID: String) -> Data? {
+    func activating(_ mutantID: String) -> Data {
         guard
             var dict = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil))
                 as? [String: Any]
-        else { return nil }
+        else { return data }
 
         if var configurations = dict["TestConfigurations"] as? [[String: Any]] {
             for index in configurations.indices {
@@ -38,6 +38,6 @@ struct XCTestRunPlist: Sendable, Equatable {
             }
         }
 
-        return try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
+        return (try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)) ?? data
     }
 }
