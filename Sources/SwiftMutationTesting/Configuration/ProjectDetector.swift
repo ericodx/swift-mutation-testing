@@ -175,21 +175,21 @@ struct ProjectDetector: Sendable {
     }
 
     private func preferredDevice(from names: [String], for platform: String) -> String? {
-        switch platform {
-        case "iOS":
+        if platform == "iOS" {
             return names.first { $0.hasPrefix("iPhone") && $0.contains("Pro") }
                 ?? names.first { $0.hasPrefix("iPhone") }
+        }
 
-        case "tvOS":
+        if platform == "tvOS" {
             return names.first { $0.contains("Apple TV 4K") }
                 ?? names.first { $0.contains("Apple TV") }
-
-        case "watchOS":
-            return names.first { $0.contains("Apple Watch") }
-
-        default:
-            return nil
         }
+
+        if platform == "watchOS" {
+            return names.first { $0.contains("Apple Watch") }
+        }
+
+        return nil
     }
 
     private func fallbackDevice(for platform: String) -> String {
