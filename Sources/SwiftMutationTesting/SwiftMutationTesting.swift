@@ -6,20 +6,14 @@ struct SwiftMutationTesting {
         exit(await run(args: Array(CommandLine.arguments.dropFirst())).rawValue)
     }
 
-    static func run(args: [String]) async -> ExitCode {
+    static func run(args: [String], launcher: any ProcessLaunching = ProcessLauncher()) async -> ExitCode {
         do {
-            return try await execute(args: args)
+            return try await execute(args: args, launcher: launcher)
         } catch let error as UsageError {
             fputs(error.message + "\n", stderr)
             return .error
-        } catch BuildError.compilationFailed {
-            fputs("Build-for-testing failed. Check scheme and destination.\n", stderr)
-            return .error
         } catch SimulatorError.deviceNotFound(let dest) {
             fputs("Simulator not found for destination: \(dest)\n", stderr)
-            return .error
-        } catch SimulatorError.bootTimeout(let udid) {
-            fputs("Simulator boot timeout for UDID: \(udid)\n", stderr)
             return .error
         } catch {
             fputs("Error: \(error.localizedDescription)\n", stderr)
@@ -27,7 +21,7 @@ struct SwiftMutationTesting {
         }
     }
 
-    private static func execute(args: [String]) async throws -> ExitCode {
+    private static func execute(args: [String], launcher: any ProcessLaunching) async throws -> ExitCode {
         let parsed = try CommandLineParser().parse(args)
 
         if parsed.showHelp {
@@ -41,7 +35,7 @@ struct SwiftMutationTesting {
         }
 
         if parsed.showInit {
-            let detected = await ProjectDetector(launcher: ProcessLauncher()).detect(at: parsed.projectPath)
+            let detected = await ProjectDetector(launcher: launcher).detect(at: parsed.projectPath)
             try ConfigurationFileWriter().write(to: parsed.projectPath, project: detected)
             return .success
         }
@@ -54,7 +48,7 @@ struct SwiftMutationTesting {
 
         let input = try await discover(configuration: configuration)
         let start = Date()
-        let results = try await MutantExecutor(configuration: configuration).execute(input)
+        let results = try await MutantExecutor(configuration: configuration, launcher: launcher).execute(input)
         let duration = Date().timeIntervalSince(start)
 
         let summary = RunnerSummary(results: results, totalDuration: duration)
@@ -94,7 +88,7 @@ struct SwiftMutationTesting {
         return input
     }
 
-    private static func writeReports(_ summary: RunnerSummary, configuration: RunnerConfiguration) {
+    static func writeReports(_ summary: RunnerSummary, configuration: RunnerConfiguration) {
         let hasReports =
             configuration.output != nil
             || configuration.htmlOutput != nil
