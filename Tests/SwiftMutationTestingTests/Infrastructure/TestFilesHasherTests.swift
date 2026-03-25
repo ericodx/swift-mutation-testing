@@ -47,6 +47,13 @@ struct TestFilesHasherTests {
         #expect(hashBefore != hashAfter)
     }
 
+    @Test("Given non-existent project path, when hash called, then returns a valid hash for empty content")
+    func hashReturnsValidHashForNonExistentPath() {
+        let result = TestFilesHasher().hash(projectPath: "/nonexistent/path/xyz")
+        #expect(result.count == 64)
+        #expect(result.allSatisfy { $0.isHexDigit })
+    }
+
     @Test("Given only non-test swift files exist, when hash called, then same hash as empty project")
     func hashIgnoresNonTestSwiftFiles() throws {
         let empty = try FileHelpers.makeTemporaryDirectory()
