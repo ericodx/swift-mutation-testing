@@ -62,4 +62,41 @@ struct SimulatorManagerTests {
 
         #expect(elapsed < 0.4)
     }
+
+    @Test("Given destination without platform= prefix, when requiresSimulatorPool called, then returns true")
+    func requiresSimulatorPoolReturnsTrueForUnknownPlatform() {
+        let result = SimulatorManager.requiresSimulatorPool(for: "name=My Device,OS=latest")
+        #expect(result == true)
+    }
+
+    @Test("Given destination with neither id nor name, when resolveBaseUDID called, then throws deviceNotFound")
+    func resolveBaseUDIDThrowsWhenNoIdOrName() async {
+        let json = SimulatorCommandMock.bootedDevicesJSON(udid: "ANY-UDID")
+        let manager = SimulatorManager(launcher: SimulatorCommandMock(listOutput: json, cloneUDID: ""))
+
+        await #expect(throws: SimulatorError.self) {
+            try await manager.resolveBaseUDID(for: "platform=iOS Simulator,arch=arm64")
+        }
+    }
+
+    @Test("Given device list with non-matching name, when resolveBaseUDID called, then throws deviceNotFound")
+    func resolveBaseUDIDThrowsWhenDeviceNameNotFoundInNonEmptyList() async {
+        let json = SimulatorCommandMock.bootedDevicesJSON(udid: "OTHER-UDID", name: "iPhone 99")
+        let manager = SimulatorManager(launcher: SimulatorCommandMock(listOutput: json, cloneUDID: ""))
+
+        await #expect(throws: SimulatorError.self) {
+            try await manager.resolveBaseUDID(for: "platform=iOS Simulator,name=iPhone 15")
+        }
+    }
+
+    @Test("Given malformed JSON from simctl, when resolveBaseUDID with name called, then throws deviceNotFound")
+    func resolveBaseUDIDThrowsForMalformedJSON() async {
+        let manager = SimulatorManager(
+            launcher: SimulatorCommandMock(listOutput: "not json", cloneUDID: "")
+        )
+
+        await #expect(throws: SimulatorError.self) {
+            try await manager.resolveBaseUDID(for: "platform=iOS Simulator,name=iPhone 15")
+        }
+    }
 }

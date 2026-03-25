@@ -80,6 +80,46 @@ struct SimulatorPoolTests {
         #expect(slot2.destination.contains("platform=iOS Simulator"))
     }
 
+    @Test("Given simulator baseUDID and xcrun clone fails, when setUp called, then throws")
+    func setUpThrowsWhenCloneFails() async throws {
+        let pool = SimulatorPool(
+            baseUDID: "BASE-UDID",
+            size: 1,
+            destination: "platform=iOS Simulator,name=iPhone 15",
+            launcher: MockProcessLauncher(exitCode: 0, responses: ["xcrun": (exitCode: 1, output: "")])
+        )
+
+        await #expect(throws: (any Error).self) {
+            try await pool.setUp()
+        }
+    }
+
+    @Test("Given pool exhausted and pending task is cancelled, when acquire waiting, then throws CancellationError")
+    func cancelledAcquireThrowsCancellationError() async throws {
+        let pool = SimulatorPool(
+            baseUDID: nil,
+            size: 1,
+            destination: "platform=macOS",
+            launcher: MockProcessLauncher(exitCode: 0)
+        )
+        try await pool.setUp()
+
+        let firstSlot = try await pool.acquire()
+
+        let pendingTask = Task {
+            try await pool.acquire()
+        }
+
+        try await Task.sleep(for: .milliseconds(50))
+        pendingTask.cancel()
+
+        await #expect(throws: (any Error).self) {
+            try await pendingTask.value
+        }
+
+        await pool.release(firstSlot)
+    }
+
     @Test("Given setUp with simulator, when tearDown called, then pool size is preserved")
     func tearDownCompletesForSimulatorPool() async throws {
         let cloneUDID = "MOCK-CLONE-UDID"
