@@ -40,7 +40,7 @@ struct XCTestRunPlistTests {
         let data = try PropertyListSerialization.data(fromPropertyList: plistDict, format: .xml, options: 0)
         let plist = try #require(XCTestRunPlist(data))
 
-        let result = try #require(plist.activating("id_0"))
+        let result = plist.activating("id_0")
         let resultDict = try #require(
             PropertyListSerialization.propertyList(from: result, options: [], format: nil) as? [String: Any]
         )
@@ -60,7 +60,7 @@ struct XCTestRunPlistTests {
         let data = try PropertyListSerialization.data(fromPropertyList: plistDict, format: .xml, options: 0)
         let plist = try #require(XCTestRunPlist(data))
 
-        let result = try #require(plist.activating("id_1"))
+        let result = plist.activating("id_1")
         let resultDict = try #require(
             PropertyListSerialization.propertyList(from: result, options: [], format: nil) as? [String: Any]
         )
@@ -68,6 +68,27 @@ struct XCTestRunPlistTests {
         let envVars = try #require(targetDict["EnvironmentVariables"] as? [String: String])
 
         #expect(envVars["__SWIFT_MUTATION_TESTING_ACTIVE"] == "id_1")
+    }
+
+    @Test("Given legacy-format plist with non-dict value key, when activating mutant, then non-dict key is skipped")
+    func activatingSkipsNonDictValueKeyInLegacyFormat() throws {
+        let plistDict: [String: Any] = [
+            "__xctestrun_metadata__": ["FormatVersion": 1],
+            "AppTests": ["EnvironmentVariables": [:] as [String: String]],
+            "versionString": "1.0",
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plistDict, format: .xml, options: 0)
+        let plist = try #require(XCTestRunPlist(data))
+
+        let result = plist.activating("id_x")
+        let resultDict = try #require(
+            PropertyListSerialization.propertyList(from: result, options: [], format: nil) as? [String: Any]
+        )
+
+        #expect(resultDict["versionString"] as? String == "1.0")
+        let appTests = try #require(resultDict["AppTests"] as? [String: Any])
+        let envVars = try #require(appTests["EnvironmentVariables"] as? [String: String])
+        #expect(envVars["__SWIFT_MUTATION_TESTING_ACTIVE"] == "id_x")
     }
 
     @Test("Given legacy-format plist, when activating mutant, then metadata key is not modified")
@@ -79,7 +100,7 @@ struct XCTestRunPlistTests {
         let data = try PropertyListSerialization.data(fromPropertyList: plistDict, format: .xml, options: 0)
         let plist = try #require(XCTestRunPlist(data))
 
-        let result = try #require(plist.activating("id_2"))
+        let result = plist.activating("id_2")
         let resultDict = try #require(
             PropertyListSerialization.propertyList(from: result, options: [], format: nil) as? [String: Any]
         )

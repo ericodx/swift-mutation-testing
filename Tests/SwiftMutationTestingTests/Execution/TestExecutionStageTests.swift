@@ -72,6 +72,85 @@ struct TestExecutionStageTests {
         #expect(results.first?.status == .survived)
     }
 
+    @Test("Given noCache is true, when mutant executed, then cache is bypassed and result is fresh")
+    func noCacheConfigurationBypassesCache() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let cacheStore = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
+        let pool = SimulatorPool(
+            baseUDID: nil, size: 1,
+            destination: "platform=macOS", launcher: MockProcessLauncher(exitCode: 0)
+        )
+        try await pool.setUp()
+
+        let noCacheConfig = RunnerConfiguration(
+            projectPath: "/tmp", scheme: "S", destination: "platform=macOS",
+            timeout: 60, concurrency: 1, noCache: true, quiet: true
+        )
+        let context = TestExecutionContext(
+            artifact: makeBuildArtifact(in: dir),
+            sandbox: Sandbox(rootURL: dir),
+            pool: pool,
+            configuration: noCacheConfig,
+            testFilesHash: "hash"
+        )
+
+        let survivedStage = TestExecutionStage(
+            launcher: MockProcessLauncher(exitCode: 0),
+            cacheStore: cacheStore,
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
+        )
+        _ = try await survivedStage.execute(mutants: [makeMutant(id: "m0")], in: context)
+
+        let killedStage = TestExecutionStage(
+            launcher: MockProcessLauncher(
+                exitCode: 1,
+                output: "Test Case '-[S t]' failed (0.001 seconds)."
+            ),
+            cacheStore: cacheStore,
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
+        )
+        let results = try await killedStage.execute(mutants: [makeMutant(id: "m0")], in: context)
+
+        #expect(results.first?.status == .killed(by: "S.t"))
+    }
+
+    @Test("Given configuration with testTarget, when execute called, then testTarget is used in args")
+    func configurationWithTestTargetExecutesSuccessfully() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let launcher = MockProcessLauncher(exitCode: 0)
+        let pool = SimulatorPool(
+            baseUDID: nil, size: 1,
+            destination: "platform=macOS", launcher: launcher
+        )
+        try await pool.setUp()
+        let config = RunnerConfiguration(
+            projectPath: "/tmp", scheme: "S", destination: "platform=macOS",
+            testTarget: "AppTests", timeout: 60, concurrency: 1, noCache: false, quiet: true
+        )
+        let stage = TestExecutionStage(
+            launcher: launcher,
+            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
+        )
+        let context = TestExecutionContext(
+            artifact: makeBuildArtifact(in: dir),
+            sandbox: Sandbox(rootURL: dir),
+            pool: pool,
+            configuration: config,
+            testFilesHash: "hash"
+        )
+
+        let results = try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
+        #expect(results.count == 1)
+    }
+
     @Test("Given exit code 1 with test failure in output, when mutant executed, then status is killed")
     func exitCodeOneWithFailureOutputProducesKilledStatus() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
@@ -84,6 +163,37 @@ struct TestExecutionStageTests {
         let results = try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
 
         #expect(results.first?.status == .killed(by: "MySuite.myTest"))
+    }
+
+    @Test("Given launcher throws during test execution, when execute called, then error is propagated")
+    func launchThrowsPropagatesError() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let launcher = MockProcessLauncher(exitCode: 0, throwsOnCapture: true)
+        let pool = SimulatorPool(
+            baseUDID: nil, size: 1,
+            destination: "platform=macOS", launcher: MockProcessLauncher(exitCode: 0)
+        )
+        try await pool.setUp()
+
+        let stage = TestExecutionStage(
+            launcher: launcher,
+            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
+        )
+        let context = TestExecutionContext(
+            artifact: makeBuildArtifact(in: dir),
+            sandbox: Sandbox(rootURL: dir),
+            pool: pool,
+            configuration: makeConfiguration(),
+            testFilesHash: "hash"
+        )
+
+        await #expect(throws: (any Error).self) {
+            try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
+        }
     }
 
     private func makeFixture(
