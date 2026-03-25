@@ -272,6 +272,22 @@ struct FileDiscoveryStageTests {
         #expect(result[0].path.hasSuffix("Source.swift"))
     }
 
+    @Test("Given swift file with invalid UTF-8 content, when run, then file is skipped")
+    func skipsFileWithInvalidUTF8() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let invalidFile = dir.appendingPathComponent("Invalid.swift")
+        let invalidBytes: [UInt8] = [0xFF, 0xFE, 0x00]
+        try Data(invalidBytes).write(to: invalidFile)
+        try FileHelpers.write("let x = 1", named: "Valid.swift", in: dir)
+
+        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+
+        #expect(result.count == 1)
+        #expect(result[0].path.hasSuffix("Valid.swift"))
+    }
+
     @Test("Given non-existent sources path, when run, then throws sourcesPathNotFound")
     func throwsWhenPathNotFound() {
         let input = makeInput(sourcesPath: "/nonexistent/path/that/does/not/exist")

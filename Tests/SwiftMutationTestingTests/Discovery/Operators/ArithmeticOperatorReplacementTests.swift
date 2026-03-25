@@ -62,6 +62,12 @@ struct ArithmeticOperatorReplacementTests {
         #expect(result[0].mutatedText == "*")
     }
 
+    @Test("Given string literal on right side of addition, when visited, then returns no mutations")
+    func stringLiteralOnRightProducesNoMutations() {
+        let source = makeParsedSource(#"func f(n: String) { let x = n + "suffix" }"#)
+        #expect(op.mutations(in: source).isEmpty)
+    }
+
     @Test("Given no arithmetic operators, when visited, then returns no mutations")
     func noArithmeticOperators() {
         let source = makeParsedSource("func f() { if a == b {} }")

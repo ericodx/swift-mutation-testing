@@ -82,6 +82,15 @@ struct SchemataGeneratorTests {
         #expect(result.contains("swift-mutation-testing_5"))
     }
 
+    @Test("Given mutation at file scope, when generated, then returns original content unchanged")
+    func mutationAtFileScopeIsSkipped() {
+        let source = makeParsedSource("let x = true")
+        let mutations = mutationsWithIndices(source)
+        #expect(!mutations.isEmpty)
+        let result = generator.generate(source: source, mutations: mutations)
+        #expect(result == source.file.content)
+    }
+
     @Test("Given generated content, when parsed by SwiftSyntax, then has no syntax errors")
     func generatedContentIsParseableBySwiftSyntax() {
         let source = makeParsedSource("func f() { let x = true; let y = false }")

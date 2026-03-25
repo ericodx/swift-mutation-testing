@@ -52,4 +52,11 @@ struct NegateConditionalTests {
         let result = op.mutations(in: source)
         #expect(result[0].operatorIdentifier == "NegateConditional")
     }
+
+    @Test("Given let binding condition, when visited, then produces no mutation")
+    func letBindingConditionProducesNoMutation() {
+        let source = makeParsedSource("func f() { if let x = optional { } }")
+        let result = op.mutations(in: source)
+        #expect(result.isEmpty)
+    }
 }

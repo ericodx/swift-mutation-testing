@@ -97,16 +97,36 @@ struct TypeScopeVisitorTests {
         #expect(!visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
     }
 
+    @Test("Given deinitializer with body, when walked, then records one scope")
+    func deinitializerRecordsScope() {
+        let visitor = makeVisitor("class C { deinit { let x = 1 } }")
+        #expect(visitor.scopes.count == 1)
+    }
+
+    @Test("Given computed property with explicit setter, when walked, then mutation inside is schematizable")
+    func computedPropertyExplicitSetterIsSchematizable() {
+        let code = "class C { var x: Int = 0 { didSet { let enabled = true; _ = enabled } } }"
+        let source = makeParsedSource(code)
+        let visitor = TypeScopeVisitor()
+        visitor.walk(source.syntax)
+
+        let mutations = BooleanLiteralReplacement().mutations(in: source)
+        let insideBody = mutations.first { visitor.isSchematizable(utf8Offset: $0.utf8Offset) }
+        #expect(insideBody != nil)
+    }
+
+    @Test("Given offset outside all scopes, when innermostScope queried, then returns nil")
+    func innermostScopeReturnsNilForOffsetOutsideAllScopes() {
+        let visitor = makeVisitor("func f() { let x = 1 }")
+        #expect(visitor.innermostScope(containing: 99999) == nil)
+    }
+
     @Test("Given nested function, when innermostScope queried, then returns smallest containing scope")
     func innermostScopeReturnsSmallestContainingScope() {
         let code = "func outer() { func inner() { let x = 1 } }"
         let source = makeParsedSource(code)
         let visitor = TypeScopeVisitor()
         visitor.walk(source.syntax)
-
-        let mutation = BooleanLiteralReplacement().mutations(
-            in: makeParsedSource("func outer() { func inner() { let x = true } }")
-        )[0]
 
         let innerSource = makeParsedSource("func outer() { func inner() { let x = true } }")
         let innerVisitor = TypeScopeVisitor()

@@ -84,6 +84,15 @@ struct SchematizationStageTests {
         #expect(result.descriptors[0].id == "swift-mutation-testing_0")
     }
 
+    @Test("Given mutation point for unknown file path, when run, then skips it and returns empty result")
+    func mutationForUnknownFilePathIsSkipped() {
+        let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
+        let mutations = BooleanLiteralReplacement().mutations(in: source)
+        let result = stage.run(mutationPoints: mutations, sources: [])
+        #expect(result.schematizedFiles.isEmpty)
+        #expect(result.descriptors.isEmpty)
+    }
+
     @Test("Given empty mutation points, when run, then returns empty result")
     func emptyMutationPointsReturnsEmptyResult() {
         let source = makeParsedSource("func f() { let x = 1 }", path: "a.swift")
