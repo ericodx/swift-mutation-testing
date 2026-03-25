@@ -296,6 +296,71 @@ struct SandboxFactoryTests {
         #expect(!content.contains("var __swiftMutationTestingID: String {"))
     }
 
+    @Test("Given xcworkspace with xcshareddata file, when sandbox created, then xcshareddata file is copied")
+    func xcworkspaceXcsharedDataFileIsCopied() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let xcshareddataDir =
+            projectDir
+            .appendingPathComponent("App.xcworkspace/xcshareddata")
+        try FileManager.default.createDirectory(at: xcshareddataDir, withIntermediateDirectories: true)
+        try "shared content".write(
+            to: xcshareddataDir.appendingPathComponent("scheme.xcscheme"),
+            atomically: true, encoding: .utf8
+        )
+
+        let sandbox = try await factory.create(
+            projectPath: projectDir.path,
+            schematizedFiles: [],
+            supportFileContent: ""
+        )
+        defer { try? sandbox.cleanup() }
+
+        let sandboxFile = sandbox.rootURL
+            .appendingPathComponent("App.xcworkspace/xcshareddata/scheme.xcscheme")
+        let isSymlink = (try? sandboxFile.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink ?? false
+        #expect(!isSymlink)
+        let content = try String(contentsOf: sandboxFile, encoding: .utf8)
+        #expect(content == "shared content")
+    }
+
+    @Test("Given empty switch case body preceded by blank line, when sandbox created, then break is inserted")
+    func insertsBreakWhenEmptyCaseBodyHasBlankLineBefore() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        try FileHelpers.write("original content", named: "File.swift", in: projectDir)
+        let filePath = projectDir.appendingPathComponent("File.swift").path
+
+        let schematizedContent = """
+            switch __swiftMutationTestingID {
+            case "abc-123":
+
+            case "def-456":
+                foo()
+            default:
+                bar()
+            }
+            """
+
+        let schematized = SchematizedFile(originalPath: filePath, schematizedContent: schematizedContent)
+        let sandbox = try await factory.create(
+            projectPath: projectDir.path,
+            schematizedFiles: [schematized],
+            supportFileContent: ""
+        )
+        defer { try? sandbox.cleanup() }
+
+        let content = try String(
+            contentsOf: sandbox.rootURL.appendingPathComponent("File.swift"),
+            encoding: .utf8
+        )
+
+        #expect(content.contains("    break"))
+        #expect(content.contains("case \"abc-123\":"))
+    }
+
     @Test("Given created sandbox, when cleanup called, then sandbox directory no longer exists")
     func cleanupRemovesSandboxDirectory() async throws {
         let projectDir = try FileHelpers.makeTemporaryDirectory()
