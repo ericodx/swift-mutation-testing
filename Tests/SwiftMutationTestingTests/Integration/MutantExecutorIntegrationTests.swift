@@ -52,6 +52,7 @@ private func fixtureProjectURL() -> URL {
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
+        .deletingLastPathComponent()
         .appending(path: "Fixtures/CalcApp")
 }
 

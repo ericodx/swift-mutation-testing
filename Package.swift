@@ -31,13 +31,5 @@ let package = Package(
                 .swiftLanguageMode(.v6)
             ]
         ),
-        .testTarget(
-            name: "SwiftMutationTestingIntegrationTests",
-            dependencies: ["SwiftMutationTesting"],
-            path: "Tests/IntegrationTests",
-            swiftSettings: [
-                .swiftLanguageMode(.v6)
-            ]
-        ),
     ]
 )

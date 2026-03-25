@@ -137,6 +137,7 @@ extension DiscoveryPipelineIntegrationTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+            .deletingLastPathComponent()
             .appending(path: "Fixtures/CalcApp")
     }
 
