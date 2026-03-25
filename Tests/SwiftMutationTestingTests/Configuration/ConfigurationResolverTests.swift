@@ -253,4 +253,64 @@ struct ConfigurationResolverTests {
 
         #expect(result.operators.isEmpty)
     }
+
+    @Test("Given concurrency only in file, when resolved, then configuration uses file concurrency")
+    func fileConcurrencyUsedWhenCLIOmits() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: ["concurrency": "8"]
+        )
+
+        #expect(result.concurrency == 8)
+    }
+
+    @Test("Given explicit project path, when resolved, then path is standardized")
+    func explicitProjectPathIsStandardized() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(projectPath: "/tmp/myapp", scheme: "App", destination: "d"),
+            fileValues: [:]
+        )
+
+        #expect(result.projectPath.hasSuffix("myapp"))
+    }
+
+    @Test("Given empty project path, when resolved, then uses current directory")
+    func emptyProjectPathUsesCurrentDirectory() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(projectPath: "", scheme: "App", destination: "d"),
+            fileValues: [:]
+        )
+
+        #expect(!result.projectPath.isEmpty)
+    }
+
+    @Test("Given CLI concurrency, when resolved, then CLI concurrency overrides file")
+    func cliConcurrencyOverridesFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d", concurrency: 2),
+            fileValues: ["concurrency": "8"]
+        )
+
+        #expect(result.concurrency == 2)
+    }
+
+    @Test("Given output path in file, when resolved, then output is set")
+    func outputFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d"),
+            fileValues: ["output": "/tmp/report.txt"]
+        )
+
+        #expect(result.output == "/tmp/report.txt")
+    }
+
+    @Test("Given testTarget via CLI, when resolved, then testTarget is set")
+    func testTargetFromCLI() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(scheme: "App", destination: "d", testTarget: "AppTests"),
+            fileValues: [:]
+        )
+
+        #expect(result.testTarget == "AppTests")
+    }
 }

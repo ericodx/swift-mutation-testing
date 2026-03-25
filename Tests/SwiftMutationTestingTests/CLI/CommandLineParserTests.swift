@@ -189,4 +189,17 @@ struct CommandLineParserTests {
         #expect(result.excludePatterns.isEmpty)
         #expect(result.operators.isEmpty)
     }
+
+    @Test("Given repeated --disable-mutator flags, when parsed, then all disabled mutators are collected")
+    func disabledMutatorsAreCollected() throws {
+        let result = try parser.parse([
+            "run",
+            "--scheme", "App",
+            "--destination", "d",
+            "--disable-mutator", "RemoveSideEffects",
+            "--disable-mutator", "SwapTernary",
+        ])
+
+        #expect(result.disabledMutators == ["RemoveSideEffects", "SwapTernary"])
+    }
 }
