@@ -15,9 +15,7 @@ struct TestFilesHasher: Sendable {
                 includingPropertiesForKeys: nil,
                 options: [.skipsHiddenFiles]
             )
-        else {
-            return []
-        }
+        else { return [] }
 
         var paths: [String] = []
         for case let url as URL in enumerator {

@@ -30,9 +30,7 @@ struct FileDiscoveryStage: Sendable {
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles]
             )
-        else {
-            throw FileDiscoveryError.sourcesPathNotFound(input.sourcesPath)
-        }
+        else { throw FileDiscoveryError.sourcesPathNotFound(input.sourcesPath) }
 
         var sourceFiles: [SourceFile] = []
 
