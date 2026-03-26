@@ -29,9 +29,7 @@ struct SchemataGenerator: Sendable {
                     start: scope.statementsStartOffset,
                     end: scope.statementsEndOffset
                 )
-            else {
-                continue
-            }
+            else { continue }
 
             let sortedMutations = group.mutations.sorted { $0.index < $1.index }
             var cases: [(id: String, statements: String)] = []

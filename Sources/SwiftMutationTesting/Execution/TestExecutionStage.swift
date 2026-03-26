@@ -48,15 +48,7 @@ struct TestExecutionStage: Sendable {
             return result
         }
 
-        guard let plistData = context.artifact.plist.activating(mutant.id) else {
-            let result = ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
-            await cacheStore.store(status: .unviable, for: key)
-            let index = await counter.increment()
-            await reporter.report(
-                .mutantFinished(descriptor: mutant, status: .unviable, index: index, total: counter.total))
-            return result
-        }
-
+        let plistData = context.artifact.plist.activating(mutant.id)
         let slot = try await context.pool.acquire()
         let launched: TestLaunchResult
         do {

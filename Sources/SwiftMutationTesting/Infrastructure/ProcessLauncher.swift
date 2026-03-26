@@ -14,16 +14,19 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
 
+        let killedByUs = KilledByUsFlag()
+
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let timeoutTask = Task {
                     try await Task.sleep(for: .seconds(timeout))
+                    killedByUs.mark()
                     terminateProcessGroup(pid: process.processIdentifier)
                 }
 
                 process.terminationHandler = { proc in
                     timeoutTask.cancel()
-                    let exitCode: Int32 = proc.terminationReason == .uncaughtSignal ? -1 : proc.terminationStatus
+                    let exitCode: Int32 = killedByUs.value ? -1 : proc.terminationStatus
                     continuation.resume(returning: exitCode)
                 }
 
@@ -36,6 +39,7 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
                 }
             }
         } onCancel: {
+            killedByUs.mark()
             terminateProcessGroup(pid: process.processIdentifier)
         }
     }
@@ -63,10 +67,13 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
         process.standardOutput = fileHandle
         process.standardError = fileHandle
 
+        let killedByUs = KilledByUsFlag()
+
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let timeoutTask = Task {
                     try await Task.sleep(for: .seconds(timeout))
+                    killedByUs.mark()
                     terminateProcessGroup(pid: process.processIdentifier)
                 }
 
@@ -75,8 +82,7 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
                     fileHandle.closeFile()
                     let output = (try? String(contentsOf: tempURL, encoding: .utf8)) ?? ""
                     try? FileManager.default.removeItem(at: tempURL)
-                    let exitCode: Int32 =
-                        terminated.terminationReason == .uncaughtSignal ? -1 : terminated.terminationStatus
+                    let exitCode: Int32 = killedByUs.value ? -1 : terminated.terminationStatus
                     continuation.resume(returning: (exitCode: exitCode, output: output))
                 }
 
@@ -91,6 +97,7 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
                 }
             }
         } onCancel: {
+            killedByUs.mark()
             terminateProcessGroup(pid: process.processIdentifier)
         }
     }
@@ -102,5 +109,22 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
             try? await Task.sleep(for: .seconds(5))
             kill(-pid, SIGKILL)
         }
+    }
+}
+
+private final class KilledByUsFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _value
+    }
+
+    func mark() {
+        lock.lock()
+        _value = true
+        lock.unlock()
     }
 }

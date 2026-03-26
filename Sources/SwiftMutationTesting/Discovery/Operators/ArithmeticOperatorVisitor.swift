@@ -42,15 +42,12 @@ final class ArithmeticOperatorVisitor: MutationSyntaxVisitor {
     private func hasStringLiteralOperand(around token: TokenSyntax) -> Bool {
         guard let operatorExpr = token.parent?.as(BinaryOperatorExprSyntax.self),
             let elements = operatorExpr.parent?.as(ExprListSyntax.self)
-        else {
-            return false
-        }
+        else { return false }
 
         let items = Array(elements)
 
-        guard let operatorIndex = items.firstIndex(where: { $0.position == operatorExpr.position }) else {
-            return false
-        }
+        guard let operatorIndex = items.firstIndex(where: { $0.position == operatorExpr.position })
+        else { return false }
 
         let leftIndex = operatorIndex - 1
         let rightIndex = operatorIndex + 1

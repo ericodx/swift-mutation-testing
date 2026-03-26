@@ -288,10 +288,6 @@ struct SandboxFactory: Sendable {
         let resolvedURL = sandboxFileURL.resolvingSymlinksInPath()
         let existing = (try? String(contentsOf: resolvedURL, encoding: .utf8)) ?? ""
 
-        if (try? sandboxFileURL.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true {
-            try FileManager.default.removeItem(at: sandboxFileURL)
-        }
-
         try (existing + "\n" + content).write(to: sandboxFileURL, atomically: true, encoding: .utf8)
     }
 }

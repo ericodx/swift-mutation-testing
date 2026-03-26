@@ -2,14 +2,15 @@ import Foundation
 
 struct MutantExecutor: Sendable {
 
-    init(configuration: RunnerConfiguration) {
+    init(configuration: RunnerConfiguration, launcher: any ProcessLaunching = ProcessLauncher()) {
         self.configuration = configuration
+        self.launcher = launcher
     }
 
     private let configuration: RunnerConfiguration
+    private let launcher: any ProcessLaunching
 
     func execute(_ input: RunnerInput) async throws -> [ExecutionResult] {
-        let launcher = ProcessLauncher()
         let reporter: any ProgressReporter =
             configuration.quiet
             ? SilentProgressReporter()

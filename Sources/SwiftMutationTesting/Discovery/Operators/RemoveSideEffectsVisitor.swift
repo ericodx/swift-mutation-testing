@@ -19,9 +19,8 @@ final class RemoveSideEffectsVisitor: MutationSyntaxVisitor {
             return .visitChildren
         }
 
-        guard let firstToken = node.firstToken(viewMode: .sourceAccurate) else {
-            return .visitChildren
-        }
+        guard let firstToken = node.firstToken(viewMode: .sourceAccurate)
+        else { return .visitChildren }
 
         let location = firstToken.startLocation(converter: locationConverter)
 
