@@ -478,4 +478,57 @@ struct ProjectDetectorTests {
 
         #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 16")
     }
+
+    @Test("Given xcodeproj with xros SDKROOT, when detect called, then destination is visionOS Simulator")
+    func detectsvisionOSDestinationFromPbxproj() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let xcodeprojURL = dir.appendingPathComponent("MyApp.xcodeproj")
+        try FileManager.default.createDirectory(at: xcodeprojURL, withIntermediateDirectories: true)
+        try "SDKROOT = xros;".write(
+            to: xcodeprojURL.appendingPathComponent("project.pbxproj"),
+            atomically: true, encoding: .utf8
+        )
+
+        let simctlJSON = """
+            {
+              "devices": {
+                "com.apple.CoreSimulator.SimRuntime.visionOS-2-0": [
+                  { "name": "Apple Vision Pro", "isAvailable": true }
+                ]
+              }
+            }
+            """
+        let launcher = MockProcessLauncher(
+            exitCode: 0,
+            output: projectJSON,
+            responses: ["xcrun": (exitCode: 0, output: simctlJSON)]
+        )
+        let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
+
+        #expect(result.destination == "platform=visionOS Simulator,OS=latest,name=Apple Vision Pro")
+    }
+
+    @Test("Given xros SDK and simctl fails, when detect called, then destination falls back to macOS")
+    func fallsBackToMacOSWhenNovisionOSSimulatorFound() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let xcodeprojURL = dir.appendingPathComponent("MyApp.xcodeproj")
+        try FileManager.default.createDirectory(at: xcodeprojURL, withIntermediateDirectories: true)
+        try "SDKROOT = xros;".write(
+            to: xcodeprojURL.appendingPathComponent("project.pbxproj"),
+            atomically: true, encoding: .utf8
+        )
+
+        let launcher = MockProcessLauncher(
+            exitCode: 0,
+            output: projectJSON,
+            responses: ["xcrun": (exitCode: 1, output: "")]
+        )
+        let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
+
+        #expect(result.destination == "platform=macOS")
+    }
 }
