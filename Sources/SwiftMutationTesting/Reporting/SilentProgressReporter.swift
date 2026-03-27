@@ -1,3 +1,3 @@
 struct SilentProgressReporter: Sendable, ProgressReporter {
-    func report(_ event: RunnerEvent) async {}
+    func report(_ _: RunnerEvent) async {}
 }
