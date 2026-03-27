@@ -87,7 +87,7 @@ actor SimulatorPool {
                     try await SimulatorManager(launcher: launcher).waitForBooted(udid: udid)
                 }
             }
-            for try await _ in group {}
+            try await group.waitForAll()
         }
     }
 
