@@ -62,7 +62,7 @@ final class SuppressionVisitor: SyntaxVisitor {
         return .visitChildren
     }
 
-    override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
+    override func visit(_ _: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
         .visitChildren
     }
 
