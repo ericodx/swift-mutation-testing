@@ -115,25 +115,40 @@ struct ProjectDetector: Sendable {
         }
 
         if content.range(of: #"SDKROOT\s*=\s*iphoneos"#, options: .regularExpression) != nil,
-            let device = await queryBestDevice(for: "iOS")
+            let device = await queryBestDevice(
+                for: "iOS",
+                selecting: {
+                    $0.first { $0.hasPrefix("iPhone") && $0.contains("Pro") }
+                        ?? $0.first { $0.hasPrefix("iPhone") }
+                }
+            )
         {
             return "platform=iOS Simulator,OS=latest,name=\(device)"
         }
 
         if content.range(of: #"SDKROOT\s*=\s*appletvos"#, options: .regularExpression) != nil,
-            let device = await queryBestDevice(for: "tvOS")
+            let device = await queryBestDevice(
+                for: "tvOS",
+                selecting: { $0.first { $0.contains("Apple TV 4K") } ?? $0.first { $0.contains("Apple TV") } }
+            )
         {
             return "platform=tvOS Simulator,OS=latest,name=\(device)"
         }
 
         if content.range(of: #"SDKROOT\s*=\s*watchos"#, options: .regularExpression) != nil,
-            let device = await queryBestDevice(for: "watchOS")
+            let device = await queryBestDevice(
+                for: "watchOS",
+                selecting: { $0.first { $0.contains("Apple Watch") } }
+            )
         {
             return "platform=watchOS Simulator,OS=latest,name=\(device)"
         }
 
         if content.range(of: #"SDKROOT\s*=\s*xros"#, options: .regularExpression) != nil,
-            let device = await queryBestDevice(for: "visionOS")
+            let device = await queryBestDevice(
+                for: "visionOS",
+                selecting: { $0.first { $0.contains("Apple Vision Pro") } }
+            )
         {
             return "platform=visionOS Simulator,OS=latest,name=\(device)"
         }
@@ -141,7 +156,7 @@ struct ProjectDetector: Sendable {
         return "platform=macOS"
     }
 
-    private func queryBestDevice(for platform: String) async -> String? {
+    private func queryBestDevice(for platform: String, selecting: ([String]) -> String?) async -> String? {
         guard
             let result = try? await launcher.launchCapturing(
                 executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
@@ -166,9 +181,7 @@ struct ProjectDetector: Sendable {
         for key in sorted {
             guard let deviceList = devices[key] as? [[String: Any]] else { continue }
             let names = deviceList.compactMap { $0["name"] as? String }
-            if let name = preferredDevice(from: names, for: platform) {
-                return name
-            }
+            if let name = selecting(names) { return name }
         }
 
         return nil
@@ -182,27 +195,4 @@ struct ProjectDetector: Sendable {
         else { return (0, 0) }
         return (major, minor)
     }
-
-    private func preferredDevice(from names: [String], for platform: String) -> String? {
-        if platform == "iOS" {
-            return names.first { $0.hasPrefix("iPhone") && $0.contains("Pro") }
-                ?? names.first { $0.hasPrefix("iPhone") }
-        }
-
-        if platform == "tvOS" {
-            return names.first { $0.contains("Apple TV 4K") }
-                ?? names.first { $0.contains("Apple TV") }
-        }
-
-        if platform == "watchOS" {
-            return names.first { $0.contains("Apple Watch") }
-        }
-
-        if platform == "visionOS" {
-            return names.first { $0.contains("Apple Vision Pro") }
-        }
-
-        return nil
-    }
-
 }
