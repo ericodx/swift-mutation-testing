@@ -1,6 +1,10 @@
 # Swift Mutation Testing
 
+[![Swift Package Index](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fericodx%2Fswift-mutation-testing%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/ericodx/swift-mutation-testing)
+[![Swift Package Index](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fericodx%2Fswift-mutation-testing%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/ericodx/swift-mutation-testing)
 [![CI](https://img.shields.io/github/actions/workflow/status/ericodx/swift-mutation-testing/ci.yml?branch=main&style=flat-square&logo=github&logoColor=white&label=CI&color=4CAF50)](https://github.com/ericodx/swift-mutation-testing/actions)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=deploy-on-friday-swift-mutation-testing&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=deploy-on-friday-swift-mutation-testing)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=deploy-on-friday-swift-mutation-testing&metric=coverage)](https://sonarcloud.io/summary/new_code?id=deploy-on-friday-swift-mutation-testing)
 
 **Find untested behaviour in Swift codebases.**
 
