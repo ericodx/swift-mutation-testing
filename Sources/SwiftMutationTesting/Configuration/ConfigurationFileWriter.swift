@@ -24,9 +24,6 @@ struct ConfigurationFileWriter: Sendable {
             lines.append("# Available schemes: \(project.allSchemes.joined(separator: ", "))")
         }
 
-        lines.append("# Xcode-only: required when testRunner is xcodebuild")
-        lines.append("testRunner: xcodebuild")
-
         if let scheme = project.scheme {
             lines.append("scheme: \(scheme)")
         } else {
@@ -45,11 +42,11 @@ struct ConfigurationFileWriter: Sendable {
         }
 
         lines.append("")
-        lines.append("# Per-mutant test timeout in seconds (default: 120)")
-        lines.append("timeout: 120")
+        lines.append("# Per-mutant test timeout in seconds (default: 60)")
+        lines.append("timeout: 60")
         lines.append("")
-        lines.append("# Parallel simulators (4 recommended for Xcode)")
-        lines.append("concurrency: 4")
+        lines.append("# Number of parallel workers (default: max(1, CPU count - 1))")
+        lines.append("# concurrency: 4")
         lines.append("")
         lines.append("# Disable result cache (re-runs all mutants on every execution)")
         lines.append("# noCache: true")
