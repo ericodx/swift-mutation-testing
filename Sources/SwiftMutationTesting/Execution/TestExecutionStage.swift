@@ -11,7 +11,7 @@ struct TestExecutionStage: Sendable {
         in context: TestExecutionContext
     ) async throws -> [ExecutionResult] {
         var results: [ExecutionResult] = []
-        let concurrency = context.configuration.concurrency
+        let concurrency = context.configuration.build.concurrency
 
         try await withThrowingTaskGroup(of: ExecutionResult.self) { group in
             var activeTasks = 0
@@ -40,7 +40,7 @@ struct TestExecutionStage: Sendable {
         key: MutantCacheKey,
         in context: TestExecutionContext
     ) async throws -> ExecutionResult {
-        if !context.configuration.noCache, let cached = await cacheStore.result(for: key) {
+        if !context.configuration.build.noCache, let cached = await cacheStore.result(for: key) {
             let result = ExecutionResult(descriptor: mutant, status: cached, testDuration: 0)
             let index = await counter.increment()
             await reporter.report(
@@ -63,7 +63,7 @@ struct TestExecutionStage: Sendable {
             exitCode: launched.exitCode,
             output: launched.output,
             xcresultPath: launched.xcresultPath,
-            timeout: context.configuration.timeout
+            timeout: context.configuration.build.timeout
         )
         try? FileManager.default.removeItem(atPath: launched.xcresultPath)
 
@@ -97,7 +97,7 @@ struct TestExecutionStage: Sendable {
             "-derivedDataPath", context.artifact.derivedDataPath,
         ]
 
-        if let testTarget = context.configuration.testTarget {
+        if let testTarget = context.configuration.build.testTarget {
             arguments += ["-only-testing", testTarget]
         }
 
@@ -107,7 +107,7 @@ struct TestExecutionStage: Sendable {
             arguments: arguments,
             environment: nil,
             workingDirectoryURL: context.sandbox.rootURL,
-            timeout: context.configuration.timeout
+            timeout: context.configuration.build.timeout
         )
 
         return TestLaunchResult(

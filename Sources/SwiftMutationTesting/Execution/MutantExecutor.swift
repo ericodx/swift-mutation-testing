@@ -12,7 +12,7 @@ struct MutantExecutor: Sendable {
 
     func execute(_ input: RunnerInput) async throws -> [ExecutionResult] {
         let reporter: any ProgressReporter =
-            configuration.quiet
+            configuration.reporting.quiet
             ? SilentProgressReporter()
             : ConsoleProgressReporter()
 
@@ -71,7 +71,7 @@ struct MutantExecutor: Sendable {
         cacheStore: CacheStore,
         testFilesHash: String
     ) async -> [ExecutionResult]? {
-        guard !configuration.noCache, !mutants.isEmpty else { return nil }
+        guard !configuration.build.noCache, !mutants.isEmpty else { return nil }
 
         var results: [ExecutionResult] = []
         for mutant in mutants {
@@ -90,9 +90,9 @@ struct MutantExecutor: Sendable {
         do {
             let artifact = try await BuildStage(launcher: deps.launcher).build(
                 sandbox: sandbox,
-                scheme: configuration.scheme,
-                destination: configuration.destination,
-                timeout: configuration.timeout
+                scheme: configuration.build.scheme,
+                destination: configuration.build.destination,
+                timeout: configuration.build.timeout
             )
             await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
             return artifact
@@ -158,9 +158,9 @@ struct MutantExecutor: Sendable {
         do {
             artifact = try await BuildStage(launcher: deps.launcher).build(
                 sandbox: sandbox,
-                scheme: configuration.scheme,
-                destination: configuration.destination,
-                timeout: configuration.timeout
+                scheme: configuration.build.scheme,
+                destination: configuration.build.destination,
+                timeout: configuration.build.timeout
             )
             await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
         } catch {
@@ -187,7 +187,7 @@ struct MutantExecutor: Sendable {
         testFilesHash: String,
         deps: ExecutionDeps
     ) async -> [ExecutionResult]? {
-        guard !configuration.noCache else { return nil }
+        guard !configuration.build.noCache else { return nil }
 
         var results: [ExecutionResult] = []
         for mutant in mutants {
@@ -237,19 +237,19 @@ struct MutantExecutor: Sendable {
     }
 
     private func makePool(launcher: any ProcessLaunching) async throws -> SimulatorPool {
-        guard SimulatorManager.requiresSimulatorPool(for: configuration.destination) else {
+        guard SimulatorManager.requiresSimulatorPool(for: configuration.build.destination) else {
             return SimulatorPool(
                 baseUDID: nil, size: 1,
-                destination: configuration.destination, launcher: launcher
+                destination: configuration.build.destination, launcher: launcher
             )
         }
 
         let baseUDID = try await SimulatorManager(launcher: launcher)
-            .resolveBaseUDID(for: configuration.destination)
+            .resolveBaseUDID(for: configuration.build.destination)
 
         return SimulatorPool(
-            baseUDID: baseUDID, size: configuration.concurrency,
-            destination: configuration.destination, launcher: launcher
+            baseUDID: baseUDID, size: configuration.build.concurrency,
+            destination: configuration.build.destination, launcher: launcher
         )
     }
 }

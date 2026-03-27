@@ -62,18 +62,18 @@ struct SwiftMutationTesting {
         let start = Date()
         let discoveryInput = DiscoveryInput(
             projectPath: configuration.projectPath,
-            scheme: configuration.scheme,
-            destination: configuration.destination,
-            timeout: configuration.timeout,
-            concurrency: configuration.concurrency,
-            noCache: configuration.noCache,
-            sourcesPath: configuration.sourcesPath ?? configuration.projectPath,
-            excludePatterns: configuration.excludePatterns,
-            operators: configuration.operators
+            scheme: configuration.build.scheme,
+            destination: configuration.build.destination,
+            timeout: configuration.build.timeout,
+            concurrency: configuration.build.concurrency,
+            noCache: configuration.build.noCache,
+            sourcesPath: configuration.filter.sourcesPath ?? configuration.projectPath,
+            excludePatterns: configuration.filter.excludePatterns,
+            operators: configuration.filter.operators
         )
         let input = try await DiscoveryPipeline().run(input: discoveryInput)
 
-        if !configuration.quiet {
+        if !configuration.reporting.quiet {
             let schematizable = input.mutants.filter { $0.isSchematizable }.count
             let incompatible = input.mutants.count - schematizable
             await ConsoleProgressReporter().report(
@@ -90,13 +90,13 @@ struct SwiftMutationTesting {
 
     static func writeReports(_ summary: RunnerSummary, configuration: RunnerConfiguration) {
         let hasReports =
-            configuration.output != nil
-            || configuration.htmlOutput != nil
-            || configuration.sonarOutput != nil
+            configuration.reporting.output != nil
+            || configuration.reporting.htmlOutput != nil
+            || configuration.reporting.sonarOutput != nil
         guard hasReports else { return }
         print("")
 
-        if let output = configuration.output {
+        if let output = configuration.reporting.output {
             do {
                 try JsonReporter(outputPath: output, projectRoot: configuration.projectPath).report(summary)
                 print("  ✓ JSON report: \(output)")
@@ -105,7 +105,7 @@ struct SwiftMutationTesting {
             }
         }
 
-        if let htmlOutput = configuration.htmlOutput {
+        if let htmlOutput = configuration.reporting.htmlOutput {
             do {
                 try HtmlReporter(outputPath: htmlOutput, projectRoot: configuration.projectPath).report(summary)
                 print("  ✓ HTML report: \(htmlOutput)")
@@ -115,7 +115,7 @@ struct SwiftMutationTesting {
             }
         }
 
-        if let sonarOutput = configuration.sonarOutput {
+        if let sonarOutput = configuration.reporting.sonarOutput {
             do {
                 try SonarReporter(outputPath: sonarOutput, projectRoot: configuration.projectPath).report(summary)
                 print("  ✓ Sonar report: \(sonarOutput)")

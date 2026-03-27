@@ -18,7 +18,7 @@ struct IncompatibleMutantExecutor: Sendable {
         for mutant in mutants {
             let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
 
-            if !configuration.noCache, let cachedStatus = await cacheStore.result(for: key) {
+            if !configuration.build.noCache, let cachedStatus = await cacheStore.result(for: key) {
                 let total = counter.total
                 let index = await counter.increment()
                 await reporter.report(
@@ -67,7 +67,7 @@ struct IncompatibleMutantExecutor: Sendable {
             exitCode: launched.exitCode,
             output: launched.output,
             xcresultPath: launched.xcresultPath,
-            timeout: configuration.timeout
+            timeout: configuration.build.timeout
         )
 
         try? sandbox.cleanup()
@@ -92,14 +92,14 @@ struct IncompatibleMutantExecutor: Sendable {
 
         var arguments = [
             "test",
-            "-scheme", configuration.scheme,
+            "-scheme", configuration.build.scheme,
             "-destination", slot.destination,
             "-derivedDataPath", derivedDataPath,
             "-resultBundlePath", xcresultPath,
             "-parallel-testing-enabled", "NO",
         ]
 
-        if let testTarget = configuration.testTarget {
+        if let testTarget = configuration.build.testTarget {
             arguments += ["-only-testing", testTarget]
         }
 
@@ -109,7 +109,7 @@ struct IncompatibleMutantExecutor: Sendable {
             arguments: arguments,
             environment: nil,
             workingDirectoryURL: sandbox.rootURL,
-            timeout: configuration.timeout
+            timeout: configuration.build.timeout
         )
 
         return IncompatibleTestLaunchResult(
