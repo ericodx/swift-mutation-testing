@@ -142,7 +142,11 @@ struct ConfigurationFileWriter: Sendable {
 
 Writes `.swift-mutation-testing.yml` at `<projectPath>/.swift-mutation-testing.yml`. Throws if the file already exists.
 
-Generates YAML content using `DetectedProject` values where available, falling back to placeholder comments. The `operators:` section is populated from `DiscoveryPipeline.allOperatorNames`.
+Generates YAML content using `DetectedProject` values where available, falling back to placeholder comments. Fixed values in the generated file:
+
+- `timeout: 60` — matches `RunnerConfiguration.defaultTimeout`
+- `concurrency` — written as a comment (`# concurrency: 4`); the code default (`max(1, CPU count - 1)`) applies when absent
+- `mutators:` block — one `- name: / active: true` entry per operator from `DiscoveryPipeline.allOperatorNames`; user sets `active: false` to disable individual operators
 
 ---
 
