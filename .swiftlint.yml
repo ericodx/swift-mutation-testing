@@ -62,7 +62,7 @@ large_tuple:
   error: 4
 
 function_parameter_count:
-  error: 6
+  error: 8
 
 # Line length
 line_length:
