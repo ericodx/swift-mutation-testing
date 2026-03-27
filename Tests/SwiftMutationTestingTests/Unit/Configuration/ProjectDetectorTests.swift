@@ -126,8 +126,8 @@ struct ProjectDetectorTests {
         #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 17 Pro")
     }
 
-    @Test("Given iphoneos SDK and simctl fails, when detect called, then destination uses fallback device")
-    func fallsBackToHardcodedDeviceWhenSimctlFails() async throws {
+    @Test("Given iphoneos SDK and simctl fails, when detect called, then destination falls back to macOS")
+    func fallsBackToMacOSWhenSimctlFails() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -145,7 +145,7 @@ struct ProjectDetectorTests {
         )
         let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
-        #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro")
+        #expect(result.destination == "platform=macOS")
     }
 
     @Test("Given xcodeproj with macosx SDKROOT, when detect called, then destination is macOS")
@@ -321,8 +321,8 @@ struct ProjectDetectorTests {
         #expect(result.destination.contains("Apple Watch"))
     }
 
-    @Test("Given appletvos SDK and simctl fails, when detect called, then destination uses tvOS fallback")
-    func fallsBackToHardcodedDeviceFortvOS() async throws {
+    @Test("Given appletvos SDK and simctl fails, when detect called, then destination falls back to macOS")
+    func fallsBackToMacOSWhenNotvOSSimulatorFound() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -340,12 +340,11 @@ struct ProjectDetectorTests {
         )
         let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
-        #expect(result.destination.contains("tvOS Simulator"))
-        #expect(result.destination.contains("Apple TV 4K"))
+        #expect(result.destination == "platform=macOS")
     }
 
-    @Test("Given watchos SDK and simctl fails, when detect called, then destination uses watchOS fallback")
-    func fallsBackToHardcodedDeviceForwatchOS() async throws {
+    @Test("Given watchos SDK and simctl fails, when detect called, then destination falls back to macOS")
+    func fallsBackToMacOSWhenNowatchOSSimulatorFound() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -363,8 +362,7 @@ struct ProjectDetectorTests {
         )
         let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
-        #expect(result.destination.contains("watchOS Simulator"))
-        #expect(result.destination.contains("Apple Watch"))
+        #expect(result.destination == "platform=macOS")
     }
 
     @Test("Given project JSON with no schemes at all, when detect called, then scheme is nil")
@@ -418,8 +416,8 @@ struct ProjectDetectorTests {
         #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro")
     }
 
-    @Test("Given iphoneos SDK and runtime with no iPhone devices, when detect called, then uses fallback")
-    func fallsBackWhenRuntimeHasNoIPhoneDevices() async throws {
+    @Test("Given iphoneos SDK and runtime with no iPhone devices, when detect called, then falls back to macOS")
+    func fallsBackToMacOSWhenRuntimeHasNoIPhoneDevices() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -447,7 +445,7 @@ struct ProjectDetectorTests {
         )
         let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
-        #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro")
+        #expect(result.destination == "platform=macOS")
     }
 
     @Test("Given iphoneos SDK and simctl returns iPhone without Pro, when detect called, then uses iPhone")
