@@ -114,25 +114,28 @@ struct ProjectDetector: Sendable {
             return "platform=macOS"
         }
 
-        if content.range(of: #"SDKROOT\s*=\s*iphoneos"#, options: .regularExpression) != nil {
+        if content.range(of: #"SDKROOT\s*=\s*iphoneos"#, options: .regularExpression) != nil,
             let device = await queryBestDevice(for: "iOS")
+        {
             return "platform=iOS Simulator,OS=latest,name=\(device)"
         }
 
-        if content.range(of: #"SDKROOT\s*=\s*appletvos"#, options: .regularExpression) != nil {
+        if content.range(of: #"SDKROOT\s*=\s*appletvos"#, options: .regularExpression) != nil,
             let device = await queryBestDevice(for: "tvOS")
+        {
             return "platform=tvOS Simulator,OS=latest,name=\(device)"
         }
 
-        if content.range(of: #"SDKROOT\s*=\s*watchos"#, options: .regularExpression) != nil {
+        if content.range(of: #"SDKROOT\s*=\s*watchos"#, options: .regularExpression) != nil,
             let device = await queryBestDevice(for: "watchOS")
+        {
             return "platform=watchOS Simulator,OS=latest,name=\(device)"
         }
 
         return "platform=macOS"
     }
 
-    private func queryBestDevice(for platform: String) async -> String {
+    private func queryBestDevice(for platform: String) async -> String? {
         guard
             let result = try? await launcher.launchCapturing(
                 executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
@@ -146,7 +149,7 @@ struct ProjectDetector: Sendable {
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let devices = json["devices"] as? [String: Any]
         else {
-            return fallbackDevice(for: platform)
+            return nil
         }
 
         let runtimeKey = ".\(platform)-"
@@ -162,7 +165,7 @@ struct ProjectDetector: Sendable {
             }
         }
 
-        return fallbackDevice(for: platform)
+        return nil
     }
 
     private func runtimeVersion(from key: String) -> (Int, Int) {
@@ -192,12 +195,4 @@ struct ProjectDetector: Sendable {
         return nil
     }
 
-    private func fallbackDevice(for platform: String) -> String {
-        switch platform {
-        case "iOS": return "iPhone 16 Pro"
-        case "tvOS": return "Apple TV 4K (3rd generation)"
-        case "watchOS": return "Apple Watch Series 10 (46mm)"
-        default: return ""
-        }
-    }
 }
