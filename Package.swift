@@ -8,7 +8,7 @@ let package = Package(
         .executable(name: "swift-mutation-testing", targets: ["SwiftMutationTesting"])
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-syntax.git", from: "602.0.0")
+        .package(url: "https://github.com/apple/swift-syntax.git", from: "603.0.0")
     ],
     targets: [
         .executableTarget(
