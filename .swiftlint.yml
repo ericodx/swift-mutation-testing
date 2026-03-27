@@ -66,5 +66,4 @@ function_parameter_count:
 
 # Line length
 line_length:
-  warning: 120
-  error: 150
+  error: 120
