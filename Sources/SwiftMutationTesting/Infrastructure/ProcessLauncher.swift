@@ -18,25 +18,7 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let timeoutTask = Task {
-                    try await Task.sleep(for: .seconds(timeout))
-                    killedByUs.mark()
-                    terminateProcessGroup(pid: process.processIdentifier)
-                }
-
-                process.terminationHandler = { proc in
-                    timeoutTask.cancel()
-                    let exitCode: Int32 = killedByUs.value ? -1 : proc.terminationStatus
-                    continuation.resume(returning: exitCode)
-                }
-
-                do {
-                    try process.run()
-                    setpgid(process.processIdentifier, process.processIdentifier)
-                } catch {
-                    timeoutTask.cancel()
-                    continuation.resume(throwing: error)
-                }
+                self.startProcess(process, killedByUs: killedByUs, timeout: timeout, continuation: continuation)
             }
         } onCancel: {
             killedByUs.mark()
@@ -71,34 +53,75 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let timeoutTask = Task {
-                    try await Task.sleep(for: .seconds(timeout))
-                    killedByUs.mark()
-                    terminateProcessGroup(pid: process.processIdentifier)
-                }
-
-                process.terminationHandler = { terminated in
-                    timeoutTask.cancel()
-                    fileHandle.closeFile()
-                    let output = (try? String(contentsOf: tempURL, encoding: .utf8)) ?? ""
-                    try? FileManager.default.removeItem(at: tempURL)
-                    let exitCode: Int32 = killedByUs.value ? -1 : terminated.terminationStatus
-                    continuation.resume(returning: (exitCode: exitCode, output: output))
-                }
-
-                do {
-                    try process.run()
-                    setpgid(process.processIdentifier, process.processIdentifier)
-                } catch {
-                    timeoutTask.cancel()
-                    fileHandle.closeFile()
-                    try? FileManager.default.removeItem(at: tempURL)
-                    continuation.resume(throwing: error)
-                }
+                self.startCapturingProcess(
+                    process, killedByUs: killedByUs, timeout: timeout,
+                    capture: CaptureTarget(fileHandle: fileHandle, tempURL: tempURL),
+                    continuation: continuation
+                )
             }
         } onCancel: {
             killedByUs.mark()
             terminateProcessGroup(pid: process.processIdentifier)
+        }
+    }
+
+    private func startProcess(
+        _ process: Process,
+        killedByUs: KilledByUsFlag,
+        timeout: Double,
+        continuation: CheckedContinuation<Int32, any Error>
+    ) {
+        let timeoutTask = Task {
+            try await Task.sleep(for: .seconds(timeout))
+            killedByUs.mark()
+            terminateProcessGroup(pid: process.processIdentifier)
+        }
+
+        process.terminationHandler = { proc in
+            timeoutTask.cancel()
+            let exitCode: Int32 = killedByUs.value ? -1 : proc.terminationStatus
+            continuation.resume(returning: exitCode)
+        }
+
+        do {
+            try process.run()
+            setpgid(process.processIdentifier, process.processIdentifier)
+        } catch {
+            timeoutTask.cancel()
+            continuation.resume(throwing: error)
+        }
+    }
+
+    private func startCapturingProcess(
+        _ process: Process,
+        killedByUs: KilledByUsFlag,
+        timeout: Double,
+        capture: CaptureTarget,
+        continuation: CheckedContinuation<(exitCode: Int32, output: String), any Error>
+    ) {
+        let timeoutTask = Task {
+            try await Task.sleep(for: .seconds(timeout))
+            killedByUs.mark()
+            terminateProcessGroup(pid: process.processIdentifier)
+        }
+
+        process.terminationHandler = { terminated in
+            timeoutTask.cancel()
+            capture.fileHandle.closeFile()
+            let output = (try? String(contentsOf: capture.tempURL, encoding: .utf8)) ?? ""
+            try? FileManager.default.removeItem(at: capture.tempURL)
+            let exitCode: Int32 = killedByUs.value ? -1 : terminated.terminationStatus
+            continuation.resume(returning: (exitCode: exitCode, output: output))
+        }
+
+        do {
+            try process.run()
+            setpgid(process.processIdentifier, process.processIdentifier)
+        } catch {
+            timeoutTask.cancel()
+            capture.fileHandle.closeFile()
+            try? FileManager.default.removeItem(at: capture.tempURL)
+            continuation.resume(throwing: error)
         }
     }
 
@@ -112,19 +135,24 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
     }
 }
 
+private struct CaptureTarget {
+    let fileHandle: FileHandle
+    let tempURL: URL
+}
+
 private final class KilledByUsFlag: @unchecked Sendable {
     private let lock = NSLock()
-    private var _value = false
+    private var flag = false
 
     var value: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return _value
+        return flag
     }
 
     func mark() {
         lock.lock()
-        _value = true
+        flag = true
         lock.unlock()
     }
 }

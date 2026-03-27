@@ -87,8 +87,21 @@ struct ProjectDetectorTests {
             atomically: true, encoding: .utf8
         )
 
-        let detector = ProjectDetector(launcher: MockProcessLauncher(exitCode: 0, output: projectJSON))
-        let result = await detector.detect(at: dir.path)
+        let simctlJSON = """
+            {
+              "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
+                  { "name": "iPhone 16 Pro", "isAvailable": true }
+                ]
+              }
+            }
+            """
+        let launcher = MockProcessLauncher(
+            exitCode: 0,
+            output: projectJSON,
+            responses: ["xcrun": (exitCode: 0, output: simctlJSON)]
+        )
+        let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
         #expect(result.destination.contains("iOS Simulator"))
     }
@@ -126,8 +139,8 @@ struct ProjectDetectorTests {
         #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 17 Pro")
     }
 
-    @Test("Given iphoneos SDK and simctl fails, when detect called, then destination uses fallback device")
-    func fallsBackToHardcodedDeviceWhenSimctlFails() async throws {
+    @Test("Given iphoneos SDK and simctl fails, when detect called, then destination falls back to macOS")
+    func fallsBackToMacOSWhenSimctlFails() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -145,7 +158,7 @@ struct ProjectDetectorTests {
         )
         let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
-        #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro")
+        #expect(result.destination == "platform=macOS")
     }
 
     @Test("Given xcodeproj with macosx SDKROOT, when detect called, then destination is macOS")
@@ -321,8 +334,8 @@ struct ProjectDetectorTests {
         #expect(result.destination.contains("Apple Watch"))
     }
 
-    @Test("Given appletvos SDK and simctl fails, when detect called, then destination uses tvOS fallback")
-    func fallsBackToHardcodedDeviceFortvOS() async throws {
+    @Test("Given appletvos SDK and simctl fails, when detect called, then destination falls back to macOS")
+    func fallsBackToMacOSWhenNotvOSSimulatorFound() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -340,12 +353,11 @@ struct ProjectDetectorTests {
         )
         let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
-        #expect(result.destination.contains("tvOS Simulator"))
-        #expect(result.destination.contains("Apple TV 4K"))
+        #expect(result.destination == "platform=macOS")
     }
 
-    @Test("Given watchos SDK and simctl fails, when detect called, then destination uses watchOS fallback")
-    func fallsBackToHardcodedDeviceForwatchOS() async throws {
+    @Test("Given watchos SDK and simctl fails, when detect called, then destination falls back to macOS")
+    func fallsBackToMacOSWhenNowatchOSSimulatorFound() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -363,8 +375,7 @@ struct ProjectDetectorTests {
         )
         let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
-        #expect(result.destination.contains("watchOS Simulator"))
-        #expect(result.destination.contains("Apple Watch"))
+        #expect(result.destination == "platform=macOS")
     }
 
     @Test("Given project JSON with no schemes at all, when detect called, then scheme is nil")
@@ -418,8 +429,8 @@ struct ProjectDetectorTests {
         #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro")
     }
 
-    @Test("Given iphoneos SDK and runtime with no iPhone devices, when detect called, then uses fallback")
-    func fallsBackWhenRuntimeHasNoIPhoneDevices() async throws {
+    @Test("Given iphoneos SDK and runtime with no iPhone devices, when detect called, then falls back to macOS")
+    func fallsBackToMacOSWhenRuntimeHasNoIPhoneDevices() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -447,7 +458,7 @@ struct ProjectDetectorTests {
         )
         let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
-        #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro")
+        #expect(result.destination == "platform=macOS")
     }
 
     @Test("Given iphoneos SDK and simctl returns iPhone without Pro, when detect called, then uses iPhone")
@@ -479,5 +490,58 @@ struct ProjectDetectorTests {
         let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
         #expect(result.destination == "platform=iOS Simulator,OS=latest,name=iPhone 16")
+    }
+
+    @Test("Given xcodeproj with xros SDKROOT, when detect called, then destination is visionOS Simulator")
+    func detectsvisionOSDestinationFromPbxproj() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let xcodeprojURL = dir.appendingPathComponent("MyApp.xcodeproj")
+        try FileManager.default.createDirectory(at: xcodeprojURL, withIntermediateDirectories: true)
+        try "SDKROOT = xros;".write(
+            to: xcodeprojURL.appendingPathComponent("project.pbxproj"),
+            atomically: true, encoding: .utf8
+        )
+
+        let simctlJSON = """
+            {
+              "devices": {
+                "com.apple.CoreSimulator.SimRuntime.visionOS-2-0": [
+                  { "name": "Apple Vision Pro", "isAvailable": true }
+                ]
+              }
+            }
+            """
+        let launcher = MockProcessLauncher(
+            exitCode: 0,
+            output: projectJSON,
+            responses: ["xcrun": (exitCode: 0, output: simctlJSON)]
+        )
+        let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
+
+        #expect(result.destination == "platform=visionOS Simulator,OS=latest,name=Apple Vision Pro")
+    }
+
+    @Test("Given xros SDK and simctl fails, when detect called, then destination falls back to macOS")
+    func fallsBackToMacOSWhenNovisionOSSimulatorFound() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let xcodeprojURL = dir.appendingPathComponent("MyApp.xcodeproj")
+        try FileManager.default.createDirectory(at: xcodeprojURL, withIntermediateDirectories: true)
+        try "SDKROOT = xros;".write(
+            to: xcodeprojURL.appendingPathComponent("project.pbxproj"),
+            atomically: true, encoding: .utf8
+        )
+
+        let launcher = MockProcessLauncher(
+            exitCode: 0,
+            output: projectJSON,
+            responses: ["xcrun": (exitCode: 1, output: "")]
+        )
+        let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
+
+        #expect(result.destination == "platform=macOS")
     }
 }

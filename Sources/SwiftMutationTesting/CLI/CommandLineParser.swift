@@ -54,23 +54,32 @@ struct CommandLineParser: Sendable {
         }
 
         let flags = try parseFlags(remaining)
+        return parsedArguments(projectPath: projectPath, flags: flags)
+    }
 
-        return ParsedArguments(
+    private func parsedArguments(projectPath: String, flags: FlagValues) -> ParsedArguments {
+        ParsedArguments(
             projectPath: projectPath,
-            scheme: flags.scheme,
-            destination: flags.destination,
-            testTarget: flags.testTarget,
-            timeout: flags.timeout,
-            concurrency: flags.concurrency,
-            noCache: flags.noCache,
-            output: flags.output,
-            htmlOutput: flags.htmlOutput,
-            sonarOutput: flags.sonarOutput,
-            quiet: flags.quiet,
-            sourcesPath: flags.sourcesPath,
-            excludePatterns: flags.excludePatterns,
-            operators: flags.operators,
-            disabledMutators: flags.disabledMutators
+            build: .init(
+                scheme: flags.scheme,
+                destination: flags.destination,
+                testTarget: flags.testTarget,
+                timeout: flags.timeout,
+                concurrency: flags.concurrency,
+                noCache: flags.noCache
+            ),
+            reporting: .init(
+                output: flags.output,
+                htmlOutput: flags.htmlOutput,
+                sonarOutput: flags.sonarOutput,
+                quiet: flags.quiet
+            ),
+            filter: .init(
+                sourcesPath: flags.sourcesPath,
+                excludePatterns: flags.excludePatterns,
+                operators: flags.operators,
+                disabledMutators: flags.disabledMutators
+            )
         )
     }
 

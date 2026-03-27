@@ -69,6 +69,16 @@ struct SimulatorManagerTests {
         #expect(result == true)
     }
 
+    @Test("Given simulator never boots within max attempts, when waitForBooted called, then throws bootTimeout")
+    func waitForBootedThrowsBootTimeoutWhenNeverBoots() async {
+        let json = SimulatorCommandMock.bootedDevicesJSON(udid: "OTHER-UDID")
+        let manager = SimulatorManager(launcher: SimulatorCommandMock(listOutput: json, cloneUDID: ""))
+
+        await #expect(throws: SimulatorError.self) {
+            try await manager.waitForBooted(udid: "TEST-UDID", maxAttempts: 1, sleepDuration: .zero)
+        }
+    }
+
     @Test("Given destination with neither id nor name, when resolveBaseUDID called, then throws deviceNotFound")
     func resolveBaseUDIDThrowsWhenNoIdOrName() async {
         let json = SimulatorCommandMock.bootedDevicesJSON(udid: "ANY-UDID")

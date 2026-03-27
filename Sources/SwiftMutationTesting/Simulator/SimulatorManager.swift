@@ -22,8 +22,12 @@ struct SimulatorManager: Sendable {
         return udid
     }
 
-    func waitForBooted(udid: String) async throws {
-        for _ in 0 ..< 60 {
+    func waitForBooted(
+        udid: String,
+        maxAttempts: Int = 60,
+        sleepDuration: Duration = .milliseconds(500)
+    ) async throws {
+        for _ in 0 ..< maxAttempts {
             let result = try await launcher.launchCapturing(
                 executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
                 arguments: ["simctl", "list", "devices", "--json"],
@@ -34,7 +38,7 @@ struct SimulatorManager: Sendable {
 
             if isBooted(udid: udid, in: result.output) { return }
 
-            try await Task.sleep(for: .milliseconds(500))
+            try await Task.sleep(for: sleepDuration)
         }
 
         throw SimulatorError.bootTimeout(udid: udid)

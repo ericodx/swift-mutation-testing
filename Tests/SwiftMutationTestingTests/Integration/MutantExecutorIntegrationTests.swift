@@ -59,16 +59,9 @@ private func fixtureProjectURL() -> URL {
 private func makeConfiguration(fixtureURL: URL) -> RunnerConfiguration {
     RunnerConfiguration(
         projectPath: fixtureURL.path,
-        scheme: "CalcApp",
-        destination: "platform=macOS",
-        testTarget: nil,
-        timeout: 120.0,
-        concurrency: 1,
-        noCache: true,
-        output: nil,
-        htmlOutput: nil,
-        sonarOutput: nil,
-        quiet: true
+        build: .init(scheme: "CalcApp", destination: "platform=macOS", timeout: 120.0, concurrency: 1, noCache: true),
+        reporting: .init(quiet: true),
+        filter: .init(excludePatterns: [], operators: [])
     )
 }
 

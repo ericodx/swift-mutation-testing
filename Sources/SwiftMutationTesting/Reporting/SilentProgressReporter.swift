@@ -1,3 +1,5 @@
 struct SilentProgressReporter: Sendable, ProgressReporter {
-    func report(_ event: RunnerEvent) async {}
+    func report(_ _: RunnerEvent) async {
+        // Intentionally discards all events — used when quiet mode is active
+    }
 }

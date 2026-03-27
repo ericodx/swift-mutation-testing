@@ -7,11 +7,7 @@ struct MutantDiscoveryStage: Sendable {
 
         let allMutations = await withTaskGroup(of: [MutationPoint].self) { group in
             for source in sources {
-                group.addTask {
-                    let suppressedRanges = extractor.extractSuppressedRanges(from: source.syntax)
-                    let mutations = operators.flatMap { $0.mutations(in: source) }
-                    return filter.filter(mutations, suppressedRanges: suppressedRanges)
-                }
+                group.addTask { self.mutationPoints(for: source, extractor: extractor, filter: filter) }
             }
 
             var collected: [MutationPoint] = []
@@ -30,5 +26,15 @@ struct MutantDiscoveryStage: Sendable {
 
             return $0.utf8Offset < $1.utf8Offset
         }
+    }
+
+    private func mutationPoints(
+        for source: ParsedSource,
+        extractor: SuppressionAnnotationExtractor,
+        filter: SuppressionFilter
+    ) -> [MutationPoint] {
+        let suppressedRanges = extractor.extractSuppressedRanges(from: source.syntax)
+        let mutations = operators.flatMap { $0.mutations(in: source) }
+        return filter.filter(mutations, suppressedRanges: suppressedRanges)
     }
 }

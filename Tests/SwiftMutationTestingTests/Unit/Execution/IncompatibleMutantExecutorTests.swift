@@ -95,8 +95,12 @@ struct IncompatibleMutantExecutorTests {
         )
 
         let noCacheConfig = RunnerConfiguration(
-            projectPath: dir.path, scheme: "MyScheme", destination: "platform=macOS",
-            timeout: 60, concurrency: 1, noCache: true, quiet: true
+            projectPath: dir.path,
+            build: .init(
+                scheme: "MyScheme", destination: "platform=macOS",
+                timeout: 60, concurrency: 1, noCache: true),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
         )
         let secondExecutor = IncompatibleMutantExecutor(
             launcher: MockProcessLauncher(exitCode: 1),
@@ -123,8 +127,12 @@ struct IncompatibleMutantExecutorTests {
         let pool = makePool()
         try await pool.setUp()
         let config = RunnerConfiguration(
-            projectPath: dir.path, scheme: "MyScheme", destination: "platform=macOS",
-            testTarget: "AppTests", timeout: 60, concurrency: 1, noCache: false, quiet: true
+            projectPath: dir.path,
+            build: .init(
+                scheme: "MyScheme", destination: "platform=macOS", testTarget: "AppTests",
+                timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
         )
         let executor = IncompatibleMutantExecutor(
             launcher: MockProcessLauncher(exitCode: 1),
@@ -230,16 +238,11 @@ struct IncompatibleMutantExecutorTests {
     private func makeConfiguration(projectPath: String) -> RunnerConfiguration {
         RunnerConfiguration(
             projectPath: projectPath,
-            scheme: "MyScheme",
-            destination: "platform=macOS",
-            testTarget: nil,
-            timeout: 60,
-            concurrency: 1,
-            noCache: false,
-            output: nil,
-            htmlOutput: nil,
-            sonarOutput: nil,
-            quiet: true
+            build: .init(
+                scheme: "MyScheme", destination: "platform=macOS",
+                timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
         )
     }
 
