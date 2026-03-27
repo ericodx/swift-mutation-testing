@@ -6,65 +6,68 @@ struct ConfigurationResolver: Sendable {
         fileValues: [String: String]
     ) throws -> RunnerConfiguration {
         let projectPath = resolvedPath(cliArguments.projectPath)
-        let timeout: Double
-        if let cliTimeout = cliArguments.timeout {
-            timeout = cliTimeout
-        } else if let fileTimeout = fileValues["timeout"].flatMap(Double.init) {
-            timeout = fileTimeout
-        } else {
-            timeout = RunnerConfiguration.defaultTimeout
-        }
-
-        let concurrency: Int
-        if let cliConcurrency = cliArguments.concurrency {
-            concurrency = cliConcurrency
-        } else if let fileConcurrency = fileValues["concurrency"].flatMap(Int.init) {
-            concurrency = fileConcurrency
-        } else {
-            concurrency = RunnerConfiguration.defaultConcurrency
-        }
+        let timeout = resolvedTimeout(cli: cliArguments, fileValues: fileValues)
+        let concurrency = resolvedConcurrency(cli: cliArguments, fileValues: fileValues)
 
         guard concurrency >= 1 else {
             throw UsageError(message: "--concurrency must be >= 1")
         }
 
-        guard cliArguments.scheme != nil || fileValues["scheme"] != nil else {
+        guard cliArguments.build.scheme != nil || fileValues["scheme"] != nil else {
             throw UsageError(message: "--scheme is required")
         }
 
-        guard cliArguments.destination != nil || fileValues["destination"] != nil else {
+        guard cliArguments.build.destination != nil || fileValues["destination"] != nil else {
             throw UsageError(message: "--destination is required")
         }
 
         return RunnerConfiguration(
             projectPath: projectPath,
-            scheme: cliArguments.scheme ?? fileValues["scheme"] ?? "",
-            destination: cliArguments.destination ?? fileValues["destination"] ?? "",
-            testTarget: cliArguments.testTarget ?? fileValues["testTarget"],
-            timeout: timeout,
-            concurrency: concurrency,
-            noCache: cliArguments.noCache || fileValues["noCache"]?.lowercased() == "true",
-            output: cliArguments.output ?? fileValues["output"],
-            htmlOutput: cliArguments.htmlOutput ?? fileValues["htmlOutput"],
-            sonarOutput: cliArguments.sonarOutput ?? fileValues["sonarOutput"],
-            quiet: cliArguments.quiet || fileValues["quiet"]?.lowercased() == "true",
-            sourcesPath: cliArguments.sourcesPath ?? fileValues["sourcesPath"],
-            excludePatterns: resolveList(
-                cli: cliArguments.excludePatterns,
-                keys: ["exclude", "excludePatterns"],
-                from: fileValues
+            build: .init(
+                scheme: cliArguments.build.scheme ?? fileValues["scheme"] ?? "",
+                destination: cliArguments.build.destination ?? fileValues["destination"] ?? "",
+                testTarget: cliArguments.build.testTarget ?? fileValues["testTarget"],
+                timeout: timeout,
+                concurrency: concurrency,
+                noCache: cliArguments.build.noCache || fileValues["noCache"]?.lowercased() == "true"
             ),
-            operators: resolveOperators(cli: cliArguments, fileValues: fileValues)
+            reporting: .init(
+                output: cliArguments.reporting.output ?? fileValues["output"],
+                htmlOutput: cliArguments.reporting.htmlOutput ?? fileValues["htmlOutput"],
+                sonarOutput: cliArguments.reporting.sonarOutput ?? fileValues["sonarOutput"],
+                quiet: cliArguments.reporting.quiet || fileValues["quiet"]?.lowercased() == "true"
+            ),
+            filter: .init(
+                sourcesPath: cliArguments.filter.sourcesPath ?? fileValues["sourcesPath"],
+                excludePatterns: resolveList(
+                    cli: cliArguments.filter.excludePatterns,
+                    keys: ["exclude", "excludePatterns"],
+                    from: fileValues
+                ),
+                operators: resolveOperators(cli: cliArguments, fileValues: fileValues)
+            )
         )
     }
 
+    private func resolvedTimeout(cli: ParsedArguments, fileValues: [String: String]) -> Double {
+        if let timeout = cli.build.timeout { return timeout }
+        if let timeout = fileValues["timeout"].flatMap(Double.init) { return timeout }
+        return RunnerConfiguration.defaultTimeout
+    }
+
+    private func resolvedConcurrency(cli: ParsedArguments, fileValues: [String: String]) -> Int {
+        if let concurrency = cli.build.concurrency { return concurrency }
+        if let concurrency = fileValues["concurrency"].flatMap(Int.init) { return concurrency }
+        return RunnerConfiguration.defaultConcurrency
+    }
+
     private func resolveOperators(cli: ParsedArguments, fileValues: [String: String]) -> [String] {
-        if !cli.operators.isEmpty {
-            return cli.operators
+        if !cli.filter.operators.isEmpty {
+            return cli.filter.operators
         }
 
-        if !cli.disabledMutators.isEmpty {
-            let disabled = Set(cli.disabledMutators)
+        if !cli.filter.disabledMutators.isEmpty {
+            let disabled = Set(cli.filter.disabledMutators)
             return DiscoveryPipeline.allOperatorNames.filter { !disabled.contains($0) }
         }
 
