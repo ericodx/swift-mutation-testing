@@ -228,16 +228,11 @@ struct WriteReportsTests {
     ) -> RunnerConfiguration {
         RunnerConfiguration(
             projectPath: projectPath,
-            scheme: "MyScheme",
-            destination: "platform=macOS",
-            testTarget: nil,
-            timeout: 60,
-            concurrency: 1,
-            noCache: false,
-            output: output,
-            htmlOutput: htmlOutput,
-            sonarOutput: sonarOutput,
-            quiet: true
+            build: .init(
+                scheme: "MyScheme", destination: "platform=macOS",
+                timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(output: output, htmlOutput: htmlOutput, sonarOutput: sonarOutput, quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
         )
     }
 }

@@ -16,7 +16,6 @@ struct ConfigurationFileWriterTests {
 
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
         #expect(content.contains("# swift-mutation-testing configuration"))
-        #expect(content.contains("testRunner: xcodebuild"))
     }
 
     @Test("Given no detected scheme, when write called, then scheme line is commented")
@@ -82,16 +81,16 @@ struct ConfigurationFileWriterTests {
         #expect(content.contains("destination: platform=iOS Simulator"))
     }
 
-    @Test("Given any project, when write called, then timeout and concurrency are always filled")
-    func timeoutAndConcurrencyAreAlwaysFilled() throws {
+    @Test("Given any project, when write called, then timeout is always filled")
+    func timeoutIsAlwaysFilled() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
         try writer.write(to: dir.path, project: .empty)
 
         let values = try ConfigurationFileParser().parse(at: dir.path)
-        #expect(values["timeout"] == "120")
-        #expect(values["concurrency"] == "4")
+        #expect(values["timeout"] == "60")
+        #expect(values["concurrency"] == nil)
     }
 
     @Test("Given multiple schemes detected, when write called, then available schemes comment is included")

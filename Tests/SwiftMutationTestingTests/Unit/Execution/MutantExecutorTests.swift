@@ -229,12 +229,11 @@ struct MutantExecutorTests {
     ) -> RunnerConfiguration {
         RunnerConfiguration(
             projectPath: projectPath,
-            scheme: "MyScheme",
-            destination: "platform=macOS",
-            timeout: 60,
-            concurrency: 1,
-            noCache: noCache,
-            quiet: quiet
+            build: .init(
+                scheme: "MyScheme", destination: "platform=macOS",
+                timeout: 60, concurrency: 1, noCache: noCache),
+            reporting: .init(quiet: quiet),
+            filter: .init(excludePatterns: [], operators: [])
         )
     }
 

@@ -85,8 +85,10 @@ struct TestExecutionStageTests {
         try await pool.setUp()
 
         let noCacheConfig = RunnerConfiguration(
-            projectPath: "/tmp", scheme: "S", destination: "platform=macOS",
-            timeout: 60, concurrency: 1, noCache: true, quiet: true
+            projectPath: "/tmp",
+            build: .init(scheme: "S", destination: "platform=macOS", timeout: 60, concurrency: 1, noCache: true),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
         )
         let context = TestExecutionContext(
             artifact: makeBuildArtifact(in: dir),
@@ -130,8 +132,12 @@ struct TestExecutionStageTests {
         )
         try await pool.setUp()
         let config = RunnerConfiguration(
-            projectPath: "/tmp", scheme: "S", destination: "platform=macOS",
-            testTarget: "AppTests", timeout: 60, concurrency: 1, noCache: false, quiet: true
+            projectPath: "/tmp",
+            build: .init(
+                scheme: "S", destination: "platform=macOS", testTarget: "AppTests",
+                timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
         )
         let stage = TestExecutionStage(
             launcher: launcher,
@@ -234,16 +240,11 @@ struct TestExecutionStageTests {
     private func makeConfiguration() -> RunnerConfiguration {
         RunnerConfiguration(
             projectPath: "/tmp",
-            scheme: "MyScheme",
-            destination: "platform=macOS",
-            testTarget: nil,
-            timeout: 60,
-            concurrency: 1,
-            noCache: false,
-            output: nil,
-            htmlOutput: nil,
-            sonarOutput: nil,
-            quiet: true
+            build: .init(
+                scheme: "MyScheme", destination: "platform=macOS",
+                timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
         )
     }
 
