@@ -1,9 +1,8 @@
 import Foundation
 
-@main
-struct SwiftMutationTesting {
+public struct SwiftMutationTesting {
 
-    static func main() async {
+    public static func main() async {
         exit(await run(args: Array(CommandLine.arguments.dropFirst())).rawValue)
     }
 
