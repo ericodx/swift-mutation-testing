@@ -12,6 +12,7 @@
 - [ ] docs: Changes only to the documentation.
 - [ ] ci: Changes related to continuous integration and deployment scripts.
 - [ ] build: Changes that affect the build system or external dependencies.
+- [ ] deps: Dependency version upgrades with no logic changes.
 - [ ] chore: Other changes that do not fit into the previous categories.
 - [ ] revert: Reverts a previous commit.
 
