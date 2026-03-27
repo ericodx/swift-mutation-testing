@@ -87,8 +87,21 @@ struct ProjectDetectorTests {
             atomically: true, encoding: .utf8
         )
 
-        let detector = ProjectDetector(launcher: MockProcessLauncher(exitCode: 0, output: projectJSON))
-        let result = await detector.detect(at: dir.path)
+        let simctlJSON = """
+            {
+              "devices": {
+                "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
+                  { "name": "iPhone 16 Pro", "isAvailable": true }
+                ]
+              }
+            }
+            """
+        let launcher = MockProcessLauncher(
+            exitCode: 0,
+            output: projectJSON,
+            responses: ["xcrun": (exitCode: 0, output: simctlJSON)]
+        )
+        let result = await ProjectDetector(launcher: launcher).detect(at: dir.path)
 
         #expect(result.destination.contains("iOS Simulator"))
     }
