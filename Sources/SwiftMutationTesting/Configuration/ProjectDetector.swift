@@ -132,6 +132,12 @@ struct ProjectDetector: Sendable {
             return "platform=watchOS Simulator,OS=latest,name=\(device)"
         }
 
+        if content.range(of: #"SDKROOT\s*=\s*xros"#, options: .regularExpression) != nil,
+            let device = await queryBestDevice(for: "visionOS")
+        {
+            return "platform=visionOS Simulator,OS=latest,name=\(device)"
+        }
+
         return "platform=macOS"
     }
 
@@ -190,6 +196,10 @@ struct ProjectDetector: Sendable {
 
         if platform == "watchOS" {
             return names.first { $0.contains("Apple Watch") }
+        }
+
+        if platform == "visionOS" {
+            return names.first { $0.contains("Apple Vision Pro") }
         }
 
         return nil
