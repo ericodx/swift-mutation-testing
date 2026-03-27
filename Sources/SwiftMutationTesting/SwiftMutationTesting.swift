@@ -2,6 +2,7 @@ import Foundation
 
 @main
 struct SwiftMutationTesting {
+
     static func main() async {
         exit(await run(args: Array(CommandLine.arguments.dropFirst())).rawValue)
     }
