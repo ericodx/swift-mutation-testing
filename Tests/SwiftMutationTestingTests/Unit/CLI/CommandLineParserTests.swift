@@ -12,8 +12,8 @@ struct CommandLineParserTests {
         let result = try parser.parse(["run", "/my/project", "--scheme", "MyApp", "--destination", "platform=macOS"])
 
         #expect(result.projectPath == "/my/project")
-        #expect(result.scheme == "MyApp")
-        #expect(result.destination == "platform=macOS")
+        #expect(result.build.scheme == "MyApp")
+        #expect(result.build.destination == "platform=macOS")
         #expect(result.showHelp == false)
         #expect(result.showVersion == false)
     }
@@ -58,8 +58,8 @@ struct CommandLineParserTests {
     func parsesBooleanFlags() throws {
         let result = try parser.parse(["run", "--scheme", "App", "--destination", "d", "--no-cache", "--quiet"])
 
-        #expect(result.noCache == true)
-        #expect(result.quiet == true)
+        #expect(result.build.noCache == true)
+        #expect(result.reporting.quiet == true)
     }
 
     @Test("Given optional string flags, when parsed, then all string values are set")
@@ -72,10 +72,10 @@ struct CommandLineParserTests {
             "--sonar-output", "sonar.json",
         ])
 
-        #expect(result.testTarget == "AppTests")
-        #expect(result.output == "out.json")
-        #expect(result.htmlOutput == "report.html")
-        #expect(result.sonarOutput == "sonar.json")
+        #expect(result.build.testTarget == "AppTests")
+        #expect(result.reporting.output == "out.json")
+        #expect(result.reporting.htmlOutput == "report.html")
+        #expect(result.reporting.sonarOutput == "sonar.json")
     }
 
     @Test("Given --timeout and --concurrency flags, when parsed, then numeric values are set")
@@ -86,8 +86,8 @@ struct CommandLineParserTests {
             "--concurrency", "3",
         ])
 
-        #expect(result.timeout == 90.5)
-        #expect(result.concurrency == 3)
+        #expect(result.build.timeout == 90.5)
+        #expect(result.build.concurrency == 3)
     }
 
     @Test("Given init command without path, when parsed, then showInit is true and projectPath defaults to dot")
@@ -111,8 +111,8 @@ struct CommandLineParserTests {
         let result = try parser.parse(["--scheme", "MyApp", "--destination", "platform=macOS"])
 
         #expect(result.projectPath == ".")
-        #expect(result.scheme == "MyApp")
-        #expect(result.destination == "platform=macOS")
+        #expect(result.build.scheme == "MyApp")
+        #expect(result.build.destination == "platform=macOS")
     }
 
     @Test("Given project path without run command, when parsed, then projectPath is set")
@@ -120,7 +120,7 @@ struct CommandLineParserTests {
         let result = try parser.parse(["/my/project", "--scheme", "App", "--destination", "platform=macOS"])
 
         #expect(result.projectPath == "/my/project")
-        #expect(result.scheme == "App")
+        #expect(result.build.scheme == "App")
     }
 
     @Test("Given an unknown flag, when parsed, then throws UsageError")
@@ -157,7 +157,7 @@ struct CommandLineParserTests {
             "run", "--scheme", "App", "--destination", "d", "--sources-path", "/my/sources",
         ])
 
-        #expect(result.sourcesPath == "/my/sources")
+        #expect(result.filter.sourcesPath == "/my/sources")
     }
 
     @Test("Given repeated --exclude flags, when parsed, then all patterns are collected")
@@ -168,7 +168,7 @@ struct CommandLineParserTests {
             "--exclude", "/Pods/",
         ])
 
-        #expect(result.excludePatterns == ["/Generated/", "/Pods/"])
+        #expect(result.filter.excludePatterns == ["/Generated/", "/Pods/"])
     }
 
     @Test("Given repeated --operator flags, when parsed, then all operators are collected")
@@ -179,15 +179,15 @@ struct CommandLineParserTests {
             "--operator", "NegateConditional",
         ])
 
-        #expect(result.operators == ["BooleanLiteralReplacement", "NegateConditional"])
+        #expect(result.filter.operators == ["BooleanLiteralReplacement", "NegateConditional"])
     }
 
     @Test("Given no --exclude or --operator flags, when parsed, then defaults are empty arrays")
     func defaultsToEmptyArraysForListFlags() throws {
         let result = try parser.parse(["run", "--scheme", "App", "--destination", "d"])
 
-        #expect(result.excludePatterns.isEmpty)
-        #expect(result.operators.isEmpty)
+        #expect(result.filter.excludePatterns.isEmpty)
+        #expect(result.filter.operators.isEmpty)
     }
 
     @Test("Given repeated --disable-mutator flags, when parsed, then all disabled mutators are collected")
@@ -200,6 +200,6 @@ struct CommandLineParserTests {
             "--disable-mutator", "SwapTernary",
         ])
 
-        #expect(result.disabledMutators == ["RemoveSideEffects", "SwapTernary"])
+        #expect(result.filter.disabledMutators == ["RemoveSideEffects", "SwapTernary"])
     }
 }
