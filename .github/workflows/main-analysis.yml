@@ -1,0 +1,260 @@
+name: Main Analysis
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**/*.md'
+
+jobs:
+  # Tests And Coverage
+  test-and-coverage:
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify Swift version
+        run: swift --version
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v5
+        with:
+          path: .build
+          key: ${{ runner.os }}-${{ runner.arch }}-spm-${{ hashFiles('**/Package.resolved', '**/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Prepare directories
+        run: |
+          mkdir -p coverage
+
+      - name: Run tests and generate coverage
+        run: |
+          set -e
+
+          echo "Running tests with coverage..."
+          swift test --enable-code-coverage --quiet
+
+          BIN_PATH=$(swift build --show-bin-path)
+
+          TEST_BINARY=$(find "$BIN_PATH" -type f \
+            -path "*Tests.xctest/Contents/MacOS/*" \
+            ! -path "*.dSYM/*" \
+            | head -n 1)
+
+          if [ -z "$TEST_BINARY" ]; then
+            echo "Test binary not found"
+            exit 1
+          fi
+
+          PROFDATA="$BIN_PATH/codecov/default.profdata"
+
+          echo "Generating LCOV..."
+
+          xcrun llvm-cov export \
+            "$TEST_BINARY" \
+            -instr-profile "$PROFDATA" \
+            --sources "$(pwd)/Sources" \
+            --format=lcov \
+          | sed "s|$(pwd)/||g" \
+          > coverage/lcov.info
+
+          echo "Converting LCOV → Sonar Generic XML..."
+
+          echo '<coverage version="1">' > coverage/code-coverage-report.xml
+
+          awk '
+            /^SF:/ {
+              file = substr($0,4);
+              if (file ~ /^Sources\/.*\.swift$/) {
+                current_file = file;
+                printf "  <file path=\"%s\">\n", current_file;
+                inside = 1;
+              } else {
+                inside = 0;
+              }
+            }
+
+            inside && /^DA:/ {
+              split($0,a,",");
+              line = substr(a[1],4);
+              covered = (a[2] > 0 ? "true" : "false");
+              printf "    <lineToCover lineNumber=\"%s\" covered=\"%s\"/>\n", line, covered;
+            }
+
+            inside && /^end_of_record/ {
+              print "  </file>";
+            }
+          ' coverage/lcov.info >> coverage/code-coverage-report.xml
+
+          echo '</coverage>' >> coverage/code-coverage-report.xml
+
+          echo "Coverage generated"
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 3
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-artifacts
+          path: |
+            .build/debug/index/store
+          retention-days: 3
+
+  # Static Analysis
+  static-analysis:
+    runs-on: macos-26
+    needs: test-and-coverage
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Verify Swift version
+        run: swift --version
+
+      - name: Cache Homebrew
+        uses: actions/cache@v5
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: ${{ runner.os }}-${{ runner.arch }}-brew-swiftlint-gitleaks-periphery
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-brew-
+
+      - name: Install analysis tools
+        run: |
+          brew install swiftlint gitleaks periphery
+
+      - name: Prepare directories
+        run: |
+          mkdir -p reports
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: build-artifacts
+          path: .build/debug
+
+      - name: Run SwiftLint
+        run: |
+          swiftlint lint \
+            --reporter sonarqube \
+            > reports/linter-report.json || true
+
+      - name: Run Periphery
+        run: |
+          periphery scan \
+            --skip-build \
+            --index-store-path "$PWD/.build/debug/index/store" \
+            --format json \
+            > reports/periphery.json || true
+
+          # Convert to SonarCloud Clean Code format
+          # Periphery location is a string "path:line:column" that must be parsed
+          if [ -f reports/periphery.json ]; then
+            jq --arg pwd "$PWD" '{
+              rules: [{
+                id: "unused-code",
+                name: "Unused Code",
+                description: "Code that is never used and can be removed",
+                engineId: "periphery",
+                cleanCodeAttribute: "FOCUSED",
+                impacts: [{
+                  softwareQuality: "MAINTAINABILITY",
+                  severity: "HIGH"
+                }]
+              }],
+              issues: [.[] |
+                (.location | split(":")) as $loc |
+                ($loc[0] | ltrimstr($pwd + "/")) as $path |
+                ($loc[1] | tonumber) as $line |
+                ($loc[2] | tonumber) as $col |
+                {
+                  ruleId: "unused-code",
+                  effortMinutes: 10,
+                  primaryLocation: {
+                    message: "\(.kind) \(.name) is \(.hints | join(", "))",
+                    filePath: $path,
+                    textRange: {
+                      startLine: $line,
+                      startColumn: $col,
+                      endLine: $line,
+                      endColumn: ($col + 1)
+                    }
+                  }
+                }
+              ]
+            }' reports/periphery.json > reports/dead-code-report.json
+          fi
+
+      - name: Run Gitleaks
+        run: |
+          gitleaks detect \
+            --report-path reports/leaks-report.sarif \
+            --report-format sarif || true
+
+      - name: Upload analysis reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: reports/
+          retention-days: 3
+
+  # Publish Code Analysis
+  publish-code-analysis:
+    runs-on: ubuntu-latest
+    needs: [test-and-coverage, static-analysis]
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage
+          path: coverage
+
+      - name: Download reports artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: reports
+          path: reports
+
+      - name: Compute project version
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+
+          if [ -z "$TAG" ]; then
+            SONAR_VERSION="v1.0.0"
+          else
+            SONAR_VERSION=$TAG
+          fi
+
+          echo "SONAR_VERSION=$SONAR_VERSION" >> $GITHUB_ENV
+
+      - name: Publish Code Analysis
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectVersion=${{ env.SONAR_VERSION }}
+            -Dsonar.host.url=${{ vars.SONAR_HOST_URL }}

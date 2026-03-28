@@ -1,0 +1,24 @@
+name: Pull Request Analysis
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+    paths:
+      - '**/*.md'
+
+jobs:
+  test-and-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Documentation-only change — analysis skipped"
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Documentation-only change — analysis skipped"
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Documentation-only change — analysis skipped"

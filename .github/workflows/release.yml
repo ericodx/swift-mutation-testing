@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify Swift version
+        run: swift --version
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v5
+        with:
+          path: .build
+          key: ${{ runner.os }}-${{ runner.arch }}-spm-release-${{ hashFiles('**/Package.resolved', '**/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-spm-release-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            [[ ! $VERSION =~ ^v ]] && VERSION="v$VERSION"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "artifact_name=swift-mutation-testing-$VERSION-macos.tar.gz" >> $GITHUB_OUTPUT
+
+      - name: Inject version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${VERSION#v}"
+          sed -i '' "s/0.0.0-dev/$VERSION/" Sources/SwiftMutationTesting/Version.swift
+
+      - name: Build
+        run: swift build -c release
+
+      - name: Package
+        run: |
+          mkdir -p release
+          cp .build/release/swift-mutation-testing release/
+          cd release && tar -czf "${{ steps.version.outputs.artifact_name }}" swift-mutation-testing
+
+      - name: Upload artifact
+        run: gh release upload ${{ steps.version.outputs.version }} release/${{ steps.version.outputs.artifact_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
