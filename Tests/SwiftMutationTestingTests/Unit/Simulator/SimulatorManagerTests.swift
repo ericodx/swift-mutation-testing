@@ -109,4 +109,60 @@ struct SimulatorManagerTests {
             try await manager.resolveBaseUDID(for: "platform=iOS Simulator,name=iPhone 15")
         }
     }
+
+    @Test("Given device not booted on first poll but booted on second, when waitForBooted called, then retries")
+    func waitForBootedSleepsAndRetriesUntilBooted() async throws {
+        let shutdown = #"{"devices":{"com.apple.runtime.iOS":[{"udid":"TEST-UDID","name":"M","state":"Shutdown"}]}}"#
+        let booted = SimulatorCommandMock.bootedDevicesJSON(udid: "TEST-UDID")
+        let manager = SimulatorManager(launcher: SequentialOutputMock(outputs: [shutdown, booted]))
+
+        try await manager.waitForBooted(udid: "TEST-UDID", maxAttempts: 3, sleepDuration: .zero)
+    }
+
+    @Test("Given device never booted across attempts, when waitForBooted called, then throws bootTimeout with udid")
+    func waitForBootedThrowsBootTimeoutWithCorrectUDID() async {
+        let notBooted = #"{"devices":{"com.apple.runtime.iOS":[{"udid":"OTHER","name":"Mock","state":"Shutdown"}]}}"#
+        let manager = SimulatorManager(
+            launcher: SequentialOutputMock(outputs: [notBooted, notBooted, notBooted])
+        )
+
+        var threwBootTimeout = false
+        do {
+            try await manager.waitForBooted(udid: "TEST-UDID", maxAttempts: 2, sleepDuration: .zero)
+        } catch SimulatorError.bootTimeout(udid: "TEST-UDID") {
+            threwBootTimeout = true
+        } catch {}
+
+        #expect(threwBootTimeout)
+    }
+}
+
+private actor SequentialOutputMock: ProcessLaunching {
+    private let outputs: [String]
+    private var callIndex = 0
+
+    init(outputs: [String]) {
+        self.outputs = outputs
+    }
+
+    func launch(
+        executableURL: URL,
+        arguments: [String],
+        workingDirectoryURL: URL,
+        timeout: Double
+    ) async throws -> Int32 {
+        0
+    }
+
+    func launchCapturing(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        workingDirectoryURL: URL,
+        timeout: Double
+    ) async throws -> (exitCode: Int32, output: String) {
+        let output = outputs[min(callIndex, outputs.count - 1)]
+        callIndex += 1
+        return (0, output)
+    }
 }
