@@ -69,14 +69,14 @@ jobs:
           | sed "s|$(pwd)/||g" \
           > coverage/lcov.info
 
-          xcrun llvm-cov report \
-            "$TEST_BINARY" \
-            -instr-profile "$PROFDATA" \
-            --sources "$(pwd)/Sources" \
-          | grep "TOTAL" \
-          | awk '{print $10}' \
-          | sed 's/%//' \
-          > coverage/lines-percent.txt
+          TOTAL_LINES=$(grep -c "^DA:" coverage/lcov.info || echo 0)
+          COVERED_LINES=$(grep "^DA:" coverage/lcov.info | awk -F',' '$2 > 0' | wc -l | tr -d ' ')
+
+          if [ "$TOTAL_LINES" -gt 0 ]; then
+            echo "scale=2; $COVERED_LINES * 100 / $TOTAL_LINES" | bc
+          else
+            echo "0.00"
+          fi > coverage/lines-percent.txt
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
