@@ -1,0 +1,293 @@
+name: Pull Request Analysis
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+    paths-ignore:
+      - '**/*.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # Build And Test
+  test-and-coverage:
+    runs-on: macos-26
+    timeout-minutes: 30
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Verify Swift version
+        run: swift --version
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v5
+        with:
+          path: .build
+          key: ${{ runner.os }}-${{ runner.arch }}-spm-${{ hashFiles('**/Package.resolved', '**/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Run tests and generate coverage
+        run: |
+          set -e
+
+          echo "Running tests with coverage..."
+          swift test --enable-code-coverage --quiet
+
+          BIN_PATH=$(swift build --show-bin-path)
+
+          TEST_BINARY=$(find "$BIN_PATH" -type f \
+            -path "*Tests.xctest/Contents/MacOS/*" \
+            ! -path "*.dSYM/*" \
+            | head -n 1)
+
+          if [ -z "$TEST_BINARY" ]; then
+            echo "Test binary not found"
+            exit 1
+          fi
+
+          PROFDATA="$BIN_PATH/codecov/default.profdata"
+
+          mkdir -p coverage
+
+          xcrun llvm-cov export \
+            "$TEST_BINARY" \
+            -instr-profile "$PROFDATA" \
+            --sources "$(pwd)/Sources" \
+            --format=lcov \
+          | sed "s|$(pwd)/||g" \
+          > coverage/lcov.info
+
+          xcrun llvm-cov report \
+            "$TEST_BINARY" \
+            -instr-profile "$PROFDATA" \
+            --sources "$(pwd)/Sources" \
+          | grep "TOTAL" \
+          | awk '{print $7}' \
+          | sed 's/%//' \
+          > coverage/lines-percent.txt
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: |
+            coverage/lcov.info
+            coverage/lines-percent.txt
+          retention-days: 1
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-artifacts
+          path: |
+            .build/debug/index/store
+          retention-days: 1
+
+  # Static Analysis
+  static-analysis:
+    runs-on: macos-26
+    needs: test-and-coverage
+    timeout-minutes: 15
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Verify Swift version
+        run: swift --version
+
+      - name: Cache Homebrew
+        uses: actions/cache@v5
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: ${{ runner.os }}-${{ runner.arch }}-brew-swiftlint-gitleaks-periphery-swift-cpd
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-brew-
+
+      - name: Install analysis tools
+        run: |
+          brew install swiftlint gitleaks periphery
+          brew tap ericodx/homebrew-tools
+          brew install swift-cpd
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: build-artifacts
+          path: .build/debug
+
+      - name: SwiftLint
+        run: |
+          mkdir -p reports
+          swiftlint lint --reporter json > reports/swiftlint.json || true
+
+      - name: Run Periphery
+        run: |
+          periphery scan \
+            --skip-build \
+            --index-store-path "$PWD/.build/debug/index/store" \
+            --format json \
+            > reports/periphery.json || true
+
+      - name: Gitleaks (secrets)
+        run: |
+          gitleaks detect \
+            --report-path reports/gitleaks.sarif \
+            --report-format sarif || true
+
+      - name: Code duplication (swift-cpd)
+        run: |
+          swift-cpd \
+            || true
+
+      - name: Upload reports artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: reports/
+          retention-days: 1
+
+  # Quality Gate
+  quality-gate:
+    runs-on: ubuntu-latest
+    needs: [test-and-coverage, static-analysis]
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage
+          path: coverage
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: reports
+          path: reports
+
+      - name: Evaluate quality gate
+        env:
+          COVERAGE_THRESHOLD: ${{ vars.COVERAGE_THRESHOLD }}
+          FAIL_ON_SECRETS: ${{ vars.FAIL_ON_SECRETS }}
+          MAX_LINT_VIOLATIONS: ${{ vars.MAX_LINT_VIOLATIONS }}
+          MAX_DEAD_CODE: ${{ vars.MAX_DEAD_CODE }}
+          MAX_DUPLICATION: ${{ vars.MAX_DUPLICATION }}
+          STRICT_MODE: ${{ vars.STRICT_MODE }}
+        run: |
+          THRESHOLD=${COVERAGE_THRESHOLD:-95}
+          FAIL_SECRETS=${FAIL_ON_SECRETS:-true}
+          MAX_LINT=${MAX_LINT_VIOLATIONS:-10}
+          MAX_DEAD=${MAX_DEAD_CODE:-0}
+          MAX_DUP=${MAX_DUPLICATION:-5}
+          STRICT=${STRICT_MODE:-false}
+
+          FAIL=0
+
+          if [ -f coverage/lines-percent.txt ]; then
+            COVERAGE=$(cat coverage/lines-percent.txt)
+            echo "DEBUG: Lines Coverage = $COVERAGE%"
+          else
+            COVERAGE="0.00"
+          fi
+
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            COVERAGE_STATUS="x"
+            FAIL=1
+          else
+            COVERAGE_STATUS="✓"
+          fi
+
+          LINT_COUNT=$(jq -r 'length // 0' reports/swiftlint.json 2>/dev/null || echo 0)
+          DEAD_CODE_COUNT=$(jq -r 'length // 0' reports/periphery.json 2>/dev/null || echo 0)
+          SECRETS_COUNT=$(jq -r '.runs[0].results | length // 0' reports/gitleaks.sarif 2>/dev/null || echo 0)
+
+          # Code duplication analysis
+          if [ -f reports/cpd-report.json ]; then
+            DUPLICATION=$(jq -r '.summary.duplicationPercentage // 0' reports/cpd-report.json 2>/dev/null || echo 0)
+            DUPLICATION_CLONES=$(jq -r '.summary.totalClones // 0' reports/cpd-report.json 2>/dev/null || echo 0)
+          else
+            DUPLICATION="0"
+            DUPLICATION_CLONES="0"
+          fi
+
+          if [ "$SECRETS_COUNT" -gt 0 ] && [ "$FAIL_SECRETS" = "true" ]; then
+            SECRETS_STATUS="x"
+            FAIL=1
+          else
+            SECRETS_STATUS="✓"
+          fi
+
+          # Duplication status
+          if (( $(echo "$DUPLICATION > $MAX_DUP" | bc -l) )); then
+            DUPLICATION_STATUS="x"
+            if [ "$STRICT" = "true" ]; then FAIL=1; fi
+          else
+            DUPLICATION_STATUS="✓"
+          fi
+
+          if [ "$STRICT" = "true" ]; then
+            if [ "$LINT_COUNT" -gt "$MAX_LINT" ]; then FAIL=1; fi
+            if [ "$DEAD_CODE_COUNT" -gt "$MAX_DEAD" ]; then FAIL=1; fi
+          fi
+
+          REPORT_FILE=quality-report.md
+
+          cat > "$REPORT_FILE" << EOF
+          ## Pull Request Quality Report
+
+          | Metric | Value | Status | Threshold |
+          |--------|-------|--------|----------|
+          | Coverage | $COVERAGE% | $COVERAGE_STATUS | >= $THRESHOLD% |
+          | Code duplication | ${DUPLICATION}% ($DUPLICATION_CLONES clones) | $DUPLICATION_STATUS | <= $MAX_DUP% |
+          | Linter violations | $LINT_COUNT | ~ | <= $MAX_LINT |
+          | Dead code | $DEAD_CODE_COUNT | ~ | <= $MAX_DEAD |
+          | Secrets | $SECRETS_COUNT | $SECRETS_STATUS | 0 |
+
+          Strict mode: $STRICT
+          EOF
+
+          cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo "Quality gate failed"
+            exit 1
+          fi
+
+          echo "Quality gate passed"
+
+      - name: Comment PR with quality report
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export GH_TOKEN="$GITHUB_TOKEN"
+
+          MARKER="<!-- quality-report -->"
+          BODY="$MARKER
+          $(cat quality-report.md)"
+
+          COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n 1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api repos/${{ github.repository }}/issues/comments/$COMMENT_ID \
+              -X PATCH \
+              -f body="$BODY"
+          else
+            gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+              -X POST \
+              -f body="$BODY"
+          fi
