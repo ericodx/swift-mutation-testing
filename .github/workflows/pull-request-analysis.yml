@@ -74,7 +74,7 @@ jobs:
             -instr-profile "$PROFDATA" \
             --sources "$(pwd)/Sources" \
           | grep "TOTAL" \
-          | awk '{print $7}' \
+          | awk '{print $10}' \
           | sed 's/%//' \
           > coverage/lines-percent.txt
 
