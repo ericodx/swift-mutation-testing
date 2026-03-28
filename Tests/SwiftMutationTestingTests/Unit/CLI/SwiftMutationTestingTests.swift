@@ -56,7 +56,7 @@ struct SwiftMutationTestingRunTests {
             _ = await SwiftMutationTesting.run(args: ["--version"])
         }
 
-        #expect(output.contains("0.1.0"))
+        #expect(output.contains("swift-mutation-testing"))
     }
 
     @Test("Given no scheme, when run called, then returns error")

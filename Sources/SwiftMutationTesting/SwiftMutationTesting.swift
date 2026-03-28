@@ -30,7 +30,7 @@ public struct SwiftMutationTesting {
         }
 
         if parsed.showVersion {
-            print("0.1.0")
+            print(Version.current)
             return .success
         }
 
