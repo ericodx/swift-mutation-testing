@@ -87,11 +87,15 @@ struct MutantExecutor: Sendable {
         await deps.reporter.report(.buildStarted)
         let start = Date()
 
+        guard case .xcode(let scheme, let destination) = configuration.build.projectType else {
+            return nil
+        }
+
         do {
             let artifact = try await BuildStage(launcher: deps.launcher).build(
                 sandbox: sandbox,
-                scheme: configuration.build.scheme,
-                destination: configuration.build.destination,
+                scheme: scheme,
+                destination: destination,
                 timeout: configuration.build.timeout
             )
             await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
@@ -154,12 +158,17 @@ struct MutantExecutor: Sendable {
 
         await deps.reporter.report(.fallbackBuildStarted(filePath: file.originalPath))
 
+        guard case .xcode(let scheme, let destination) = configuration.build.projectType else {
+            try? sandbox.cleanup()
+            return await markFallbackMutantsUnviable(mutants: fileMutants, testFilesHash: testFilesHash, deps: deps)
+        }
+
         let artifact: BuildArtifact
         do {
             artifact = try await BuildStage(launcher: deps.launcher).build(
                 sandbox: sandbox,
-                scheme: configuration.build.scheme,
-                destination: configuration.build.destination,
+                scheme: scheme,
+                destination: destination,
                 timeout: configuration.build.timeout
             )
             await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
@@ -237,19 +246,26 @@ struct MutantExecutor: Sendable {
     }
 
     private func makePool(launcher: any ProcessLaunching) async throws -> SimulatorPool {
-        guard SimulatorManager.requiresSimulatorPool(for: configuration.build.destination) else {
+        let destination: String
+        if case .xcode(_, let dest) = configuration.build.projectType {
+            destination = dest
+        } else {
+            destination = "platform=macOS"
+        }
+
+        guard SimulatorManager.requiresSimulatorPool(for: destination) else {
             return SimulatorPool(
-                baseUDID: nil, size: 1,
-                destination: configuration.build.destination, launcher: launcher
+                baseUDID: nil, size: configuration.build.concurrency,
+                destination: destination, launcher: launcher
             )
         }
 
         let baseUDID = try await SimulatorManager(launcher: launcher)
-            .resolveBaseUDID(for: configuration.build.destination)
+            .resolveBaseUDID(for: destination)
 
         return SimulatorPool(
             baseUDID: baseUDID, size: configuration.build.concurrency,
-            destination: configuration.build.destination, launcher: launcher
+            destination: destination, launcher: launcher
         )
     }
 }

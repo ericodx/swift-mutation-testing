@@ -90,9 +90,15 @@ struct IncompatibleMutantExecutor: Sendable {
         let xcresultPath = sandbox.rootURL
             .appendingPathComponent("\(UUID().uuidString).xcresult").path
 
+        guard case .xcode(let scheme, _) = configuration.build.projectType else {
+            return IncompatibleTestLaunchResult(
+                exitCode: 0, output: "", xcresultPath: xcresultPath, duration: 0
+            )
+        }
+
         var arguments = [
             "test",
-            "-scheme", configuration.build.scheme,
+            "-scheme", scheme,
             "-destination", slot.destination,
             "-derivedDataPath", derivedDataPath,
             "-resultBundlePath", xcresultPath,
