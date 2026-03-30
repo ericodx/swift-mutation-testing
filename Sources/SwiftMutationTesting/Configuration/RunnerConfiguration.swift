@@ -1,7 +1,7 @@
 import Foundation
 
 struct RunnerConfiguration: Sendable {
-    static let defaultTimeout: Double = 60.0
+    static let defaultTimeout: Double = 120.0
     static let defaultConcurrency: Int = max(1, ProcessInfo.processInfo.processorCount - 1)
 
     let projectPath: String

@@ -89,8 +89,8 @@ struct ConfigurationFileWriterTests {
         try writer.write(to: dir.path, project: .empty)
 
         let values = try ConfigurationFileParser().parse(at: dir.path)
-        #expect(values["timeout"] == "60")
-        #expect(values["concurrency"] == nil)
+        #expect(values["timeout"] == "120")
+        #expect(values["concurrency"] == "4")
     }
 
     @Test("Given multiple schemes detected, when write called, then available schemes comment is included")

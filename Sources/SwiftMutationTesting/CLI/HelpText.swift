@@ -13,7 +13,7 @@ enum HelpText {
           --scheme <scheme>             Xcode scheme to build and test (required)
           --destination <destination>   xcodebuild destination specifier (required)
           --target <test-target>        Test target name
-          --timeout <seconds>           Per-mutant test timeout in seconds (default: 60)
+          --timeout <seconds>           Per-mutant test timeout in seconds (default: 120)
           --concurrency <n>             Number of parallel test workers (default: CPUs - 1)
           --no-cache                    Disable the result cache
           --output <json-path>          Write mutation report JSON to path

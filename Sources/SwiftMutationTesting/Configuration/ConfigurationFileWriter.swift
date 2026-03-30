@@ -42,11 +42,11 @@ struct ConfigurationFileWriter: Sendable {
         }
 
         lines.append("")
-        lines.append("# Per-mutant test timeout in seconds (default: 60)")
-        lines.append("timeout: 60")
+        lines.append("# Per-mutant test timeout in seconds (default: 120)")
+        lines.append("timeout: 120")
         lines.append("")
         lines.append("# Number of parallel workers (default: max(1, CPU count - 1))")
-        lines.append("# concurrency: 4")
+        lines.append("concurrency: 4")
         lines.append("")
         lines.append("# Disable result cache (re-runs all mutants on every execution)")
         lines.append("# noCache: true")
@@ -54,7 +54,7 @@ struct ConfigurationFileWriter: Sendable {
         lines.append("# Report output paths")
         lines.append("# output: mutation-report.json")
         lines.append("# htmlOutput: mutation-report.html")
-        lines.append("# sonarOutput: sonar-report.json")
+        lines.append("sonarOutput: sonar-mutation-report.json")
         lines.append("")
         lines.append("# Source file glob patterns to exclude from mutation")
 
