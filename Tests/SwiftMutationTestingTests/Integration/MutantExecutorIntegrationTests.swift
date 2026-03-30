@@ -59,7 +59,9 @@ private func fixtureProjectURL() -> URL {
 private func makeConfiguration(fixtureURL: URL) -> RunnerConfiguration {
     RunnerConfiguration(
         projectPath: fixtureURL.path,
-        build: .init(scheme: "CalcApp", destination: "platform=macOS", timeout: 120.0, concurrency: 1, noCache: true),
+        build: .init(
+            projectType: .xcode(scheme: "CalcApp", destination: "platform=macOS"),
+            timeout: 120.0, concurrency: 1, noCache: true),
         reporting: .init(quiet: true),
         filter: .init(excludePatterns: [], operators: [])
     )
@@ -68,8 +70,7 @@ private func makeConfiguration(fixtureURL: URL) -> RunnerConfiguration {
 private func makeInput(fixtureURL: URL) -> RunnerInput {
     RunnerInput(
         projectPath: fixtureURL.path,
-        scheme: "CalcApp",
-        destination: "platform=macOS",
+        projectType: .xcode(scheme: "CalcApp", destination: "platform=macOS"),
         timeout: 120.0,
         concurrency: 1,
         noCache: true,

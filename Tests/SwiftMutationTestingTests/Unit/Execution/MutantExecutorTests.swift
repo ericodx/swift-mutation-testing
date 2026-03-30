@@ -230,7 +230,7 @@ struct MutantExecutorTests {
         RunnerConfiguration(
             projectPath: projectPath,
             build: .init(
-                scheme: "MyScheme", destination: "platform=macOS",
+                projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
                 timeout: 60, concurrency: 1, noCache: noCache),
             reporting: .init(quiet: quiet),
             filter: .init(excludePatterns: [], operators: [])
@@ -244,8 +244,7 @@ struct MutantExecutorTests {
     ) -> RunnerInput {
         RunnerInput(
             projectPath: projectPath,
-            scheme: "MyScheme",
-            destination: "platform=macOS",
+            projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
             timeout: 60,
             concurrency: 1,
             noCache: false,

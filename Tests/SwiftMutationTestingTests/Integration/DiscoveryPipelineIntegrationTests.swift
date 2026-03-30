@@ -80,8 +80,7 @@ struct DiscoveryPipelineIntegrationTests {
 
         let input = DiscoveryInput(
             projectPath: dir.path,
-            scheme: "Scheme",
-            destination: "platform=macOS",
+            projectType: .xcode(scheme: "Scheme", destination: "platform=macOS"),
             timeout: 60,
             concurrency: 1,
             noCache: false,
@@ -123,8 +122,7 @@ struct DiscoveryPipelineIntegrationTests {
         let result = try await pipeline.run(input: input)
 
         #expect(result.projectPath == calcAppURL().path)
-        #expect(result.scheme == "CalcApp")
-        #expect(result.destination == "platform=macOS")
+        #expect(result.projectType == .xcode(scheme: "CalcApp", destination: "platform=macOS"))
         #expect(result.timeout == 60)
         #expect(result.concurrency == 1)
         #expect(result.noCache == false)
@@ -148,8 +146,7 @@ extension DiscoveryPipelineIntegrationTests {
         let root = calcAppURL()
         return DiscoveryInput(
             projectPath: root.path,
-            scheme: "CalcApp",
-            destination: "platform=macOS",
+            projectType: .xcode(scheme: "CalcApp", destination: "platform=macOS"),
             timeout: 60,
             concurrency: 1,
             noCache: false,
