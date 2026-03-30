@@ -268,8 +268,9 @@ struct SandboxFactory: Sendable {
         let sourcesURL = sandboxURL.appendingPathComponent("Sources")
 
         if FileManager.default.fileExists(atPath: sourcesURL.path) {
+            let targetURL = firstSourcesTargetDirectory(in: sourcesURL) ?? sourcesURL
             try content.write(
-                to: sourcesURL.appendingPathComponent("__SMTSupport.swift"),
+                to: targetURL.appendingPathComponent("__SMTSupport.swift"),
                 atomically: true,
                 encoding: .utf8
             )
@@ -289,5 +290,18 @@ struct SandboxFactory: Sendable {
         let existing = (try? String(contentsOf: resolvedURL, encoding: .utf8)) ?? ""
 
         try (existing + "\n" + content).write(to: sandboxFileURL, atomically: true, encoding: .utf8)
+    }
+
+    private func firstSourcesTargetDirectory(in sourcesURL: URL) -> URL? {
+        let items =
+            (try? FileManager.default.contentsOfDirectory(
+                at: sourcesURL,
+                includingPropertiesForKeys: [.isDirectoryKey]
+            )) ?? []
+
+        return items
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .first
     }
 }
