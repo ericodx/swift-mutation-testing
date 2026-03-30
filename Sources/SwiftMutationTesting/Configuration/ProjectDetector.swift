@@ -6,19 +6,29 @@ struct ProjectDetector: Sendable {
     func detect(at projectPath: String) async -> DetectedProject {
         let projectURL = resolvedURL(for: projectPath)
 
-        guard let container = findContainer(in: projectURL) else {
-            return .empty
+        if let container = findContainer(in: projectURL) {
+            let (schemes, projectName, testTarget) = await listProject(
+                container: container, workingDirectory: projectURL)
+            let destination = await detectDestination(in: projectURL)
+            return DetectedProject(
+                kind: .xcode(
+                    scheme: selectScheme(from: schemes, projectName: projectName),
+                    allSchemes: schemes,
+                    destination: destination
+                ),
+                testTarget: testTarget
+            )
         }
 
-        let (schemes, projectName, testTarget) = await listProject(container: container, workingDirectory: projectURL)
-        let destination = await detectDestination(in: projectURL)
+        if FileManager.default.fileExists(atPath: projectURL.appendingPathComponent("Package.swift").path) {
+            let testTargets = await listSPMTestTargets(in: projectURL)
+            return DetectedProject(
+                kind: .spm(testTargets: testTargets),
+                testTarget: testTargets.first
+            )
+        }
 
-        return DetectedProject(
-            scheme: selectScheme(from: schemes, projectName: projectName),
-            allSchemes: schemes,
-            testTarget: testTarget,
-            destination: destination
-        )
+        return .empty
     }
 
     private func resolvedURL(for path: String) -> URL {
@@ -68,6 +78,29 @@ struct ProjectDetector: Sendable {
         }
 
         return parseListOutput(result.output)
+    }
+
+    private func listSPMTestTargets(in projectURL: URL) async -> [String] {
+        guard
+            let result = try? await launcher.launchCapturing(
+                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+                arguments: ["package", "dump-package"],
+                environment: nil,
+                workingDirectoryURL: projectURL,
+                timeout: 30
+            ),
+            result.exitCode == 0,
+            let data = result.output.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let targets = json["targets"] as? [[String: Any]]
+        else {
+            return []
+        }
+
+        return
+            targets
+            .filter { ($0["type"] as? String) == "test" }
+            .compactMap { $0["name"] as? String }
     }
 
     private func parseListOutput(_ output: String) -> (schemes: [String], projectName: String?, testTarget: String?) {

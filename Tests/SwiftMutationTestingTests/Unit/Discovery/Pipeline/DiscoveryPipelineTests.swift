@@ -62,8 +62,7 @@ struct DiscoveryPipelineTests {
 
         let input = DiscoveryInput(
             projectPath: "/project",
-            scheme: "MyScheme",
-            destination: "platform=macOS",
+            projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
             timeout: 120,
             concurrency: 8,
             noCache: true,
@@ -74,8 +73,7 @@ struct DiscoveryPipelineTests {
         let result = try await pipeline.run(input: input)
 
         #expect(result.projectPath == "/project")
-        #expect(result.scheme == "MyScheme")
-        #expect(result.destination == "platform=macOS")
+        #expect(result.projectType == .xcode(scheme: "MyScheme", destination: "platform=macOS"))
         #expect(result.timeout == 120)
         #expect(result.concurrency == 8)
         #expect(result.noCache == true)
@@ -121,8 +119,7 @@ extension DiscoveryPipelineTests {
     ) -> DiscoveryInput {
         DiscoveryInput(
             projectPath: projectPath,
-            scheme: "Scheme",
-            destination: "platform=macOS",
+            projectType: .xcode(scheme: "Scheme", destination: "platform=macOS"),
             timeout: 60,
             concurrency: 4,
             noCache: false,

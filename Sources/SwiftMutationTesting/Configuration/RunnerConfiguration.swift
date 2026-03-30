@@ -10,8 +10,7 @@ struct RunnerConfiguration: Sendable {
     let filter: FilterOptions
 
     struct BuildOptions: Sendable {
-        var scheme: String
-        var destination: String
+        var projectType: ProjectType
         var testTarget: String?
         var timeout: Double
         var concurrency: Int

@@ -86,7 +86,9 @@ struct TestExecutionStageTests {
 
         let noCacheConfig = RunnerConfiguration(
             projectPath: "/tmp",
-            build: .init(scheme: "S", destination: "platform=macOS", timeout: 60, concurrency: 1, noCache: true),
+            build: .init(
+                projectType: .xcode(scheme: "S", destination: "platform=macOS"),
+                timeout: 60, concurrency: 1, noCache: true),
             reporting: .init(quiet: true),
             filter: .init(excludePatterns: [], operators: [])
         )
@@ -134,8 +136,8 @@ struct TestExecutionStageTests {
         let config = RunnerConfiguration(
             projectPath: "/tmp",
             build: .init(
-                scheme: "S", destination: "platform=macOS", testTarget: "AppTests",
-                timeout: 60, concurrency: 1, noCache: false),
+                projectType: .xcode(scheme: "S", destination: "platform=macOS"),
+                testTarget: "AppTests", timeout: 60, concurrency: 1, noCache: false),
             reporting: .init(quiet: true),
             filter: .init(excludePatterns: [], operators: [])
         )
@@ -241,7 +243,7 @@ struct TestExecutionStageTests {
         RunnerConfiguration(
             projectPath: "/tmp",
             build: .init(
-                scheme: "MyScheme", destination: "platform=macOS",
+                projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
                 timeout: 60, concurrency: 1, noCache: false),
             reporting: .init(quiet: true),
             filter: .init(excludePatterns: [], operators: [])

@@ -62,8 +62,7 @@ public struct SwiftMutationTesting {
         let start = Date()
         let discoveryInput = DiscoveryInput(
             projectPath: configuration.projectPath,
-            scheme: configuration.build.scheme,
-            destination: configuration.build.destination,
+            projectType: configuration.build.projectType,
             timeout: configuration.build.timeout,
             concurrency: configuration.build.concurrency,
             noCache: configuration.build.noCache,

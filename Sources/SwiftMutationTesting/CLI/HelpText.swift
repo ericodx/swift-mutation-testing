@@ -10,8 +10,8 @@ enum HelpText {
           <project-path>                Path to the Xcode project root (default: .)
 
         OPTIONS:
-          --scheme <scheme>             Xcode scheme to build and test (required)
-          --destination <destination>   xcodebuild destination specifier (required)
+          --scheme <scheme>             Xcode scheme to build and test (Xcode projects only)
+          --destination <destination>   xcodebuild destination specifier (Xcode projects only)
           --target <test-target>        Test target name
           --timeout <seconds>           Per-mutant test timeout in seconds (default: 120)
           --concurrency <n>             Number of parallel test workers (default: CPUs - 1)

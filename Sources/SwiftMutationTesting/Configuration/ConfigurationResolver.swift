@@ -13,19 +13,16 @@ struct ConfigurationResolver: Sendable {
             throw UsageError(message: "--concurrency must be >= 1")
         }
 
-        guard cliArguments.build.scheme != nil || fileValues["scheme"] != nil else {
-            throw UsageError(message: "--scheme is required")
-        }
-
-        guard cliArguments.build.destination != nil || fileValues["destination"] != nil else {
-            throw UsageError(message: "--destination is required")
-        }
+        let projectType = try resolveProjectType(
+            cliArguments: cliArguments,
+            fileValues: fileValues,
+            projectPath: projectPath
+        )
 
         return RunnerConfiguration(
             projectPath: projectPath,
             build: .init(
-                scheme: cliArguments.build.scheme ?? fileValues["scheme"] ?? "",
-                destination: cliArguments.build.destination ?? fileValues["destination"] ?? "",
+                projectType: projectType,
                 testTarget: cliArguments.build.testTarget ?? fileValues["testTarget"],
                 timeout: timeout,
                 concurrency: concurrency,
@@ -47,6 +44,35 @@ struct ConfigurationResolver: Sendable {
                 operators: resolveOperators(cli: cliArguments, fileValues: fileValues)
             )
         )
+    }
+
+    private func resolveProjectType(
+        cliArguments: ParsedArguments,
+        fileValues: [String: String],
+        projectPath: String
+    ) throws -> ProjectType {
+        let scheme = cliArguments.build.scheme ?? fileValues["scheme"]
+        let destination = cliArguments.build.destination ?? fileValues["destination"]
+
+        if scheme == nil && destination == nil && hasSPMPackage(at: projectPath) {
+            return .spm
+        }
+
+        guard let scheme else {
+            throw UsageError(message: "--scheme is required")
+        }
+
+        guard let destination else {
+            throw UsageError(message: "--destination is required")
+        }
+
+        return .xcode(scheme: scheme, destination: destination)
+    }
+
+    private func hasSPMPackage(at projectPath: String) -> Bool {
+        let packageURL = URL(fileURLWithPath: projectPath)
+            .appendingPathComponent("Package.swift")
+        return FileManager.default.fileExists(atPath: packageURL.path)
     }
 
     private func resolvedTimeout(cli: ParsedArguments, fileValues: [String: String]) -> Double {
