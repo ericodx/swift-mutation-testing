@@ -109,24 +109,32 @@ repos:
         args: ["format", "--in-place", "--parallel"]
         types: [swift]
 
-  # Swift Clone & Pattern Detector
+  # Swift Code Duplication Detector
   - repo: https://github.com/ericodx/swift-cpd
-    rev: v1.1.0
+    rev: v1.2.0
     hooks:
       - id: swift-cpd
-        name: ✓ Swift Clone & Pattern Detector
-        description: Detect duplicated code in Swift and Objective-C/C codebases.
+        name: ✓ Swift Code Duplication Detector
+        description: Detect and eliminate duplicated logic in Swift and Objective-C/C codebases to improve maintainability and code quality.
         types: [swift]
 
   # Swift Marshal
   - repo: https://github.com/ericodx/swift-marshal
-    rev: v1.0.0
+    rev: v1.1.0
     hooks:
       - id: swift-marshal
         name: ✓ Swift Marshal
-        description: Reorder Swift type members without rewriting code.
+        description: Ensure consistent member ordering in Swift types to improve readability and maintainability.
         types: [swift]
         args: ["--path", "Sources"]
+
+  # Gitleaks
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        name: ✓ Gitleaks
+        description: Detect hardcoded secrets and credentials before they are committed.
 
   # Local hooks
   - repo: local
