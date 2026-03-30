@@ -6,9 +6,24 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=deploy-on-friday-swift-mutation-testing&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=deploy-on-friday-swift-mutation-testing)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=deploy-on-friday-swift-mutation-testing&metric=coverage)](https://sonarcloud.io/summary/new_code?id=deploy-on-friday-swift-mutation-testing)
 
-**Find untested behaviour in Swift codebases.**
+**Measure and improve test effectiveness in Swift codebases using mutation testing.**
 
-`swift-mutation-testing` is a CLI for mutation testing of Xcode + XCTest projects. It modifies your source code in small, targeted ways — mutations — and runs your test suite against each one. A mutation that goes undetected means a test is missing or an assertion is too weak. The result is a mutation score that measures how effectively your tests catch real bugs.
+`swift-mutation-testing` is a CLI for mutation testing of Xcode + XCTest projects. It modifies your source code in small, targeted ways — mutations — and runs your test suite against each one. A mutation that goes undetected reveals missing tests or weak assertions. The result is a mutation score that reflects how effectively your tests catch real bugs.
+
+## Why
+
+Traditional test coverage does not guarantee that tests catch real bugs.
+
+Mutation testing introduces controlled changes to your code to verify that your tests fail when behavior changes. Surviving mutations indicate gaps in test effectiveness.
+
+## Features
+
+- Mutation testing for Xcode + XCTest projects
+- Measures test effectiveness through mutation score
+- Supports multiple mutation operators
+- Provides detailed reports per file and mutation
+- Configurable via YAML
+- Can be integrated into CI pipelines
 
 ## Install
 
