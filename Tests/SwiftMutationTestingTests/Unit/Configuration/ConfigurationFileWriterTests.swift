@@ -38,7 +38,8 @@ struct ConfigurationFileWriterTests {
         try writer.write(
             to: dir.path,
             project: DetectedProject(
-                scheme: "MyApp", allSchemes: ["MyApp"], testTarget: nil, destination: "platform=macOS"
+                kind: .xcode(scheme: "MyApp", allSchemes: ["MyApp"], destination: "platform=macOS"),
+                testTarget: nil
             )
         )
 
@@ -55,7 +56,8 @@ struct ConfigurationFileWriterTests {
         try writer.write(
             to: dir.path,
             project: DetectedProject(
-                scheme: "MyApp", allSchemes: ["MyApp"], testTarget: "MyAppTests", destination: "platform=macOS"
+                kind: .xcode(scheme: "MyApp", allSchemes: ["MyApp"], destination: "platform=macOS"),
+                testTarget: "MyAppTests"
             )
         )
 
@@ -72,8 +74,11 @@ struct ConfigurationFileWriterTests {
         try writer.write(
             to: dir.path,
             project: DetectedProject(
-                scheme: "MyApp", allSchemes: ["MyApp"], testTarget: nil,
-                destination: "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro"
+                kind: .xcode(
+                    scheme: "MyApp", allSchemes: ["MyApp"],
+                    destination: "platform=iOS Simulator,OS=latest,name=iPhone 16 Pro"
+                ),
+                testTarget: nil
             )
         )
 
@@ -101,7 +106,8 @@ struct ConfigurationFileWriterTests {
         try writer.write(
             to: dir.path,
             project: DetectedProject(
-                scheme: "MyApp", allSchemes: ["MyApp", "MyAppTests"], testTarget: nil, destination: "platform=macOS"
+                kind: .xcode(scheme: "MyApp", allSchemes: ["MyApp", "MyAppTests"], destination: "platform=macOS"),
+                testTarget: nil
             )
         )
 
@@ -117,7 +123,8 @@ struct ConfigurationFileWriterTests {
         try writer.write(
             to: dir.path,
             project: DetectedProject(
-                scheme: "MyApp", allSchemes: ["MyApp"], testTarget: "MyAppTests", destination: "platform=macOS"
+                kind: .xcode(scheme: "MyApp", allSchemes: ["MyApp"], destination: "platform=macOS"),
+                testTarget: "MyAppTests"
             )
         )
 
