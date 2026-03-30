@@ -20,8 +20,7 @@ struct DiscoveryPipeline: Sendable {
 
         return RunnerInput(
             projectPath: input.projectPath,
-            scheme: input.scheme,
-            destination: input.destination,
+            projectType: input.projectType,
             timeout: input.timeout,
             concurrency: input.concurrency,
             noCache: input.noCache,

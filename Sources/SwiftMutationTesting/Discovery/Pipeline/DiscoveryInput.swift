@@ -1,7 +1,6 @@
 struct DiscoveryInput: Sendable {
     let projectPath: String
-    let scheme: String
-    let destination: String
+    let projectType: ProjectType
     let timeout: Double
     let concurrency: Int
     let noCache: Bool
