@@ -31,7 +31,7 @@ struct BuildStageTests {
         )
 
         #expect(artifact.derivedDataPath == projectDir.appendingPathComponent(".xmr-derived-data").path)
-        #expect(artifact.xctestrunURL.lastPathComponent == "App.xctestrun")
+        #expect(artifact.xctestrunURL?.lastPathComponent == "App.xctestrun")
     }
 
     @Test("Given build failure, when build called, then throws compilationFailed")
@@ -77,7 +77,7 @@ struct BuildStageTests {
             sandbox: sandbox, scheme: "App", destination: "platform=macOS", timeout: 60
         )
 
-        #expect(artifact.xctestrunURL.lastPathComponent == "App.xctestrun")
+        #expect(artifact.xctestrunURL?.lastPathComponent == "App.xctestrun")
     }
 
     @Test("Given xcodeproj in sandbox, when build called, then project flag is passed")
@@ -105,7 +105,7 @@ struct BuildStageTests {
             sandbox: sandbox, scheme: "App", destination: "platform=macOS", timeout: 60
         )
 
-        #expect(artifact.xctestrunURL.lastPathComponent == "App.xctestrun")
+        #expect(artifact.xctestrunURL?.lastPathComponent == "App.xctestrun")
     }
 
     @Test("Given xctestrun file with invalid plist data, when build called, then throws xctestrunNotFound")
@@ -146,5 +146,48 @@ struct BuildStageTests {
                 timeout: 60
             )
         }
+    }
+
+    @Test("Given successful SPM build, when buildSPM called, then returns artifact with nil xctestrunURL and plist")
+    func spmBuildReturnsArtifactWithNilXctestrunAndPlist() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let sandbox = Sandbox(rootURL: projectDir)
+        let stage = BuildStage(launcher: MockProcessLauncher(exitCode: 0))
+
+        let artifact = try await stage.buildSPM(sandbox: sandbox, testTarget: nil, timeout: 60)
+
+        #expect(artifact.derivedDataPath == projectDir.appendingPathComponent(".build").path)
+        #expect(artifact.xctestrunURL == nil)
+        #expect(artifact.plist == nil)
+    }
+
+    @Test("Given SPM build failure, when buildSPM called, then throws compilationFailed")
+    func spmBuildFailureThrowsCompilationFailed() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let sandbox = Sandbox(rootURL: projectDir)
+        let stage = BuildStage(launcher: MockProcessLauncher(exitCode: 1))
+
+        await #expect(throws: BuildError.compilationFailed) {
+            try await stage.buildSPM(sandbox: sandbox, testTarget: nil, timeout: 60)
+        }
+    }
+
+    @Test("Given SPM build with test target, when buildSPM called, then target flag is included in arguments")
+    func spmBuildWithTestTargetIncludesTargetFlag() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let launcher = MockProcessLauncher(exitCode: 0)
+        let sandbox = Sandbox(rootURL: projectDir)
+        let stage = BuildStage(launcher: launcher)
+
+        let artifact = try await stage.buildSPM(sandbox: sandbox, testTarget: "MyLibTests", timeout: 60)
+
+        #expect(artifact.xctestrunURL == nil)
+        #expect(artifact.plist == nil)
     }
 }
