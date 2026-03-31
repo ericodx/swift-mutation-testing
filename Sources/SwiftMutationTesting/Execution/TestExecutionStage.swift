@@ -94,7 +94,7 @@ struct TestExecutionStage: Sendable {
         }
         await context.pool.release(slot)
 
-        let outcome = spmOutcome(exitCode: launched.exitCode, output: launched.output)
+        let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
         let status = outcome.asExecutionStatus
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
         await cacheStore.store(status: status, for: key)
@@ -128,17 +128,6 @@ struct TestExecutionStage: Sendable {
             xcresultPath: "",
             duration: Date().timeIntervalSince(start)
         )
-    }
-
-    private func spmOutcome(exitCode: Int32, output: String) -> TestRunOutcome {
-        if exitCode == -1 { return .timedOut }
-        if exitCode == 0 { return .testsSucceeded }
-
-        switch TestOutputParser().parse(output) {
-        case .killed(let name): return .testsFailed(failingTest: name)
-        case .crashed: return .crashed
-        case .unviable: return .unviable
-        }
     }
 
     private func launch(
