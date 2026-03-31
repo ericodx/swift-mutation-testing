@@ -218,6 +218,68 @@ struct IncompatibleMutantExecutorTests {
         }
     }
 
+    @Test("Given SPM project type and exit code 0, when execute called, then mutant survived")
+    func spmExitCodeZeroProducesSurvivedStatus() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let executor = makeExecutorSPM(in: dir, exitCode: 0)
+        let pool = makePool()
+        try await pool.setUp()
+
+        let results = try await executor.execute(
+            [makeMutant(id: "m0", content: "let x = 1")],
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            pool: pool,
+            testFilesHash: "hash"
+        )
+
+        #expect(results.first?.status == .survived)
+    }
+
+    @Test("Given SPM project type and exit code 1 with failure output, when execute called, then mutant is killed")
+    func spmExitCodeOneWithFailureOutputProducesKilledStatus() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let output = #"Test "myTest" failed after 0.001 seconds."#
+        let executor = makeExecutorSPM(in: dir, exitCode: 1, output: output)
+        let pool = makePool()
+        try await pool.setUp()
+
+        let results = try await executor.execute(
+            [makeMutant(id: "m0", content: "let x = 1")],
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            pool: pool,
+            testFilesHash: "hash"
+        )
+
+        #expect(results.first?.status == .killed(by: "myTest"))
+    }
+
+    private func makeExecutorSPM(
+        in dir: URL,
+        exitCode: Int32,
+        output: String = ""
+    ) -> IncompatibleMutantExecutor {
+        IncompatibleMutantExecutor(
+            launcher: MockProcessLauncher(exitCode: exitCode, output: output),
+            sandboxFactory: SandboxFactory(),
+            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
+        )
+    }
+
+    private func makeConfigurationSPM(projectPath: String) -> RunnerConfiguration {
+        RunnerConfiguration(
+            projectPath: projectPath,
+            build: .init(projectType: .spm, timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
+        )
+    }
+
     private func makeExecutor(in dir: URL, exitCode: Int32) -> IncompatibleMutantExecutor {
         IncompatibleMutantExecutor(
             launcher: MockProcessLauncher(exitCode: exitCode),
