@@ -6,99 +6,57 @@ import Testing
 struct SchematizationStageTests {
     private let stage = SchematizationStage()
 
-    @Test("Given mutation in function body, when run, then produces one schematized file")
+    @Test("Given schematizable mutation, when run, then produces one schematized file")
     func schematizableMutationProducesSchematizedFile() {
         let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
-        let mutations = BooleanLiteralReplacement().mutations(in: source)
-        let result = stage.run(mutationPoints: mutations, sources: [source])
-        #expect(result.schematizedFiles.count == 1)
-        #expect(result.schematizedFiles[0].originalPath == "a.swift")
+        let indexed = makeIndexed(source: source, operators: [BooleanLiteralReplacement()])
+        let (files, _) = stage.run(indexed: indexed, sources: [source])
+        #expect(files.count == 1)
+        #expect(files[0].originalPath == "a.swift")
     }
 
-    @Test("Given schematizable mutation, when run, then descriptor has correct schematizability flags")
+    @Test("Given schematizable mutation, when run, then descriptor has correct flags")
     func schematizableMutationDescriptorHasCorrectFlags() {
         let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
-        let mutations = BooleanLiteralReplacement().mutations(in: source)
-        let result = stage.run(mutationPoints: mutations, sources: [source])
-        #expect(result.descriptors[0].isSchematizable)
-        #expect(result.descriptors[0].mutatedSourceContent == nil)
-    }
-
-    @Test("Given mutation at file scope, when run, then descriptor is marked as incompatible")
-    func fileScopeMutationIsIncompatible() {
-        let source = makeParsedSource("let x = true", path: "a.swift")
-        let mutations = BooleanLiteralReplacement().mutations(in: source)
-        let result = stage.run(mutationPoints: mutations, sources: [source])
-        #expect(!result.descriptors[0].isSchematizable)
-        #expect(result.descriptors[0].mutatedSourceContent != nil)
-        #expect(result.schematizedFiles.isEmpty)
-    }
-
-    @Test("Given incompatible mutation, when run, then mutatedSourceContent has mutation applied")
-    func incompatibleMutationContentHasMutationApplied() throws {
-        let source = makeParsedSource("let x = true", path: "a.swift")
-        let mutations = BooleanLiteralReplacement().mutations(in: source)
-        let result = stage.run(mutationPoints: mutations, sources: [source])
-        let content = try #require(result.descriptors[0].mutatedSourceContent)
-        #expect(content.contains("false"))
-    }
-
-    @Test("Given multiple mutations across files, when run, then descriptors are sorted by global index")
-    func descriptorsAreSortedByIndex() {
-        let sourceA = makeParsedSource("func f() { let x = true }", path: "a.swift")
-        let sourceB = makeParsedSource("func g() { let y = false }", path: "b.swift")
-        let mutationsA = BooleanLiteralReplacement().mutations(in: sourceA)
-        let mutationsB = BooleanLiteralReplacement().mutations(in: sourceB)
-        let result = stage.run(
-            mutationPoints: mutationsA + mutationsB,
-            sources: [sourceA, sourceB]
-        )
-        #expect(result.descriptors.count == 2)
-        let ids = result.descriptors.map { $0.id }
-        #expect(ids[0] == "swift-mutation-testing_0")
-        #expect(ids[1] == "swift-mutation-testing_1")
-    }
-
-    @Test("Given any input, when run, then supportFileContent declares __swiftMutationTestingID")
-    func supportFileContentDeclaresIDVariable() {
-        let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
-        let mutations = BooleanLiteralReplacement().mutations(in: source)
-        let result = stage.run(mutationPoints: mutations, sources: [source])
-        #expect(result.supportFileContent.contains("__swiftMutationTestingID"))
-        #expect(result.supportFileContent.contains("__SWIFT_MUTATION_TESTING_ACTIVE"))
+        let indexed = makeIndexed(source: source, operators: [BooleanLiteralReplacement()])
+        let (_, descriptors) = stage.run(indexed: indexed, sources: [source])
+        #expect(descriptors[0].isSchematizable)
+        #expect(descriptors[0].mutatedSourceContent == nil)
     }
 
     @Test("Given schematized content, when checked, then does not contain var __swiftMutationTestingID declaration")
     func schematizedContentDoesNotDeclareIDVariable() {
         let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
-        let mutations = BooleanLiteralReplacement().mutations(in: source)
-        let result = stage.run(mutationPoints: mutations, sources: [source])
-        let schematizedContent = result.schematizedFiles[0].schematizedContent
-        #expect(!schematizedContent.contains("var __swiftMutationTestingID"))
+        let indexed = makeIndexed(source: source, operators: [BooleanLiteralReplacement()])
+        let (files, _) = stage.run(indexed: indexed, sources: [source])
+        #expect(!files[0].schematizedContent.contains("var __swiftMutationTestingID"))
     }
 
-    @Test("Given mutation, when run, then descriptor ID uses correct format")
-    func descriptorIDUsesCorrectFormat() {
-        let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
-        let mutations = BooleanLiteralReplacement().mutations(in: source)
-        let result = stage.run(mutationPoints: mutations, sources: [source])
-        #expect(result.descriptors[0].id == "swift-mutation-testing_0")
+    @Test("Given any input, when checked, then supportFileContent declares __swiftMutationTestingID")
+    func supportFileContentDeclaresIDVariable() {
+        #expect(SchematizationStage.supportFileContent.contains("__swiftMutationTestingID"))
+        #expect(SchematizationStage.supportFileContent.contains("__SWIFT_MUTATION_TESTING_ACTIVE"))
     }
 
-    @Test("Given mutation point for unknown file path, when run, then skips it and returns empty result")
+    @Test("Given mutation point for unknown file path, when run, then skips it and returns empty")
     func mutationForUnknownFilePathIsSkipped() {
         let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
-        let mutations = BooleanLiteralReplacement().mutations(in: source)
-        let result = stage.run(mutationPoints: mutations, sources: [])
-        #expect(result.schematizedFiles.isEmpty)
-        #expect(result.descriptors.isEmpty)
+        let indexed = makeIndexed(source: source, operators: [BooleanLiteralReplacement()])
+        let (files, descriptors) = stage.run(indexed: indexed, sources: [])
+        #expect(files.isEmpty)
+        #expect(descriptors.isEmpty)
     }
 
-    @Test("Given empty mutation points, when run, then returns empty result")
-    func emptyMutationPointsReturnsEmptyResult() {
+    @Test("Given empty indexed list, when run, then returns empty")
+    func emptyIndexedListReturnsEmpty() {
         let source = makeParsedSource("func f() { let x = 1 }", path: "a.swift")
-        let result = stage.run(mutationPoints: [], sources: [source])
-        #expect(result.schematizedFiles.isEmpty)
-        #expect(result.descriptors.isEmpty)
+        let (files, descriptors) = stage.run(indexed: [], sources: [source])
+        #expect(files.isEmpty)
+        #expect(descriptors.isEmpty)
+    }
+
+    private func makeIndexed(source: ParsedSource, operators: [any MutationOperator]) -> [IndexedMutationPoint] {
+        let points = operators.flatMap { $0.mutations(in: source) }
+        return MutantIndexingStage().run(mutationPoints: points, sources: [source])
     }
 }
