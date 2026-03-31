@@ -49,7 +49,7 @@ struct TestExecutionStage: Sendable {
         }
 
         guard let plist = context.artifact.plist else {
-            return ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
+            return try await runSPM(mutant: mutant, key: key, in: context)
         }
 
         let plistData = plist.activating(mutant.id)
@@ -77,6 +77,68 @@ struct TestExecutionStage: Sendable {
         let index = await counter.increment()
         await reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: counter.total))
         return result
+    }
+
+    private func runSPM(
+        mutant: MutantDescriptor,
+        key: MutantCacheKey,
+        in context: TestExecutionContext
+    ) async throws -> ExecutionResult {
+        let slot = try await context.pool.acquire()
+        let launched: TestLaunchResult
+        do {
+            launched = try await launchSPM(mutant: mutant, in: context)
+        } catch {
+            await context.pool.release(slot)
+            throw error
+        }
+        await context.pool.release(slot)
+
+        let outcome = spmOutcome(exitCode: launched.exitCode, output: launched.output)
+        let status = outcome.asExecutionStatus
+        let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
+        await cacheStore.store(status: status, for: key)
+        let index = await counter.increment()
+        await reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: counter.total))
+        return result
+    }
+
+    private func launchSPM(
+        mutant: MutantDescriptor,
+        in context: TestExecutionContext
+    ) async throws -> TestLaunchResult {
+        var arguments = ["test", "--skip-build"]
+
+        if let testTarget = context.configuration.build.testTarget {
+            arguments += ["--filter", testTarget]
+        }
+
+        let start = Date()
+        let captured = try await launcher.launchCapturing(
+            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+            arguments: arguments,
+            environment: ["__SWIFT_MUTATION_TESTING_ACTIVE": mutant.id],
+            workingDirectoryURL: context.sandbox.rootURL,
+            timeout: context.configuration.build.timeout
+        )
+
+        return TestLaunchResult(
+            exitCode: captured.exitCode,
+            output: captured.output,
+            xcresultPath: "",
+            duration: Date().timeIntervalSince(start)
+        )
+    }
+
+    private func spmOutcome(exitCode: Int32, output: String) -> TestRunOutcome {
+        if exitCode == -1 { return .timedOut }
+        if exitCode == 0 { return .testsSucceeded }
+
+        switch TestOutputParser().parse(output) {
+        case .killed(let name): return .testsFailed(failingTest: name)
+        case .crashed: return .crashed
+        case .unviable: return .unviable
+        }
     }
 
     private func launch(
