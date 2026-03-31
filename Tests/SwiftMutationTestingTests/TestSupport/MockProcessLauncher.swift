@@ -34,6 +34,7 @@ struct MockProcessLauncher: ProcessLaunching {
         executableURL: URL,
         arguments: [String],
         environment: [String: String]?,
+        additionalEnvironment: [String: String],
         workingDirectoryURL: URL,
         timeout: Double
     ) async throws -> (exitCode: Int32, output: String) {

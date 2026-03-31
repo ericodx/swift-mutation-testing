@@ -15,7 +15,7 @@ private struct IOSSimulatorMock: ProcessLaunching {
 
     func launchCapturing(
         executableURL: URL, arguments: [String], environment: [String: String]?,
-        workingDirectoryURL: URL, timeout: Double
+        additionalEnvironment: [String: String], workingDirectoryURL: URL, timeout: Double
     ) async throws -> (exitCode: Int32, output: String) {
         if arguments.contains("clone") { return (0, cloneUDID + "\n") }
         return (0, listJSON)

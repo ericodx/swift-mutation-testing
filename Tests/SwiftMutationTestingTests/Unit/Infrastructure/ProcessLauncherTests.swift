@@ -37,6 +37,7 @@ struct ProcessLauncherTests {
             executableURL: URL(fileURLWithPath: "/bin/echo"),
             arguments: ["hello world"],
             environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
             timeout: 10
         )
@@ -51,6 +52,7 @@ struct ProcessLauncherTests {
             executableURL: URL(fileURLWithPath: "/bin/sh"),
             arguments: ["-c", "echo $TEST_VAR"],
             environment: ["TEST_VAR": "expected_value"],
+            additionalEnvironment: [:],
             workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
             timeout: 10
         )
@@ -65,6 +67,7 @@ struct ProcessLauncherTests {
             executableURL: URL(fileURLWithPath: "/bin/sh"),
             arguments: ["-c", "echo error_text >&2"],
             environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
             timeout: 10
         )
@@ -103,6 +106,7 @@ struct ProcessLauncherTests {
                 executableURL: URL(fileURLWithPath: "/nonexistent/binary"),
                 arguments: [],
                 environment: nil,
+                additionalEnvironment: [:],
                 workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
                 timeout: 10
             )
@@ -115,6 +119,7 @@ struct ProcessLauncherTests {
             executableURL: URL(fileURLWithPath: "/bin/sleep"),
             arguments: ["60"],
             environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
             timeout: 0.5
         )
@@ -140,6 +145,21 @@ struct ProcessLauncherTests {
         #expect(exitCode == -1)
     }
 
+    @Test("Given additionalEnvironment, when launched capturing, then process receives merged variable")
+    func launchCapturingMergesAdditionalEnvironment() async throws {
+        let result = try await launcher.launchCapturing(
+            executableURL: URL(fileURLWithPath: "/bin/sh"),
+            arguments: ["-c", "echo $EXTRA_VAR"],
+            environment: nil,
+            additionalEnvironment: ["EXTRA_VAR": "merged_value"],
+            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+            timeout: 10
+        )
+
+        #expect(result.exitCode == 0)
+        #expect(result.output.contains("merged_value"))
+    }
+
     @Test("Given task is cancelled while launchCapturing running, when cancelled, then process is terminated")
     func cancelledLaunchCapturingTerminatesProcess() async throws {
         let task = Task {
@@ -147,6 +167,7 @@ struct ProcessLauncherTests {
                 executableURL: URL(fileURLWithPath: "/bin/sleep"),
                 arguments: ["60"],
                 environment: nil,
+                additionalEnvironment: [:],
                 workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
                 timeout: 60
             )
