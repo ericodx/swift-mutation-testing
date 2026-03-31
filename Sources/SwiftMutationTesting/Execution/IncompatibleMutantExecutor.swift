@@ -129,6 +129,7 @@ struct IncompatibleMutantExecutor: Sendable {
             executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: arguments,
             environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: sandbox.rootURL,
             timeout: configuration.build.timeout
         )
@@ -156,6 +157,7 @@ struct IncompatibleMutantExecutor: Sendable {
             executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
             arguments: arguments,
             environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: sandbox.rootURL,
             timeout: configuration.build.timeout
         )

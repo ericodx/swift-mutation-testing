@@ -16,6 +16,7 @@ struct ResultParser: Sendable {
             executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
             arguments: ["xcresulttool", "get", "test-results", "tests", "--path", xcresultPath],
             environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
             timeout: timeout
         )

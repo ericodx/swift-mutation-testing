@@ -32,6 +32,7 @@ struct SimulatorManager: Sendable {
                 executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
                 arguments: ["simctl", "list", "devices", "--json"],
                 environment: nil,
+                additionalEnvironment: [:],
                 workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
                 timeout: 10
             )
@@ -57,6 +58,7 @@ struct SimulatorManager: Sendable {
             executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
             arguments: ["simctl", "list", "devices", "--json"],
             environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
             timeout: 10
         )

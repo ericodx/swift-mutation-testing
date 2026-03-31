@@ -35,6 +35,7 @@ let package = Package(
             name: "SwiftMutationTestingTests",
             dependencies: ["SwiftMutationTesting"],
             path: "Tests/SwiftMutationTestingTests",
+            exclude: ["TestSupport/Fixtures"],
             swiftSettings: [
                 .swiftLanguageMode(.v6)
             ]

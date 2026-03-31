@@ -30,6 +30,7 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
         executableURL: URL,
         arguments: [String],
         environment: [String: String]?,
+        additionalEnvironment: [String: String],
         workingDirectoryURL: URL,
         timeout: Double
     ) async throws -> (exitCode: Int32, output: String) {
@@ -40,6 +41,14 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
 
         if let environment {
             process.environment = environment
+        }
+
+        if !additionalEnvironment.isEmpty {
+            var env = process.environment ?? ProcessInfo.processInfo.environment
+            for (key, value) in additionalEnvironment {
+                env[key] = value
+            }
+            process.environment = env
         }
 
         let tempURL = FileManager.default.temporaryDirectory
