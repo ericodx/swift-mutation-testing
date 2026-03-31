@@ -55,6 +55,63 @@ struct SandboxFactoryTests {
         #expect(content == "let support = true")
     }
 
+    @Test(
+        "Given SPM project with target subdir, when sandbox created, then __SMTSupport.swift is in first target dir"
+    )
+    func injectsSupportFileIntoFirstSPMTargetDirectory() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let targetDir = projectDir.appendingPathComponent("Sources/MyLib")
+        try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+        try FileHelpers.write("original content", named: "File.swift", in: targetDir)
+        let filePath = targetDir.appendingPathComponent("File.swift").path
+
+        let schematized = SchematizedFile(originalPath: filePath, schematizedContent: "schematized content")
+        let sandbox = try await factory.create(
+            projectPath: projectDir.path,
+            schematizedFiles: [schematized],
+            supportFileContent: "let support = true"
+        )
+        defer { try? sandbox.cleanup() }
+
+        let supportURL = sandbox.rootURL.appendingPathComponent("Sources/MyLib/__SMTSupport.swift")
+        let rootLevelURL = sandbox.rootURL.appendingPathComponent("Sources/__SMTSupport.swift")
+        let content = try String(contentsOf: supportURL, encoding: .utf8)
+
+        #expect(content == "let support = true")
+        #expect(!FileManager.default.fileExists(atPath: rootLevelURL.path))
+    }
+
+    @Test(
+        "Given SPM multiple targets, when sandbox created, then __SMTSupport.swift goes into first alphabetical dir"
+    )
+    func injectsSupportFileIntoFirstAlphabeticalSPMTargetDirectory() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let alphaDir = projectDir.appendingPathComponent("Sources/Alpha")
+        let betaDir = projectDir.appendingPathComponent("Sources/Beta")
+        try FileManager.default.createDirectory(at: alphaDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: betaDir, withIntermediateDirectories: true)
+        try FileHelpers.write("let a = 1", named: "Alpha.swift", in: alphaDir)
+        let filePath = alphaDir.appendingPathComponent("Alpha.swift").path
+
+        let schematized = SchematizedFile(originalPath: filePath, schematizedContent: "let a = 2")
+        let sandbox = try await factory.create(
+            projectPath: projectDir.path,
+            schematizedFiles: [schematized],
+            supportFileContent: "let support = true"
+        )
+        defer { try? sandbox.cleanup() }
+
+        let supportInAlpha = sandbox.rootURL.appendingPathComponent("Sources/Alpha/__SMTSupport.swift")
+        let supportInBeta = sandbox.rootURL.appendingPathComponent("Sources/Beta/__SMTSupport.swift")
+
+        #expect(FileManager.default.fileExists(atPath: supportInAlpha.path))
+        #expect(!FileManager.default.fileExists(atPath: supportInBeta.path))
+    }
+
     @Test("Given Xcode project, when sandbox created, then support content is appended to first schematized file")
     func injectsSupportContentIntoFirstSchematizedFileForXcodeProject() async throws {
         let projectDir = try FileHelpers.makeTemporaryDirectory()

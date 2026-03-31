@@ -54,6 +54,33 @@ struct BuildStage: Sendable {
         )
     }
 
+    func buildSPM(
+        sandbox: Sandbox,
+        testTarget: String?,
+        timeout: Double
+    ) async throws -> BuildArtifact {
+        var arguments = ["build", "--build-tests"]
+
+        if let testTarget {
+            arguments += ["--target", testTarget]
+        }
+
+        let exitCode = try await launcher.launch(
+            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+            arguments: arguments,
+            workingDirectoryURL: sandbox.rootURL,
+            timeout: timeout
+        )
+
+        guard exitCode == 0 else { throw BuildError.compilationFailed }
+
+        return BuildArtifact(
+            derivedDataPath: sandbox.rootURL.appendingPathComponent(".build").path,
+            xctestrunURL: nil,
+            plist: nil
+        )
+    }
+
     private func findXcworkspace(in directory: URL) -> URL? {
         let items =
             (try? FileManager.default.contentsOfDirectory(

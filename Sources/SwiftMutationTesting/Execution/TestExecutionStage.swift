@@ -48,7 +48,11 @@ struct TestExecutionStage: Sendable {
             return result
         }
 
-        let plistData = context.artifact.plist.activating(mutant.id)
+        guard let plist = context.artifact.plist else {
+            return ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
+        }
+
+        let plistData = plist.activating(mutant.id)
         let slot = try await context.pool.acquire()
         let launched: TestLaunchResult
         do {
@@ -80,8 +84,10 @@ struct TestExecutionStage: Sendable {
         slot: SimulatorSlot,
         in context: TestExecutionContext
     ) async throws -> TestLaunchResult {
-        let xctestrunURL = context.artifact.xctestrunURL.deletingLastPathComponent()
-            .appendingPathComponent("\(UUID().uuidString).xctestrun")
+        let baseURL =
+            context.artifact.xctestrunURL?.deletingLastPathComponent()
+            ?? context.sandbox.rootURL
+        let xctestrunURL = baseURL.appendingPathComponent("\(UUID().uuidString).xctestrun")
         let xcresultPath = context.sandbox.rootURL
             .appendingPathComponent("\(UUID().uuidString).xcresult").path
 
