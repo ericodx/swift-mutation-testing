@@ -86,22 +86,31 @@ struct MutantExecutor: Sendable {
     private func buildArtifact(sandbox: Sandbox, deps: ExecutionDeps) async throws -> BuildArtifact? {
         await deps.reporter.report(.buildStarted)
         let start = Date()
+        let stage = BuildStage(launcher: deps.launcher)
 
-        guard case .xcode(let scheme, let destination) = configuration.build.projectType else {
-            return nil
-        }
+        switch configuration.build.projectType {
+        case .xcode(let scheme, let destination):
+            do {
+                let artifact = try await stage.build(
+                    sandbox: sandbox,
+                    scheme: scheme,
+                    destination: destination,
+                    timeout: configuration.build.timeout
+                )
+                await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
+                return artifact
+            } catch BuildError.compilationFailed {
+                return nil
+            }
 
-        do {
-            let artifact = try await BuildStage(launcher: deps.launcher).build(
+        case .spm:
+            let artifact = try await stage.buildSPM(
                 sandbox: sandbox,
-                scheme: scheme,
-                destination: destination,
+                testTarget: configuration.build.testTarget,
                 timeout: configuration.build.timeout
             )
             await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
             return artifact
-        } catch BuildError.compilationFailed {
-            return nil
         }
     }
 
