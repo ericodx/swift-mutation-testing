@@ -1,10 +1,7 @@
 import Foundation
 
 struct TestExecutionStage: Sendable {
-    let launcher: any ProcessLaunching
-    let cacheStore: CacheStore
-    let reporter: any ProgressReporter
-    let counter: MutationCounter
+    let deps: ExecutionDeps
 
     func execute(
         mutants: [MutantDescriptor],
@@ -40,11 +37,11 @@ struct TestExecutionStage: Sendable {
         key: MutantCacheKey,
         in context: TestExecutionContext
     ) async throws -> ExecutionResult {
-        if !context.configuration.build.noCache, let cached = await cacheStore.result(for: key) {
+        if !context.configuration.build.noCache, let cached = await deps.cacheStore.result(for: key) {
             let result = ExecutionResult(descriptor: mutant, status: cached, testDuration: 0)
-            let index = await counter.increment()
-            await reporter.report(
-                .mutantFinished(descriptor: mutant, status: cached, index: index, total: counter.total))
+            let index = await deps.counter.increment()
+            await deps.reporter.report(
+                .mutantFinished(descriptor: mutant, status: cached, index: index, total: deps.counter.total))
             return result
         }
 
@@ -63,7 +60,7 @@ struct TestExecutionStage: Sendable {
         }
         await context.pool.release(slot)
 
-        let outcome = try await ResultParser(launcher: launcher).parse(
+        let outcome = try await ResultParser(launcher: deps.launcher).parse(
             exitCode: launched.exitCode,
             output: launched.output,
             xcresultPath: launched.xcresultPath,
@@ -73,9 +70,9 @@ struct TestExecutionStage: Sendable {
 
         let status = outcome.asExecutionStatus
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
-        await cacheStore.store(status: status, for: key)
-        let index = await counter.increment()
-        await reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: counter.total))
+        await deps.cacheStore.store(status: status, for: key)
+        let index = await deps.counter.increment()
+        await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: deps.counter.total))
         return result
     }
 
@@ -97,9 +94,9 @@ struct TestExecutionStage: Sendable {
         let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
         let status = outcome.asExecutionStatus
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
-        await cacheStore.store(status: status, for: key)
-        let index = await counter.increment()
-        await reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: counter.total))
+        await deps.cacheStore.store(status: status, for: key)
+        let index = await deps.counter.increment()
+        await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: deps.counter.total))
         return result
     }
 
@@ -114,7 +111,7 @@ struct TestExecutionStage: Sendable {
         }
 
         let start = Date()
-        let captured = try await launcher.launchCapturing(
+        let captured = try await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
             arguments: arguments,
             environment: nil,
@@ -160,7 +157,7 @@ struct TestExecutionStage: Sendable {
         }
 
         let start = Date()
-        let captured = try await launcher.launchCapturing(
+        let captured = try await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: arguments,
             environment: nil,
