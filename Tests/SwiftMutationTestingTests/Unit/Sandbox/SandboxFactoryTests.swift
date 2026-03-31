@@ -187,10 +187,10 @@ struct SandboxFactoryTests {
         var isDir: ObjCBool = false
         let exists = FileManager.default.fileExists(atPath: sandboxXcuserdata.path, isDirectory: &isDir)
 
-        #expect(exists == true)
-        #expect(isDir.boolValue == true)
-        #expect(isSymlink == false)
-        #expect(FileManager.default.fileExists(atPath: userDataFile.path) == false)
+        #expect(exists)
+        #expect(isDir.boolValue)
+        #expect(!isSymlink)
+        #expect(!FileManager.default.fileExists(atPath: userDataFile.path))
     }
 
     @Test("Given file not in schematized list, when sandbox created, then file is a symlink to the original")
@@ -211,7 +211,7 @@ struct SandboxFactoryTests {
         let isSymlink = (try? sandboxFile.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink ?? false
         let content = try String(contentsOf: sandboxFile, encoding: .utf8)
 
-        #expect(isSymlink == true)
+        #expect(isSymlink)
         #expect(content == "original content")
     }
 
@@ -431,7 +431,7 @@ struct SandboxFactoryTests {
 
         try sandbox.cleanup()
 
-        #expect(FileManager.default.fileExists(atPath: sandbox.rootURL.path) == false)
+        #expect(!FileManager.default.fileExists(atPath: sandbox.rootURL.path))
     }
 
     private func swiftLintPbxprojContent() -> String {

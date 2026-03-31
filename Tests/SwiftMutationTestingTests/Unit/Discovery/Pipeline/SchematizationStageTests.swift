@@ -20,7 +20,7 @@ struct SchematizationStageTests {
         let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
         let mutations = BooleanLiteralReplacement().mutations(in: source)
         let result = stage.run(mutationPoints: mutations, sources: [source])
-        #expect(result.descriptors[0].isSchematizable == true)
+        #expect(result.descriptors[0].isSchematizable)
         #expect(result.descriptors[0].mutatedSourceContent == nil)
     }
 
@@ -29,17 +29,18 @@ struct SchematizationStageTests {
         let source = makeParsedSource("let x = true", path: "a.swift")
         let mutations = BooleanLiteralReplacement().mutations(in: source)
         let result = stage.run(mutationPoints: mutations, sources: [source])
-        #expect(result.descriptors[0].isSchematizable == false)
+        #expect(!result.descriptors[0].isSchematizable)
         #expect(result.descriptors[0].mutatedSourceContent != nil)
         #expect(result.schematizedFiles.isEmpty)
     }
 
     @Test("Given incompatible mutation, when run, then mutatedSourceContent has mutation applied")
-    func incompatibleMutationContentHasMutationApplied() {
+    func incompatibleMutationContentHasMutationApplied() throws {
         let source = makeParsedSource("let x = true", path: "a.swift")
         let mutations = BooleanLiteralReplacement().mutations(in: source)
         let result = stage.run(mutationPoints: mutations, sources: [source])
-        #expect(result.descriptors[0].mutatedSourceContent?.contains("false") == true)
+        let content = try #require(result.descriptors[0].mutatedSourceContent)
+        #expect(content.contains("false"))
     }
 
     @Test("Given multiple mutations across files, when run, then descriptors are sorted by global index")

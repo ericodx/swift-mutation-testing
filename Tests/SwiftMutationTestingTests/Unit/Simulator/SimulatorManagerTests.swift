@@ -9,14 +9,14 @@ struct SimulatorManagerTests {
     func requiresSimulatorPoolReturnsTrueForIOSSimulator() {
         let result = SimulatorManager.requiresSimulatorPool(for: "platform=iOS Simulator,name=iPhone 15")
 
-        #expect(result == true)
+        #expect(result)
     }
 
     @Test("Given macOS destination, when requiresSimulatorPool called, then returns false")
     func requiresSimulatorPoolReturnsFalseForMacOS() {
         let result = SimulatorManager.requiresSimulatorPool(for: "platform=macOS,arch=arm64")
 
-        #expect(result == false)
+        #expect(!result)
     }
 
     @Test("Given destination with name, when resolveBaseUDID called, then returns matching UDID")
@@ -66,7 +66,7 @@ struct SimulatorManagerTests {
     @Test("Given destination without platform= prefix, when requiresSimulatorPool called, then returns true")
     func requiresSimulatorPoolReturnsTrueForUnknownPlatform() {
         let result = SimulatorManager.requiresSimulatorPool(for: "name=My Device,OS=latest")
-        #expect(result == true)
+        #expect(result)
     }
 
     @Test("Given simulator never boots within max attempts, when waitForBooted called, then throws bootTimeout")
