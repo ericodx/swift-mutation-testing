@@ -41,18 +41,22 @@ struct TestExecutionStageTests {
         )
 
         let successStage = TestExecutionStage(
-            launcher: MockProcessLauncher(exitCode: 0),
-            cacheStore: cacheStore,
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 0),
+                cacheStore: cacheStore,
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
         )
         _ = try await successStage.execute(mutants: [makeMutant(id: "m0")], in: context)
 
         let failStage = TestExecutionStage(
-            launcher: MockProcessLauncher(exitCode: 1),
-            cacheStore: cacheStore,
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 1),
+                cacheStore: cacheStore,
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
         )
         let results = try await failStage.execute(mutants: [makeMutant(id: "m0")], in: context)
 
@@ -101,21 +105,25 @@ struct TestExecutionStageTests {
         )
 
         let survivedStage = TestExecutionStage(
-            launcher: MockProcessLauncher(exitCode: 0),
-            cacheStore: cacheStore,
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 0),
+                cacheStore: cacheStore,
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
         )
         _ = try await survivedStage.execute(mutants: [makeMutant(id: "m0")], in: context)
 
         let killedStage = TestExecutionStage(
-            launcher: MockProcessLauncher(
-                exitCode: 1,
-                output: "Test Case '-[S t]' failed (0.001 seconds)."
-            ),
-            cacheStore: cacheStore,
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(
+                    exitCode: 1,
+                    output: "Test Case '-[S t]' failed (0.001 seconds)."
+                ),
+                cacheStore: cacheStore,
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
         )
         let results = try await killedStage.execute(mutants: [makeMutant(id: "m0")], in: context)
 
@@ -142,10 +150,12 @@ struct TestExecutionStageTests {
             filter: .init(excludePatterns: [], operators: [])
         )
         let stage = TestExecutionStage(
-            launcher: launcher,
-            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: launcher,
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
         )
         let context = TestExecutionContext(
             artifact: makeBuildArtifact(in: dir),
@@ -186,10 +196,12 @@ struct TestExecutionStageTests {
         try await pool.setUp()
 
         let stage = TestExecutionStage(
-            launcher: launcher,
-            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: launcher,
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
         )
         let context = TestExecutionContext(
             artifact: makeBuildArtifact(in: dir),
@@ -243,17 +255,18 @@ struct TestExecutionStageTests {
         try await pool.setUp()
         let config = RunnerConfiguration(
             projectPath: "/tmp",
-            build: .init(
-                projectType: .spm, testTarget: "MyLibTests",
+            build: .init(projectType: .spm, testTarget: "MyLibTests",
                 timeout: 60, concurrency: 1, noCache: false),
             reporting: .init(quiet: true),
             filter: .init(excludePatterns: [], operators: [])
         )
         let stage = TestExecutionStage(
-            launcher: MockProcessLauncher(exitCode: 0),
-            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 0),
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
         )
         let context = TestExecutionContext(
             artifact: BuildArtifact(derivedDataPath: dir.path, xctestrunURL: nil, plist: nil),
@@ -280,10 +293,12 @@ struct TestExecutionStageTests {
             destination: "platform=macOS", launcher: launcher
         )
         let stage = TestExecutionStage(
-            launcher: launcher,
-            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 3)
+            deps: ExecutionDeps(
+                launcher: launcher,
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 3)
+            )
         )
         let context = TestExecutionContext(
             artifact: makeBuildArtifact(in: dir),
@@ -306,10 +321,12 @@ struct TestExecutionStageTests {
             destination: "platform=macOS", launcher: launcher
         )
         let stage = TestExecutionStage(
-            launcher: launcher,
-            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: launcher,
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
         )
         let config = RunnerConfiguration(
             projectPath: "/tmp",
