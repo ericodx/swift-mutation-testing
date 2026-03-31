@@ -16,7 +16,11 @@ struct DiscoveryPipeline: Sendable {
         let parsedSources = await ParsingStage().run(sourceFiles: sourceFiles)
         let ops = resolvedOperators(from: input.operators)
         let mutationPoints = await MutantDiscoveryStage(operators: ops).run(sources: parsedSources)
-        let result = SchematizationStage().run(mutationPoints: mutationPoints, sources: parsedSources)
+        let indexed = MutantIndexingStage().run(mutationPoints: mutationPoints, sources: parsedSources)
+        let (schematizedFiles, schematizableDescriptors) = SchematizationStage().run(indexed: indexed, sources: parsedSources)
+        let incompatibleDescriptors = IncompatibleRewritingStage().run(indexed: indexed, sources: parsedSources)
+        let allDescriptors = (schematizableDescriptors + incompatibleDescriptors)
+            .sorted { indexFromID($0.id) < indexFromID($1.id) }
 
         return RunnerInput(
             projectPath: input.projectPath,
@@ -24,10 +28,14 @@ struct DiscoveryPipeline: Sendable {
             timeout: input.timeout,
             concurrency: input.concurrency,
             noCache: input.noCache,
-            schematizedFiles: result.schematizedFiles,
-            supportFileContent: result.supportFileContent,
-            mutants: result.descriptors
+            schematizedFiles: schematizedFiles,
+            supportFileContent: SchematizationStage.supportFileContent,
+            mutants: allDescriptors
         )
+    }
+
+    private func indexFromID(_ id: String) -> Int {
+        Int(id.replacingOccurrences(of: "swift-mutation-testing_", with: "")) ?? 0
     }
 
     private func resolvedOperators(from identifiers: [String]) -> [any MutationOperator] {
