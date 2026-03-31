@@ -299,7 +299,8 @@ struct SandboxFactory: Sendable {
                 includingPropertiesForKeys: [.isDirectoryKey]
             )) ?? []
 
-        return items
+        return
+            items
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .first
