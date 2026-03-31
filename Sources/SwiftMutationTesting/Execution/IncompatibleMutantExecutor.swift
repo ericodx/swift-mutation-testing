@@ -74,7 +74,7 @@ struct IncompatibleMutantExecutor: Sendable {
             )
 
         case .spm:
-            outcome = spmOutcome(exitCode: launched.exitCode, output: launched.output)
+            outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
         }
 
         try? sandbox.cleanup()
@@ -166,17 +166,6 @@ struct IncompatibleMutantExecutor: Sendable {
             xcresultPath: "",
             duration: Date().timeIntervalSince(start)
         )
-    }
-
-    private func spmOutcome(exitCode: Int32, output: String) -> TestRunOutcome {
-        if exitCode == -1 { return .timedOut }
-        if exitCode == 0 { return .testsSucceeded }
-
-        switch TestOutputParser().parse(output) {
-        case .killed(let name): return .testsFailed(failingTest: name)
-        case .crashed: return .crashed
-        case .unviable: return .unviable
-        }
     }
 
     private func storeAndReport(
