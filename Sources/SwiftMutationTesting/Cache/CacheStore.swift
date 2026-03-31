@@ -1,11 +1,11 @@
 import Foundation
 
-private struct CacheEntry: Codable {
-    let key: MutantCacheKey
-    let status: ExecutionStatus
-}
-
 actor CacheStore {
+    private struct CacheEntry: Codable {
+        let key: MutantCacheKey
+        let status: ExecutionStatus
+    }
+
     init(storePath: String) {
         self.storePath = storePath
         self.entries = [:]
