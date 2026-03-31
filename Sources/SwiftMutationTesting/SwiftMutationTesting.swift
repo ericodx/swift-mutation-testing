@@ -46,7 +46,20 @@ public struct SwiftMutationTesting {
             fileValues: fileValues
         )
 
-        let input = try await discover(configuration: configuration)
+        let (input, discoveryDuration) = try await discover(configuration: configuration)
+
+        if !configuration.reporting.quiet {
+            let schematizable = input.mutants.filter { $0.isSchematizable }.count
+            let incompatible = input.mutants.count - schematizable
+            await ConsoleProgressReporter().report(
+                .discoveryFinished(
+                    mutantCount: input.mutants.count,
+                    schematizableCount: schematizable,
+                    incompatibleCount: incompatible,
+                    duration: discoveryDuration
+                ))
+        }
+
         let start = Date()
         let results = try await MutantExecutor(configuration: configuration, launcher: launcher).execute(input)
         let duration = Date().timeIntervalSince(start)
@@ -58,7 +71,7 @@ public struct SwiftMutationTesting {
         return .success
     }
 
-    private static func discover(configuration: RunnerConfiguration) async throws -> RunnerInput {
+    private static func discover(configuration: RunnerConfiguration) async throws -> (RunnerInput, TimeInterval) {
         let start = Date()
         let discoveryInput = DiscoveryInput(
             projectPath: configuration.projectPath,
@@ -71,20 +84,7 @@ public struct SwiftMutationTesting {
             operators: configuration.filter.operators
         )
         let input = try await DiscoveryPipeline().run(input: discoveryInput)
-
-        if !configuration.reporting.quiet {
-            let schematizable = input.mutants.filter { $0.isSchematizable }.count
-            let incompatible = input.mutants.count - schematizable
-            await ConsoleProgressReporter().report(
-                .discoveryFinished(
-                    mutantCount: input.mutants.count,
-                    schematizableCount: schematizable,
-                    incompatibleCount: incompatible,
-                    duration: Date().timeIntervalSince(start)
-                ))
-        }
-
-        return input
+        return (input, Date().timeIntervalSince(start))
     }
 
     static func writeReports(_ summary: RunnerSummary, configuration: RunnerConfiguration) {
@@ -96,32 +96,30 @@ public struct SwiftMutationTesting {
         print("")
 
         if let output = configuration.reporting.output {
-            do {
+            writeReport(label: "JSON", to: output) {
                 try JsonReporter(outputPath: output, projectRoot: configuration.projectPath).report(summary)
-                print("  ✓ JSON report: \(output)")
-            } catch {
-                fputs("Warning: could not write JSON report to '\(output)': \(error.localizedDescription)\n", stderr)
             }
         }
 
         if let htmlOutput = configuration.reporting.htmlOutput {
-            do {
+            writeReport(label: "HTML", to: htmlOutput) {
                 try HtmlReporter(outputPath: htmlOutput, projectRoot: configuration.projectPath).report(summary)
-                print("  ✓ HTML report: \(htmlOutput)")
-            } catch {
-                let msg = "Warning: could not write HTML report to '\(htmlOutput)': \(error.localizedDescription)\n"
-                fputs(msg, stderr)
             }
         }
 
         if let sonarOutput = configuration.reporting.sonarOutput {
-            do {
+            writeReport(label: "Sonar", to: sonarOutput) {
                 try SonarReporter(outputPath: sonarOutput, projectRoot: configuration.projectPath).report(summary)
-                print("  ✓ Sonar report: \(sonarOutput)")
-            } catch {
-                let msg = "Warning: could not write Sonar report to '\(sonarOutput)': \(error.localizedDescription)\n"
-                fputs(msg, stderr)
             }
+        }
+    }
+
+    private static func writeReport(label: String, to path: String, _ write: () throws -> Void) {
+        do {
+            try write()
+            print("  ✓ \(label) report: \(path)")
+        } catch {
+            fputs("Warning: could not write \(label) report to '\(path)': \(error.localizedDescription)\n", stderr)
         }
     }
 }
