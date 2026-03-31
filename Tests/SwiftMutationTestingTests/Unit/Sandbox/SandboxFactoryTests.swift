@@ -55,7 +55,9 @@ struct SandboxFactoryTests {
         #expect(content == "let support = true")
     }
 
-    @Test("Given SPM project with target subdirectory, when sandbox created, then __SMTSupport.swift is written into first target dir")
+    @Test(
+        "Given SPM project with target subdir, when sandbox created, then __SMTSupport.swift is in first target dir"
+    )
     func injectsSupportFileIntoFirstSPMTargetDirectory() async throws {
         let projectDir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(projectDir) }
@@ -81,7 +83,9 @@ struct SandboxFactoryTests {
         #expect(!FileManager.default.fileExists(atPath: rootLevelURL.path))
     }
 
-    @Test("Given SPM project with multiple target subdirectories, when sandbox created, then __SMTSupport.swift is written into first alphabetical target dir")
+    @Test(
+        "Given SPM multiple targets, when sandbox created, then __SMTSupport.swift goes into first alphabetical dir"
+    )
     func injectsSupportFileIntoFirstAlphabeticalSPMTargetDirectory() async throws {
         let projectDir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(projectDir) }
