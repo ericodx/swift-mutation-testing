@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import SwiftMutationTesting
@@ -90,4 +91,30 @@ struct TestOutputParserTests {
 
         #expect(result == .unviable)
     }
+
+    @Test("Given SPM swift test output with fatal error, when parsed, then returns crashed")
+    func parsesSPMFatalErrorCrash() throws {
+        let output = try loadFixture("spm_xctest_fatal_error")
+        let result = TestOutputParser().parse(output)
+
+        #expect(result == .crashed)
+    }
+
+    @Test("Given SPM swift test output with EXC_BAD_INSTRUCTION, when parsed, then returns crashed")
+    func parsesSPMEXCBadInstructionCrash() throws {
+        let output = try loadFixture("spm_xctest_exc_bad_instruction")
+        let result = TestOutputParser().parse(output)
+
+        #expect(result == .crashed)
+    }
+}
+
+private func loadFixture(_ name: String) throws -> String {
+    let fixturesURL = URL(filePath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appending(path: "TestSupport/Fixtures/\(name).txt")
+    return try String(contentsOf: fixturesURL, encoding: .utf8)
 }
