@@ -222,6 +222,48 @@ struct MutantExecutorTests {
         #expect(incompatibleResult?.status == .unviable)
     }
 
+    @Test("Given SPM project type and schematizable mutants, when execute called, then returns unviable")
+    func spmSchematizableMutantsAreUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let executor = MutantExecutor(
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            launcher: MockProcessLauncher(exitCode: 0)
+        )
+        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
+        let input = makeInputSPM(
+            projectPath: dir.path,
+            schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+            mutants: [mutant]
+        )
+
+        let results = try await executor.execute(input)
+
+        #expect(results.count == 1)
+        #expect(results[0].status == .unviable)
+    }
+
+    @Test("Given SPM project type and build failure, when execute called, then throws compilationFailed")
+    func spmBuildFailureThrows() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let executor = MutantExecutor(
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            launcher: MockProcessLauncher(exitCode: 1)
+        )
+        let mutant = makeMutant(id: "m0", filePath: "/tmp/Foo.swift", isSchematizable: true)
+        let input = makeInputSPM(projectPath: dir.path, mutants: [mutant])
+
+        await #expect(throws: BuildError.compilationFailed) {
+            try await executor.execute(input)
+        }
+    }
+
     private func makeConfiguration(
         projectPath: String,
         noCache: Bool = false,
@@ -237,6 +279,15 @@ struct MutantExecutorTests {
         )
     }
 
+    private func makeConfigurationSPM(projectPath: String) -> RunnerConfiguration {
+        RunnerConfiguration(
+            projectPath: projectPath,
+            build: .init(projectType: .spm, timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
+        )
+    }
+
     private func makeInput(
         projectPath: String,
         schematizedFiles: [SchematizedFile] = [],
@@ -245,6 +296,23 @@ struct MutantExecutorTests {
         RunnerInput(
             projectPath: projectPath,
             projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
+            timeout: 60,
+            concurrency: 1,
+            noCache: false,
+            schematizedFiles: schematizedFiles,
+            supportFileContent: "",
+            mutants: mutants
+        )
+    }
+
+    private func makeInputSPM(
+        projectPath: String,
+        schematizedFiles: [SchematizedFile] = [],
+        mutants: [MutantDescriptor] = []
+    ) -> RunnerInput {
+        RunnerInput(
+            projectPath: projectPath,
+            projectType: .spm,
             timeout: 60,
             concurrency: 1,
             noCache: false,
