@@ -113,14 +113,12 @@ struct TestExecutionStage: Sendable {
             arguments += ["--filter", testTarget]
         }
 
-        var environment = ProcessInfo.processInfo.environment
-        environment["__SWIFT_MUTATION_TESTING_ACTIVE"] = mutant.id
-
         let start = Date()
         let captured = try await launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
             arguments: arguments,
-            environment: environment,
+            environment: nil,
+            additionalEnvironment: ["__SWIFT_MUTATION_TESTING_ACTIVE": mutant.id],
             workingDirectoryURL: context.sandbox.rootURL,
             timeout: context.configuration.build.timeout
         )
@@ -166,6 +164,7 @@ struct TestExecutionStage: Sendable {
             executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: arguments,
             environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: context.sandbox.rootURL,
             timeout: context.configuration.build.timeout
         )

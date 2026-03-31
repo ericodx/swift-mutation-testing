@@ -69,6 +69,7 @@ struct ProjectDetector: Sendable {
                 executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
                 arguments: [container.flag, container.path, "-list", "-json"],
                 environment: nil,
+                additionalEnvironment: [:],
                 workingDirectoryURL: workingDirectory,
                 timeout: 30
             ),
@@ -86,6 +87,7 @@ struct ProjectDetector: Sendable {
                 executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
                 arguments: ["package", "dump-package"],
                 environment: nil,
+                additionalEnvironment: [:],
                 workingDirectoryURL: projectURL,
                 timeout: 30
             ),
@@ -195,6 +197,7 @@ struct ProjectDetector: Sendable {
                 executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
                 arguments: ["simctl", "list", "devices", "available", "--json"],
                 environment: nil,
+                additionalEnvironment: [:],
                 workingDirectoryURL: URL(fileURLWithPath: "."),
                 timeout: 10
             ),

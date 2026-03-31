@@ -54,6 +54,7 @@ actor SimulatorPool {
                         executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
                         arguments: ["simctl", "clone", base, "XMR-\(session)-\(index)"],
                         environment: nil,
+                        additionalEnvironment: [:],
                         workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
                         timeout: 60
                     )
