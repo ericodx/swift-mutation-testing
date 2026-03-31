@@ -63,12 +63,19 @@ struct IncompatibleMutantExecutor: Sendable {
         let duration = launched.duration
         await pool.release(slot)
 
-        let outcome = try await ResultParser(launcher: launcher).parse(
-            exitCode: launched.exitCode,
-            output: launched.output,
-            xcresultPath: launched.xcresultPath,
-            timeout: configuration.build.timeout
-        )
+        let outcome: TestRunOutcome
+        switch configuration.build.projectType {
+        case .xcode:
+            outcome = try await ResultParser(launcher: launcher).parse(
+                exitCode: launched.exitCode,
+                output: launched.output,
+                xcresultPath: launched.xcresultPath,
+                timeout: configuration.build.timeout
+            )
+
+        case .spm:
+            outcome = spmOutcome(exitCode: launched.exitCode, output: launched.output)
+        }
 
         try? sandbox.cleanup()
 
@@ -85,16 +92,24 @@ struct IncompatibleMutantExecutor: Sendable {
         sandbox: Sandbox,
         configuration: RunnerConfiguration
     ) async throws -> IncompatibleTestLaunchResult {
-        let derivedDataPath = sandbox.rootURL
-            .appendingPathComponent(".derived-data").path
+        switch configuration.build.projectType {
+        case .xcode(let scheme, _):
+            return try await launchXcode(
+                scheme: scheme, slot: slot, sandbox: sandbox, configuration: configuration)
+        case .spm:
+            return try await launchSPM(sandbox: sandbox, configuration: configuration)
+        }
+    }
+
+    private func launchXcode(
+        scheme: String,
+        slot: SimulatorSlot,
+        sandbox: Sandbox,
+        configuration: RunnerConfiguration
+    ) async throws -> IncompatibleTestLaunchResult {
+        let derivedDataPath = sandbox.rootURL.appendingPathComponent(".derived-data").path
         let xcresultPath = sandbox.rootURL
             .appendingPathComponent("\(UUID().uuidString).xcresult").path
-
-        guard case .xcode(let scheme, _) = configuration.build.projectType else {
-            return IncompatibleTestLaunchResult(
-                exitCode: 0, output: "", xcresultPath: xcresultPath, duration: 0
-            )
-        }
 
         var arguments = [
             "test",
@@ -124,6 +139,44 @@ struct IncompatibleMutantExecutor: Sendable {
             xcresultPath: xcresultPath,
             duration: Date().timeIntervalSince(start)
         )
+    }
+
+    private func launchSPM(
+        sandbox: Sandbox,
+        configuration: RunnerConfiguration
+    ) async throws -> IncompatibleTestLaunchResult {
+        var arguments = ["test"]
+
+        if let testTarget = configuration.build.testTarget {
+            arguments += ["--filter", testTarget]
+        }
+
+        let start = Date()
+        let captured = try await launcher.launchCapturing(
+            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+            arguments: arguments,
+            environment: nil,
+            workingDirectoryURL: sandbox.rootURL,
+            timeout: configuration.build.timeout
+        )
+
+        return IncompatibleTestLaunchResult(
+            exitCode: captured.exitCode,
+            output: captured.output,
+            xcresultPath: "",
+            duration: Date().timeIntervalSince(start)
+        )
+    }
+
+    private func spmOutcome(exitCode: Int32, output: String) -> TestRunOutcome {
+        if exitCode == -1 { return .timedOut }
+        if exitCode == 0 { return .testsSucceeded }
+
+        switch TestOutputParser().parse(output) {
+        case .killed(let name): return .testsFailed(failingTest: name)
+        case .crashed: return .crashed
+        case .unviable: return .unviable
+        }
     }
 
     private func storeAndReport(
