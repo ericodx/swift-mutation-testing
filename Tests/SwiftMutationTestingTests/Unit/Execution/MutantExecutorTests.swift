@@ -222,8 +222,8 @@ struct MutantExecutorTests {
         #expect(incompatibleResult?.status == .unviable)
     }
 
-    @Test("Given SPM project type and schematizable mutants, when execute called, then returns unviable")
-    func spmSchematizableMutantsAreUnviable() async throws {
+    @Test("Given SPM project type and schematizable mutants with exit code 0, when execute called, then survived")
+    func spmSchematizableMutantsSurviveOnExitCodeZero() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -244,7 +244,7 @@ struct MutantExecutorTests {
         let results = try await executor.execute(input)
 
         #expect(results.count == 1)
-        #expect(results[0].status == .unviable)
+        #expect(results[0].status == .survived)
     }
 
     @Test("Given SPM project type and build failure, when execute called, then throws compilationFailed")

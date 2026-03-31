@@ -204,6 +204,71 @@ struct TestExecutionStageTests {
         }
     }
 
+    @Test("Given SPM artifact and exit code 0, when execute called, then mutant survived")
+    func spmExitCodeZeroProducesSurvivedStatus() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let (stage, context) = makeSPMFixture(in: dir, exitCode: 0)
+        try await context.pool.setUp()
+
+        let results = try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
+
+        #expect(results.first?.status == .survived)
+    }
+
+    @Test("Given SPM artifact and exit code 1 with failure output, when execute called, then mutant is killed")
+    func spmExitCodeOneWithFailureOutputProducesKilledStatus() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let output = #"Test "myTest" failed after 0.001 seconds."#
+        let (stage, context) = makeSPMFixture(in: dir, exitCode: 1, output: output)
+        try await context.pool.setUp()
+
+        let results = try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
+
+        #expect(results.first?.status == .killed(by: "myTest"))
+    }
+
+    @Test("Given SPM artifact with testTarget, when execute called, then returns result")
+    func spmWithTestTargetReturnsResult() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let pool = SimulatorPool(
+            baseUDID: nil, size: 1,
+            destination: "platform=macOS", launcher: MockProcessLauncher(exitCode: 0)
+        )
+        try await pool.setUp()
+        let config = RunnerConfiguration(
+            projectPath: "/tmp",
+            build: .init(
+                projectType: .spm, testTarget: "MyLibTests",
+                timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
+        )
+        let stage = TestExecutionStage(
+            launcher: MockProcessLauncher(exitCode: 0),
+            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
+        )
+        let context = TestExecutionContext(
+            artifact: BuildArtifact(derivedDataPath: dir.path, xctestrunURL: nil, plist: nil),
+            sandbox: Sandbox(rootURL: dir),
+            pool: pool,
+            configuration: config,
+            testFilesHash: "hash"
+        )
+
+        let results = try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
+
+        #expect(results.count == 1)
+        #expect(results.first?.status == .survived)
+    }
+
     private func makeFixture(
         in dir: URL,
         exitCode: Int32,
@@ -225,6 +290,38 @@ struct TestExecutionStageTests {
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
             configuration: makeConfiguration(),
+            testFilesHash: "hash"
+        )
+        return (stage, context)
+    }
+
+    private func makeSPMFixture(
+        in dir: URL,
+        exitCode: Int32,
+        output: String = ""
+    ) -> (TestExecutionStage, TestExecutionContext) {
+        let launcher = MockProcessLauncher(exitCode: exitCode, output: output)
+        let pool = SimulatorPool(
+            baseUDID: nil, size: 1,
+            destination: "platform=macOS", launcher: launcher
+        )
+        let stage = TestExecutionStage(
+            launcher: launcher,
+            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+            reporter: MockProgressReporter(),
+            counter: MutationCounter(total: 1)
+        )
+        let config = RunnerConfiguration(
+            projectPath: "/tmp",
+            build: .init(projectType: .spm, timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
+        )
+        let context = TestExecutionContext(
+            artifact: BuildArtifact(derivedDataPath: dir.path, xctestrunURL: nil, plist: nil),
+            sandbox: Sandbox(rootURL: dir),
+            pool: pool,
+            configuration: config,
             testFilesHash: "hash"
         )
         return (stage, context)
