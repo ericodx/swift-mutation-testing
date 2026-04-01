@@ -42,13 +42,16 @@ struct BuildStageTests {
         let sandbox = Sandbox(rootURL: projectDir)
         let stage = BuildStage(launcher: MockProcessLauncher(exitCode: 1))
 
-        await #expect(throws: BuildError.compilationFailed) {
+        await #expect {
             try await stage.build(
                 sandbox: sandbox,
                 scheme: "App",
                 destination: "platform=macOS,arch=arm64",
                 timeout: 60
             )
+        } throws: { error in
+            guard case BuildError.compilationFailed = error else { return false }
+            return true
         }
     }
 
@@ -171,8 +174,11 @@ struct BuildStageTests {
         let sandbox = Sandbox(rootURL: projectDir)
         let stage = BuildStage(launcher: MockProcessLauncher(exitCode: 1))
 
-        await #expect(throws: BuildError.compilationFailed) {
+        await #expect {
             try await stage.buildSPM(sandbox: sandbox, testTarget: nil, timeout: 60)
+        } throws: { error in
+            guard case BuildError.compilationFailed = error else { return false }
+            return true
         }
     }
 
