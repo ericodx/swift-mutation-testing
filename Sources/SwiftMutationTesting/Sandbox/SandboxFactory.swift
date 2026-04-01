@@ -34,6 +34,20 @@ struct SandboxFactory: Sendable {
         return Sandbox(rootURL: sandboxURL)
     }
 
+    func createClean(projectPath: String) async throws -> Sandbox {
+        let sandboxURL = try makeSandboxRoot()
+        let projectURL = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath()
+
+        try populateDirectory(
+            source: projectURL,
+            destination: sandboxURL,
+            schematizedPaths: [:],
+            mutatedMapping: nil
+        )
+
+        return Sandbox(rootURL: sandboxURL)
+    }
+
     func create(
         projectPath: String,
         mutatedFilePath: String,
