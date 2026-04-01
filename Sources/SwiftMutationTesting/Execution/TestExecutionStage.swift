@@ -93,6 +93,10 @@ struct TestExecutionStage: Sendable {
 
         let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
         let status = outcome.asExecutionStatus
+        if status == .unviable {
+            let snippet = String(launched.output.prefix(300)).replacingOccurrences(of: "\n", with: "↵")
+            fputs("[xmr] unviable mutant=\(mutant.id) file=\(URL(fileURLWithPath: mutant.filePath).lastPathComponent) exitCode=\(launched.exitCode) output=\(snippet)\n", stderr)
+        }
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
         await deps.cacheStore.store(status: status, for: key)
         let index = await deps.counter.increment()
