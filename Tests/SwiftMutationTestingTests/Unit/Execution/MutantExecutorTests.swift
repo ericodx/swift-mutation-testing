@@ -36,6 +36,39 @@ private actor SPMRetryExcludingErrorsMock: ProcessLaunching {
     }
 }
 
+private actor SPMNarrowExclusionMock: ProcessLaunching {
+    private var buildCallCount = 0
+
+    func launch(
+        executableURL: URL,
+        arguments: [String],
+        workingDirectoryURL: URL,
+        timeout: Double
+    ) async throws -> Int32 { 0 }
+
+    func launchCapturing(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        additionalEnvironment: [String: String],
+        workingDirectoryURL: URL,
+        timeout: Double
+    ) async throws -> (exitCode: Int32, output: String) {
+        guard arguments.first == "build" else { return (0, "") }
+        buildCallCount += 1
+        if buildCallCount == 1 {
+            let fooPath = workingDirectoryURL.appendingPathComponent("Foo.swift").path
+            let canonical = fooPath.withCString { ptr in
+                guard let resolved = realpath(ptr, nil) else { return fooPath }
+                defer { free(resolved) }
+                return String(cString: resolved)
+            }
+            return (1, "\(canonical):4:1: error: type mismatch")
+        }
+        return (0, "")
+    }
+}
+
 private actor FallbackBuildSucceedingMock: ProcessLaunching {
     private var captureCount = 0
 
@@ -338,6 +371,48 @@ struct MutantExecutorTests {
         let barResult = results.first { $0.descriptor.id == "m1" }
         #expect(fooResult?.status == .unviable)
         #expect(barResult?.status == .survived)
+    }
+
+    @Test("Given SPM build error on line inside first case block, when retry, then only that mutant is excluded")
+    func spmNarrowExclusionOnSpecificCase() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let fooFile = dir.appendingPathComponent("Foo.swift")
+        try "let original = true".write(to: fooFile, atomically: true, encoding: .utf8)
+
+        // Line 4 is the body of case "swift-mutation-testing_0"; line 6 is case "swift-mutation-testing_1"
+        let schematized =
+            "func foo() {\n"
+            + "switch __swiftMutationTestingID {\n"
+            + "case \"swift-mutation-testing_0\":\n"
+            + "return true\n"
+            + "case \"swift-mutation-testing_1\":\n"
+            + "return false\n"
+            + "default:\n"
+            + "return nil\n"
+            + "}\n"
+            + "}"
+
+        let executor = MutantExecutor(
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            launcher: SPMNarrowExclusionMock()
+        )
+        let m0 = makeMutant(id: "swift-mutation-testing_0", filePath: fooFile.path, isSchematizable: true)
+        let m1 = makeMutant(id: "swift-mutation-testing_1", filePath: fooFile.path, isSchematizable: true, mutatedContent: "let y = false")
+        let input = makeInputSPM(
+            projectPath: dir.path,
+            schematizedFiles: [SchematizedFile(originalPath: fooFile.path, schematizedContent: schematized)],
+            mutants: [m0, m1]
+        )
+
+        let results = try await executor.execute(input)
+
+        #expect(results.count == 2)
+        let r0 = results.first { $0.descriptor.id == "swift-mutation-testing_0" }
+        let r1 = results.first { $0.descriptor.id == "swift-mutation-testing_1" }
+        #expect(r0?.status == .unviable)
+        #expect(r1?.status == .survived)
     }
 
     private func makeConfiguration(
