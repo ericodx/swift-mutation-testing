@@ -12,6 +12,10 @@ public struct SwiftMutationTesting {
         } catch let error as UsageError {
             fputs(error.message + "\n", stderr)
             return .error
+        } catch BuildError.compilationFailed(let output) {
+            if !output.isEmpty { fputs(output + "\n", stderr) }
+            fputs("Build failed. The schematized source could not be compiled.\n", stderr)
+            return .error
         } catch SimulatorError.deviceNotFound(let dest) {
             fputs("Simulator not found for destination: \(dest)\n", stderr)
             return .error

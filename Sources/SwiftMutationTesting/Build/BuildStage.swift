@@ -24,15 +24,17 @@ struct BuildStage: Sendable {
             arguments += ["-project", projectURL.path]
         }
 
-        let exitCode = try await launcher.launch(
+        let (exitCode, buildOutput) = try await launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: arguments,
+            environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: sandbox.rootURL,
             timeout: timeout
         )
 
         guard exitCode == 0 else {
-            throw BuildError.compilationFailed
+            throw BuildError.compilationFailed(output: buildOutput)
         }
 
         let productsURL = derivedDataURL.appendingPathComponent("Build/Products")
@@ -59,20 +61,18 @@ struct BuildStage: Sendable {
         testTarget: String?,
         timeout: Double
     ) async throws -> BuildArtifact {
-        var arguments = ["build", "--build-tests"]
+        let arguments = ["build", "--build-tests"]
 
-        if let testTarget {
-            arguments += ["--target", testTarget]
-        }
-
-        let exitCode = try await launcher.launch(
+        let (exitCode, buildOutput) = try await launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
             arguments: arguments,
+            environment: nil,
+            additionalEnvironment: [:],
             workingDirectoryURL: sandbox.rootURL,
             timeout: timeout
         )
 
-        guard exitCode == 0 else { throw BuildError.compilationFailed }
+        guard exitCode == 0 else { throw BuildError.compilationFailed(output: buildOutput) }
 
         return BuildArtifact(
             derivedDataPath: sandbox.rootURL.appendingPathComponent(".build").path,
