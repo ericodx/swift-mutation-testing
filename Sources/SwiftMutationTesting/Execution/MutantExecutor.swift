@@ -189,13 +189,12 @@ struct MutantExecutor: Sendable {
 
             guard !mutantsInFile.isEmpty else { continue }
 
-            try? FileManager.default.removeItem(atPath: sandboxPath)
-            try? FileManager.default.createSymbolicLink(
-                atPath: sandboxPath,
-                withDestinationPath: originalPath
+            newlyExcluded += excludeProblematicMutants(
+                sandboxPath: sandboxPath,
+                originalPath: originalPath,
+                errorOutput: output,
+                mutantsInFile: mutantsInFile
             )
-
-            newlyExcluded += mutantsInFile
         }
 
         fputs("[xmr] error files=\(errorSandboxPaths.count) newly excluded=\(newlyExcluded.count)\n", stderr)
@@ -282,6 +281,95 @@ struct MutantExecutor: Sendable {
             let snippet = failLines.prefix(20).joined(separator: "↵")
             fputs("[xmr] baseline FAILED exitCode=\(result.exitCode) failures=\(snippet)\n", stderr)
         }
+    }
+
+    private func excludeProblematicMutants(
+        sandboxPath: String,
+        originalPath: String,
+        errorOutput: String,
+        mutantsInFile: [MutantDescriptor]
+    ) -> [MutantDescriptor] {
+        let errorLines = Set(
+            errorOutput.components(separatedBy: "\n").compactMap { line -> Int? in
+                guard line.hasPrefix(sandboxPath + ":") else { return nil }
+                let remainder = String(line.dropFirst(sandboxPath.count + 1))
+                return remainder.components(separatedBy: ":").first.flatMap { Int($0) }
+            }
+        )
+
+        guard
+            !errorLines.isEmpty,
+            let content = try? String(contentsOfFile: sandboxPath, encoding: .utf8)
+        else {
+            restoreOriginal(sandboxPath: sandboxPath, originalPath: originalPath)
+            return mutantsInFile
+        }
+
+        let lines = content.components(separatedBy: "\n")
+        let mutantIDs = Set(mutantsInFile.map(\.id))
+        var problematicIDs = Set<String>()
+
+        for errorLine in errorLines {
+            let lineIndex = errorLine - 1
+            guard lineIndex >= 0, lineIndex < lines.count else { continue }
+            var i = lineIndex
+            while i >= 0 {
+                let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
+                if let id = mutantCaseID(from: trimmed), mutantIDs.contains(id) {
+                    problematicIDs.insert(id)
+                    break
+                }
+                if trimmed == "default:" || trimmed.hasPrefix("switch ") { break }
+                i -= 1
+            }
+        }
+
+        guard !problematicIDs.isEmpty else {
+            restoreOriginal(sandboxPath: sandboxPath, originalPath: originalPath)
+            return mutantsInFile
+        }
+
+        let narrowed = removingCases(problematicIDs, from: lines)
+        try? narrowed.write(toFile: sandboxPath, atomically: true, encoding: .utf8)
+
+        let excluded = mutantsInFile.filter { problematicIDs.contains($0.id) }
+        fputs("[xmr] narrow exclusion: file=\(URL(fileURLWithPath: originalPath).lastPathComponent) total=\(mutantsInFile.count) excluded=\(excluded.count) remaining=\(mutantsInFile.count - excluded.count)\n", stderr)
+        return excluded
+    }
+
+    private func restoreOriginal(sandboxPath: String, originalPath: String) {
+        try? FileManager.default.removeItem(atPath: sandboxPath)
+        try? FileManager.default.createSymbolicLink(atPath: sandboxPath, withDestinationPath: originalPath)
+    }
+
+    private func mutantCaseID(from trimmedLine: String) -> String? {
+        let casePrefix = "case \""
+        let caseSuffix = "\":"
+        guard trimmedLine.hasPrefix(casePrefix), trimmedLine.hasSuffix(caseSuffix) else { return nil }
+        let id = String(trimmedLine.dropFirst(casePrefix.count).dropLast(caseSuffix.count))
+        return id.hasPrefix("swift-mutation-testing_") ? id : nil
+    }
+
+    private func removingCases(_ ids: Set<String>, from lines: [String]) -> String {
+        var result: [String] = []
+        var skipping = false
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let id = mutantCaseID(from: trimmed) {
+                skipping = ids.contains(id)
+                if !skipping { result.append(line) }
+            } else if skipping {
+                if trimmed == "default:" || mutantCaseID(from: trimmed) != nil {
+                    skipping = false
+                    result.append(line)
+                }
+            } else {
+                result.append(line)
+            }
+        }
+
+        return result.joined(separator: "\n")
     }
 
     private func canonicalPath(_ path: String) -> String {
