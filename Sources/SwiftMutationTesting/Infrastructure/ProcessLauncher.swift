@@ -88,6 +88,7 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
 
         process.terminationHandler = { proc in
             timeoutTask.cancel()
+            kill(-proc.processIdentifier, SIGKILL)
             let exitCode: Int32 = killedByUs.value ? -1 : proc.terminationStatus
             continuation.resume(returning: exitCode)
         }
@@ -116,6 +117,7 @@ struct ProcessLauncher: Sendable, ProcessLaunching {
 
         process.terminationHandler = { terminated in
             timeoutTask.cancel()
+            kill(-terminated.processIdentifier, SIGKILL)
             capture.fileHandle.closeFile()
             let output = (try? String(contentsOf: capture.tempURL, encoding: .utf8)) ?? ""
             try? FileManager.default.removeItem(at: capture.tempURL)
