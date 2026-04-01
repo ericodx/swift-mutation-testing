@@ -39,20 +39,36 @@ struct MutantExecutor: Sendable {
             supportFileContent: input.supportFileContent
         )
 
-        let artifact = try await buildArtifact(sandbox: sandbox, deps: deps)
+        let (artifact, schemaBuildExcluded) = try await buildArtifact(sandbox: sandbox, input: input, deps: deps)
         let pool = try await makePool(launcher: launcher)
         try await pool.setUp()
         await reporter.report(.simulatorPoolReady(size: pool.size))
 
-        var results: [ExecutionResult]
+        var results: [ExecutionResult] = []
+
+        for mutant in schemaBuildExcluded {
+            let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+            await deps.cacheStore.store(status: .unviable, for: key)
+            let index = await deps.counter.increment()
+            await deps.reporter.report(
+                .mutantFinished(descriptor: mutant, status: .unviable, index: index, total: deps.counter.total))
+            results.append(ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0))
+        }
+
+        let excludedIDs = Set(schemaBuildExcluded.map(\.id))
+        let testableSchematizable = schematizable.filter { !excludedIDs.contains($0.id) }
+
         if let artifact {
+            if case .spm = configuration.build.projectType {
+                await validateSPMBaseline(sandbox: sandbox, deps: deps)
+            }
             let context = TestExecutionContext(
                 artifact: artifact, sandbox: sandbox, pool: pool,
                 configuration: configuration, testFilesHash: testFilesHash
             )
-            results = try await runNormal(deps: deps, context: context, schematizable: schematizable)
-        } else {
-            results = try await runFallback(deps: deps, input: input, pool: pool, testFilesHash: testFilesHash)
+            results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
+        } else if !testableSchematizable.isEmpty {
+            results += try await runFallback(deps: deps, input: input, pool: pool, testFilesHash: testFilesHash)
         }
 
         results += try await runIncompatible(
@@ -83,7 +99,11 @@ struct MutantExecutor: Sendable {
         return results
     }
 
-    private func buildArtifact(sandbox: Sandbox, deps: ExecutionDeps) async throws -> BuildArtifact? {
+    private func buildArtifact(
+        sandbox: Sandbox,
+        input: RunnerInput,
+        deps: ExecutionDeps
+    ) async throws -> (BuildArtifact?, [MutantDescriptor]) {
         await deps.reporter.report(.buildStarted)
         let start = Date()
         let stage = BuildStage(launcher: deps.launcher)
@@ -98,19 +118,113 @@ struct MutantExecutor: Sendable {
                     timeout: configuration.build.timeout
                 )
                 await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
-                return artifact
-            } catch BuildError.compilationFailed {
-                return nil
+                return (artifact, [])
+            } catch BuildError.compilationFailed(_) {
+                return (nil, [])
             }
 
         case .spm:
+            do {
+                let artifact = try await stage.buildSPM(
+                    sandbox: sandbox,
+                    testTarget: configuration.build.testTarget,
+                    timeout: configuration.build.timeout
+                )
+                await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
+                return (artifact, [])
+            } catch BuildError.compilationFailed(let output) {
+                fputs("[xmr] schematized build failed — starting retry\n", stderr)
+                let (artifact, excluded) = try await retryExcludingErrors(
+                    output: output,
+                    sandbox: sandbox,
+                    input: input,
+                    stage: stage,
+                    deps: deps,
+                    start: start,
+                    alreadyExcluded: []
+                )
+                fputs("[xmr] retry done: artifact=\(artifact != nil ? "ok" : "nil") excluded=\(excluded.count)\n", stderr)
+                return (artifact, excluded)
+            }
+        }
+    }
+
+    private func retryExcludingErrors(
+        output: String,
+        sandbox: Sandbox,
+        input: RunnerInput,
+        stage: BuildStage,
+        deps: ExecutionDeps,
+        start: Date,
+        alreadyExcluded: [MutantDescriptor]
+    ) async throws -> (BuildArtifact?, [MutantDescriptor]) {
+        let sandboxRoot = canonicalPath(sandbox.rootURL.path)
+        let projectRoot = URL(fileURLWithPath: input.projectPath).resolvingSymlinksInPath().path
+
+        fputs("[xmr] sandboxRoot=\(sandboxRoot)\n", stderr)
+
+        let errorSandboxPaths = Set(
+            output.components(separatedBy: "\n").compactMap { line -> String? in
+                guard line.hasPrefix(sandboxRoot) else { return nil }
+                let path = line.components(separatedBy: ":").first ?? ""
+                return path.hasSuffix(".swift") ? path : nil
+            }
+        )
+
+        let alreadyExcludedIDs = Set(alreadyExcluded.map(\.id))
+
+        var newlyExcluded: [MutantDescriptor] = []
+
+        for sandboxPath in errorSandboxPaths {
+            let relative = String(sandboxPath.dropFirst(sandboxRoot.count))
+            let originalPath = projectRoot + relative
+
+            guard FileManager.default.fileExists(atPath: originalPath) else { continue }
+
+            let mutantsInFile = input.mutants.filter { m in
+                m.isSchematizable
+                    && !alreadyExcludedIDs.contains(m.id)
+                    && URL(fileURLWithPath: m.filePath).resolvingSymlinksInPath().path == originalPath
+            }
+
+            guard !mutantsInFile.isEmpty else { continue }
+
+            try? FileManager.default.removeItem(atPath: sandboxPath)
+            try? FileManager.default.createSymbolicLink(
+                atPath: sandboxPath,
+                withDestinationPath: originalPath
+            )
+
+            newlyExcluded += mutantsInFile
+        }
+
+        fputs("[xmr] error files=\(errorSandboxPaths.count) newly excluded=\(newlyExcluded.count)\n", stderr)
+
+        guard !newlyExcluded.isEmpty else {
+            fputs("[xmr] no files matched sandboxRoot — skipping retry\n", stderr)
+            return (nil, alreadyExcluded)
+        }
+
+        let allExcluded = alreadyExcluded + newlyExcluded
+
+        do {
             let artifact = try await stage.buildSPM(
                 sandbox: sandbox,
                 testTarget: configuration.build.testTarget,
                 timeout: configuration.build.timeout
             )
             await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
-            return artifact
+            return (artifact, allExcluded)
+        } catch BuildError.compilationFailed(let newOutput) {
+            return try await retryExcludingErrors(
+                output: newOutput,
+                sandbox: sandbox,
+                input: input,
+                stage: stage,
+                deps: deps,
+                start: start,
+                alreadyExcluded: allExcluded
+            )
         }
     }
 
@@ -140,6 +254,42 @@ struct MutantExecutor: Sendable {
     ) async throws -> [ExecutionResult] {
         try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
             .execute(mutants, configuration: configuration, pool: pool, testFilesHash: testFilesHash)
+    }
+
+    private func validateSPMBaseline(sandbox: Sandbox, deps: ExecutionDeps) async {
+        var arguments = ["test", "--skip-build"]
+        if let testTarget = configuration.build.testTarget {
+            arguments += ["--filter", testTarget]
+        }
+
+        guard let result = try? await deps.launcher.launchCapturing(
+            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+            arguments: arguments,
+            environment: nil,
+            additionalEnvironment: [:],
+            workingDirectoryURL: sandbox.rootURL,
+            timeout: configuration.build.timeout
+        ) else {
+            fputs("[xmr] baseline check failed to launch\n", stderr)
+            return
+        }
+
+        if result.exitCode == 0 {
+            fputs("[xmr] baseline passed — schematized binary is healthy\n", stderr)
+        } else {
+            let lines = result.output.components(separatedBy: "\n")
+            let failLines = lines.filter { $0.contains("failed") || $0.contains("Issue") || $0.contains("✗") || $0.contains("error:") || $0.contains("FAILED") }
+            let snippet = failLines.prefix(20).joined(separator: "↵")
+            fputs("[xmr] baseline FAILED exitCode=\(result.exitCode) failures=\(snippet)\n", stderr)
+        }
+    }
+
+    private func canonicalPath(_ path: String) -> String {
+        path.withCString { ptr in
+            guard let resolved = realpath(ptr, nil) else { return path }
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
     }
 
     private func makePool(launcher: any ProcessLaunching) async throws -> SimulatorPool {
