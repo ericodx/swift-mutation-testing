@@ -17,6 +17,7 @@ struct IOSSimulatorMock: ProcessLaunching {
         additionalEnvironment: [String: String], workingDirectoryURL: URL, timeout: Double
     ) async throws -> (exitCode: Int32, output: String) {
         if arguments.contains("clone") { return (0, cloneUDID + "\n") }
+        if executableURL.lastPathComponent == "xcodebuild" { return (1, "") }
         return (0, listJSON)
     }
 }
