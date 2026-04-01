@@ -81,11 +81,13 @@ struct IncompatibleMutantExecutorTests {
         let mutant = makeMutant(id: "m0", content: "let x = 1")
 
         let firstExecutor = IncompatibleMutantExecutor(
-            launcher: MockProcessLauncher(exitCode: 1),
-            sandboxFactory: SandboxFactory(),
-            cacheStore: cacheStore,
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 1),
+                cacheStore: cacheStore,
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            ),
+            sandboxFactory: SandboxFactory()
         )
         _ = try await firstExecutor.execute(
             [mutant],
@@ -103,11 +105,13 @@ struct IncompatibleMutantExecutorTests {
             filter: .init(excludePatterns: [], operators: [])
         )
         let secondExecutor = IncompatibleMutantExecutor(
-            launcher: MockProcessLauncher(exitCode: 1),
-            sandboxFactory: SandboxFactory(),
-            cacheStore: cacheStore,
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 1),
+                cacheStore: cacheStore,
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            ),
+            sandboxFactory: SandboxFactory()
         )
         let results = try await secondExecutor.execute(
             [mutant],
@@ -135,11 +139,13 @@ struct IncompatibleMutantExecutorTests {
             filter: .init(excludePatterns: [], operators: [])
         )
         let executor = IncompatibleMutantExecutor(
-            launcher: MockProcessLauncher(exitCode: 1),
-            sandboxFactory: SandboxFactory(),
-            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 1),
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            ),
+            sandboxFactory: SandboxFactory()
         )
 
         let results = try await executor.execute(
@@ -163,11 +169,13 @@ struct IncompatibleMutantExecutorTests {
         let mutant = makeMutant(id: "m0", content: "let x = 1")
 
         let firstExecutor = IncompatibleMutantExecutor(
-            launcher: MockProcessLauncher(exitCode: 1),
-            sandboxFactory: SandboxFactory(),
-            cacheStore: cacheStore,
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 1),
+                cacheStore: cacheStore,
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            ),
+            sandboxFactory: SandboxFactory()
         )
         _ = try await firstExecutor.execute(
             [mutant],
@@ -177,11 +185,13 @@ struct IncompatibleMutantExecutorTests {
         )
 
         let secondExecutor = IncompatibleMutantExecutor(
-            launcher: MockProcessLauncher(exitCode: 1),
-            sandboxFactory: SandboxFactory(),
-            cacheStore: cacheStore,
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 1),
+                cacheStore: cacheStore,
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            ),
+            sandboxFactory: SandboxFactory()
         )
         let results = try await secondExecutor.execute(
             [mutant],
@@ -199,11 +209,13 @@ struct IncompatibleMutantExecutorTests {
         defer { FileHelpers.cleanup(dir) }
 
         let executor = IncompatibleMutantExecutor(
-            launcher: MockProcessLauncher(exitCode: 0, throwsOnCapture: true),
-            sandboxFactory: SandboxFactory(),
-            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: 0, throwsOnCapture: true),
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            ),
+            sandboxFactory: SandboxFactory()
         )
         let pool = makePool()
         try await pool.setUp()
@@ -263,11 +275,13 @@ struct IncompatibleMutantExecutorTests {
         output: String = ""
     ) -> IncompatibleMutantExecutor {
         IncompatibleMutantExecutor(
-            launcher: MockProcessLauncher(exitCode: exitCode, output: output),
-            sandboxFactory: SandboxFactory(),
-            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 1)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: exitCode, output: output),
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            ),
+            sandboxFactory: SandboxFactory()
         )
     }
 
@@ -282,11 +296,13 @@ struct IncompatibleMutantExecutorTests {
 
     private func makeExecutor(in dir: URL, exitCode: Int32) -> IncompatibleMutantExecutor {
         IncompatibleMutantExecutor(
-            launcher: MockProcessLauncher(exitCode: exitCode),
-            sandboxFactory: SandboxFactory(),
-            cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-            reporter: MockProgressReporter(),
-            counter: MutationCounter(total: 3)
+            deps: ExecutionDeps(
+                launcher: MockProcessLauncher(exitCode: exitCode),
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 3)
+            ),
+            sandboxFactory: SandboxFactory()
         )
     }
 

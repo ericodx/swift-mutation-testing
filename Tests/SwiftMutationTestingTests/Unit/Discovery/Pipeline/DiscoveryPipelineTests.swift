@@ -76,7 +76,7 @@ struct DiscoveryPipelineTests {
         #expect(result.projectType == .xcode(scheme: "MyScheme", destination: "platform=macOS"))
         #expect(result.timeout == 120)
         #expect(result.concurrency == 8)
-        #expect(result.noCache == true)
+        #expect(result.noCache)
     }
 
     @Test("Given empty operators list, when run, then all default operators are used")

@@ -1,11 +1,8 @@
 import Foundation
 
 struct IncompatibleMutantExecutor: Sendable {
-    let launcher: any ProcessLaunching
+    let deps: ExecutionDeps
     let sandboxFactory: SandboxFactory
-    let cacheStore: CacheStore
-    let reporter: any ProgressReporter
-    let counter: MutationCounter
 
     func execute(
         _ mutants: [MutantDescriptor],
@@ -18,10 +15,10 @@ struct IncompatibleMutantExecutor: Sendable {
         for mutant in mutants {
             let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
 
-            if !configuration.build.noCache, let cachedStatus = await cacheStore.result(for: key) {
-                let total = counter.total
-                let index = await counter.increment()
-                await reporter.report(
+            if !configuration.build.noCache, let cachedStatus = await deps.cacheStore.result(for: key) {
+                let total = deps.counter.total
+                let index = await deps.counter.increment()
+                await deps.reporter.report(
                     .mutantFinished(descriptor: mutant, status: cachedStatus, index: index, total: total))
                 results.append(ExecutionResult(descriptor: mutant, status: cachedStatus, testDuration: 0))
                 continue
@@ -66,7 +63,7 @@ struct IncompatibleMutantExecutor: Sendable {
         let outcome: TestRunOutcome
         switch configuration.build.projectType {
         case .xcode:
-            outcome = try await ResultParser(launcher: launcher).parse(
+            outcome = try await ResultParser(launcher: deps.launcher).parse(
                 exitCode: launched.exitCode,
                 output: launched.output,
                 xcresultPath: launched.xcresultPath,
@@ -80,10 +77,10 @@ struct IncompatibleMutantExecutor: Sendable {
         try? sandbox.cleanup()
 
         let status = outcome.asExecutionStatus
-        let total = counter.total
-        let index = await counter.increment()
-        await reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: total))
-        await cacheStore.store(status: status, for: key)
+        let total = deps.counter.total
+        let index = await deps.counter.increment()
+        await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: total))
+        await deps.cacheStore.store(status: status, for: key)
         return ExecutionResult(descriptor: mutant, status: status, testDuration: duration)
     }
 
@@ -125,7 +122,7 @@ struct IncompatibleMutantExecutor: Sendable {
         }
 
         let start = Date()
-        let captured = try await launcher.launchCapturing(
+        let captured = try await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: arguments,
             environment: nil,
@@ -153,7 +150,7 @@ struct IncompatibleMutantExecutor: Sendable {
         }
 
         let start = Date()
-        let captured = try await launcher.launchCapturing(
+        let captured = try await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
             arguments: arguments,
             environment: nil,
@@ -176,10 +173,10 @@ struct IncompatibleMutantExecutor: Sendable {
         sandbox: Sandbox?
     ) async -> ExecutionResult {
         try? sandbox?.cleanup()
-        await cacheStore.store(status: .unviable, for: key)
-        let total = counter.total
-        let index = await counter.increment()
-        await reporter.report(.mutantFinished(descriptor: mutant, status: .unviable, index: index, total: total))
+        await deps.cacheStore.store(status: .unviable, for: key)
+        let total = deps.counter.total
+        let index = await deps.counter.increment()
+        await deps.reporter.report(.mutantFinished(descriptor: mutant, status: .unviable, index: index, total: total))
         return ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
     }
 }

@@ -137,7 +137,7 @@ struct ConfigurationResolverTests {
             fileValues: ["noCache": "true"]
         )
 
-        #expect(result.build.noCache == true)
+        #expect(result.build.noCache)
     }
 
     @Test("Given quiet true in file, when resolved, then quiet is true")
@@ -147,7 +147,7 @@ struct ConfigurationResolverTests {
             fileValues: ["quiet": "true"]
         )
 
-        #expect(result.reporting.quiet == true)
+        #expect(result.reporting.quiet)
     }
 
     @Test("Given concurrency of zero, when resolved, then throws UsageError")

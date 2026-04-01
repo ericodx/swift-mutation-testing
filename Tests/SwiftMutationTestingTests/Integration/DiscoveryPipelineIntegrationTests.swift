@@ -125,7 +125,7 @@ struct DiscoveryPipelineIntegrationTests {
         #expect(result.projectType == .xcode(scheme: "CalcApp", destination: "platform=macOS"))
         #expect(result.timeout == 60)
         #expect(result.concurrency == 1)
-        #expect(result.noCache == false)
+        #expect(!result.noCache)
     }
 }
 

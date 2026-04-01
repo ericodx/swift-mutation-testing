@@ -14,8 +14,8 @@ struct CommandLineParserTests {
         #expect(result.projectPath == "/my/project")
         #expect(result.build.scheme == "MyApp")
         #expect(result.build.destination == "platform=macOS")
-        #expect(result.showHelp == false)
-        #expect(result.showVersion == false)
+        #expect(!result.showHelp)
+        #expect(!result.showVersion)
     }
 
     @Test("Given run command without explicit path, when parsed, then projectPath defaults to dot")
@@ -29,21 +29,21 @@ struct CommandLineParserTests {
     func returnsShowHelpForHelpFlag() throws {
         let result = try parser.parse(["--help"])
 
-        #expect(result.showHelp == true)
+        #expect(result.showHelp)
     }
 
     @Test("Given -h flag, when parsed, then showHelp is true")
     func returnsShowHelpForShortFlag() throws {
         let result = try parser.parse(["-h"])
 
-        #expect(result.showHelp == true)
+        #expect(result.showHelp)
     }
 
     @Test("Given empty arguments, when parsed, then execution is attempted with default project path")
     func attemptsExecutionWhenEmpty() throws {
         let result = try parser.parse([])
 
-        #expect(result.showHelp == false)
+        #expect(!result.showHelp)
         #expect(result.projectPath == ".")
     }
 
@@ -51,15 +51,15 @@ struct CommandLineParserTests {
     func returnsShowVersion() throws {
         let result = try parser.parse(["--version"])
 
-        #expect(result.showVersion == true)
+        #expect(result.showVersion)
     }
 
     @Test("Given --no-cache and --quiet flags, when parsed, then noCache and quiet are true")
     func parsesBooleanFlags() throws {
         let result = try parser.parse(["run", "--scheme", "App", "--destination", "d", "--no-cache", "--quiet"])
 
-        #expect(result.build.noCache == true)
-        #expect(result.reporting.quiet == true)
+        #expect(result.build.noCache)
+        #expect(result.reporting.quiet)
     }
 
     @Test("Given optional string flags, when parsed, then all string values are set")
@@ -94,7 +94,7 @@ struct CommandLineParserTests {
     func parsesInitWithDefaultPath() throws {
         let result = try parser.parse(["init"])
 
-        #expect(result.showInit == true)
+        #expect(result.showInit)
         #expect(result.projectPath == ".")
     }
 
@@ -102,7 +102,7 @@ struct CommandLineParserTests {
     func parsesInitWithExplicitPath() throws {
         let result = try parser.parse(["init", "/my/project"])
 
-        #expect(result.showInit == true)
+        #expect(result.showInit)
         #expect(result.projectPath == "/my/project")
     }
 
