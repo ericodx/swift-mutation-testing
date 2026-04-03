@@ -42,4 +42,18 @@ struct MockProcessLauncher: ProcessLaunching {
         let key = executableURL.lastPathComponent
         return responses[key] ?? (exitCode: exitCode, output: output)
     }
+
+    func launchCapturingDeferred(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        additionalEnvironment: [String: String],
+        workingDirectoryURL: URL,
+        timeout: Double
+    ) async throws -> CapturedOutput {
+        if throwsOnCapture { throw CocoaError(.fileReadNoSuchFile) }
+        let key = executableURL.lastPathComponent
+        let response = responses[key] ?? (exitCode: exitCode, output: output)
+        return CapturedOutput(exitCode: response.exitCode, output: response.output, cleanup: {})
+    }
 }
