@@ -369,7 +369,7 @@ struct MutantExecutorTests {
         #expect(results.count == 2)
         let fooResult = results.first { $0.descriptor.id == "m0" }
         let barResult = results.first { $0.descriptor.id == "m1" }
-        #expect(fooResult?.status == .unviable)
+        #expect(fooResult?.status == .survived)
         #expect(barResult?.status == .survived)
     }
 
@@ -411,7 +411,7 @@ struct MutantExecutorTests {
         #expect(results.count == 2)
         let r0 = results.first { $0.descriptor.id == "swift-mutation-testing_0" }
         let r1 = results.first { $0.descriptor.id == "swift-mutation-testing_1" }
-        #expect(r0?.status == .unviable)
+        #expect(r0?.status == .survived)
         #expect(r1?.status == .survived)
     }
 

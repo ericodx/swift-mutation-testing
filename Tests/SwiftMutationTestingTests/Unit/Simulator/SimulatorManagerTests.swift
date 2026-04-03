@@ -166,4 +166,5 @@ private actor SequentialOutputMock: ProcessLaunching {
         callIndex += 1
         return (0, output)
     }
+
 }
