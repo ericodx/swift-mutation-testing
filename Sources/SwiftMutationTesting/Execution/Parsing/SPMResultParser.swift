@@ -6,7 +6,7 @@ struct SPMResultParser: Sendable {
         switch TestOutputParser().parse(output) {
         case .killed(let name): return .testsFailed(failingTest: name)
         case .crashed: return .crashed
-        case .unviable: return .unviable
+        case .unviable: return output.isEmpty ? .crashed : .unviable
         }
     }
 }
