@@ -44,15 +44,63 @@ struct MutantExecutor: Sendable {
         try await pool.setUp()
         await reporter.report(.simulatorPoolReady(size: pool.size))
 
+        let results: [ExecutionResult]
+        do {
+            results = try await runAllMutants(
+                deps: deps,
+                input: input,
+                sandbox: sandbox,
+                pool: pool,
+                artifact: artifact,
+                schemaBuildExcluded: schemaBuildExcluded,
+                testFilesHash: testFilesHash
+            )
+        } catch {
+            await pool.tearDown()
+            try? sandbox.cleanup()
+            throw error
+        }
+
+        await pool.tearDown()
+        try? sandbox.cleanup()
+        try await cacheStore.persist()
+
+        return results
+    }
+
+    private func runAllMutants(
+        deps: ExecutionDeps,
+        input: RunnerInput,
+        sandbox: Sandbox,
+        pool: SimulatorPool,
+        artifact: BuildArtifact?,
+        schemaBuildExcluded: [MutantDescriptor],
+        testFilesHash: String
+    ) async throws -> [ExecutionResult] {
+        let schematizable = input.mutants.filter { $0.isSchematizable }
+        let incompatible = input.mutants.filter { !$0.isSchematizable }
+
         var results: [ExecutionResult] = []
 
+        var reroutedToIncompatible: [MutantDescriptor] = []
+        var sourceCache: [String: String] = [:]
+        let rewriter = MutationRewriter()
+
         for mutant in schemaBuildExcluded {
-            let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
-            await deps.cacheStore.store(status: .unviable, for: key)
-            let index = await deps.counter.increment()
-            await deps.reporter.report(
-                .mutantFinished(descriptor: mutant, status: .unviable, index: index, total: deps.counter.total))
-            results.append(ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0))
+            if let rerouted = rewriteForIncompatible(mutant, rewriter: rewriter, sourceCache: &sourceCache) {
+                reroutedToIncompatible.append(rerouted)
+            } else {
+                let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+                await deps.cacheStore.store(status: .unviable, for: key)
+                let index = await deps.counter.increment()
+                await deps.reporter.report(
+                    .mutantFinished(descriptor: mutant, status: .unviable, index: index, total: deps.counter.total))
+                results.append(ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0))
+            }
+        }
+
+        if !reroutedToIncompatible.isEmpty {
+            fputs("[xmr] rerouted \(reroutedToIncompatible.count) schema-excluded mutants to incompatible executor\n", stderr)
         }
 
         let excludedIDs = Set(schemaBuildExcluded.map(\.id))
@@ -72,12 +120,8 @@ struct MutantExecutor: Sendable {
         }
 
         results += try await runIncompatible(
-            deps: deps, mutants: incompatible, pool: pool, testFilesHash: testFilesHash
+            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool, testFilesHash: testFilesHash
         )
-
-        await pool.tearDown()
-        try? sandbox.cleanup()
-        try await cacheStore.persist()
 
         return results
     }
@@ -370,6 +414,52 @@ struct MutantExecutor: Sendable {
         }
 
         return result.joined(separator: "\n")
+    }
+
+    private func rewriteForIncompatible(
+        _ mutant: MutantDescriptor,
+        rewriter: MutationRewriter,
+        sourceCache: inout [String: String]
+    ) -> MutantDescriptor? {
+        let source: String
+        if let cached = sourceCache[mutant.filePath] {
+            source = cached
+        } else if let loaded = try? String(contentsOfFile: mutant.filePath, encoding: .utf8) {
+            sourceCache[mutant.filePath] = loaded
+            source = loaded
+        } else {
+            return nil
+        }
+
+        let point = MutationPoint(
+            operatorIdentifier: mutant.operatorIdentifier,
+            filePath: mutant.filePath,
+            line: mutant.line,
+            column: mutant.column,
+            utf8Offset: mutant.utf8Offset,
+            originalText: mutant.originalText,
+            mutatedText: mutant.mutatedText,
+            replacement: mutant.replacementKind,
+            description: mutant.description
+        )
+
+        let content = rewriter.rewrite(source: source, applying: point)
+        guard content != source else { return nil }
+
+        return MutantDescriptor(
+            id: mutant.id,
+            filePath: mutant.filePath,
+            line: mutant.line,
+            column: mutant.column,
+            utf8Offset: mutant.utf8Offset,
+            originalText: mutant.originalText,
+            mutatedText: mutant.mutatedText,
+            operatorIdentifier: mutant.operatorIdentifier,
+            replacementKind: mutant.replacementKind,
+            description: mutant.description,
+            isSchematizable: mutant.isSchematizable,
+            mutatedSourceContent: content
+        )
     }
 
     private func canonicalPath(_ path: String) -> String {
