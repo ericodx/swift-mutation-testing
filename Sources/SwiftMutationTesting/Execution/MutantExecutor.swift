@@ -2,7 +2,7 @@ import Foundation
 
 struct MutantExecutor: Sendable {
 
-    init(configuration: RunnerConfiguration, launcher: any ProcessLaunching = ProcessLauncher()) {
+    init(configuration: RunnerConfiguration, launcher: any ProcessLaunching) {
         self.configuration = configuration
         self.launcher = launcher
     }
