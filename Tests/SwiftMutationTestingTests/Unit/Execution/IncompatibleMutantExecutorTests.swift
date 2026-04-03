@@ -3,6 +3,33 @@ import Testing
 
 @testable import SwiftMutationTesting
 
+private actor SPMBuildSuccessTestFailureMock: ProcessLaunching {
+    private let failureOutput: String
+
+    init(failureOutput: String) {
+        self.failureOutput = failureOutput
+    }
+
+    func launch(
+        executableURL: URL,
+        arguments: [String],
+        workingDirectoryURL: URL,
+        timeout: Double
+    ) async throws -> Int32 { 0 }
+
+    func launchCapturing(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        additionalEnvironment: [String: String],
+        workingDirectoryURL: URL,
+        timeout: Double
+    ) async throws -> (exitCode: Int32, output: String) {
+        if arguments.first == "test" { return (1, failureOutput) }
+        return (0, "")
+    }
+}
+
 @Suite("IncompatibleMutantExecutor")
 struct IncompatibleMutantExecutorTests {
     @Test("Given 3 mutants with content, when execute called, then 3 results are returned in order")
@@ -235,12 +262,15 @@ struct IncompatibleMutantExecutorTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let executor = makeExecutorSPM(in: dir, exitCode: 0)
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let executor = makeExecutorSPM(in: dir, launcher: MockProcessLauncher(exitCode: 0))
         let pool = makePool()
         try await pool.setUp()
 
         let results = try await executor.execute(
-            [makeMutant(id: "m0", content: "let x = 1")],
+            [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = 1")],
             configuration: makeConfigurationSPM(projectPath: dir.path),
             pool: pool,
             testFilesHash: "hash"
@@ -254,13 +284,17 @@ struct IncompatibleMutantExecutorTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
         let output = #"Test "myTest" failed after 0.001 seconds."#
-        let executor = makeExecutorSPM(in: dir, exitCode: 1, output: output)
+        let executor = makeExecutorSPM(
+            in: dir, launcher: SPMBuildSuccessTestFailureMock(failureOutput: output))
         let pool = makePool()
         try await pool.setUp()
 
         let results = try await executor.execute(
-            [makeMutant(id: "m0", content: "let x = 1")],
+            [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = 1")],
             configuration: makeConfigurationSPM(projectPath: dir.path),
             pool: pool,
             testFilesHash: "hash"
@@ -271,12 +305,11 @@ struct IncompatibleMutantExecutorTests {
 
     private func makeExecutorSPM(
         in dir: URL,
-        exitCode: Int32,
-        output: String = ""
+        launcher: any ProcessLaunching
     ) -> IncompatibleMutantExecutor {
         IncompatibleMutantExecutor(
             deps: ExecutionDeps(
-                launcher: MockProcessLauncher(exitCode: exitCode, output: output),
+                launcher: launcher,
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
                 counter: MutationCounter(total: 1)
@@ -324,10 +357,10 @@ struct IncompatibleMutantExecutorTests {
         )
     }
 
-    private func makeMutant(id: String, content: String?) -> MutantDescriptor {
+    private func makeMutant(id: String, filePath: String = "/tmp/Foo.swift", content: String?) -> MutantDescriptor {
         MutantDescriptor(
             id: id,
-            filePath: "/tmp/Foo.swift",
+            filePath: filePath,
             line: 1,
             column: 1,
             utf8Offset: 0,

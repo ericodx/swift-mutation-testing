@@ -39,29 +39,89 @@ struct MutantExecutor: Sendable {
             supportFileContent: input.supportFileContent
         )
 
-        let artifact = try await buildArtifact(sandbox: sandbox, deps: deps)
+        let (artifact, schemaBuildExcluded) = try await buildArtifact(sandbox: sandbox, input: input, deps: deps)
         let pool = try await makePool(launcher: launcher)
         try await pool.setUp()
         await reporter.report(.simulatorPoolReady(size: pool.size))
 
-        var results: [ExecutionResult]
-        if let artifact {
-            let context = TestExecutionContext(
-                artifact: artifact, sandbox: sandbox, pool: pool,
-                configuration: configuration, testFilesHash: testFilesHash
+        let results: [ExecutionResult]
+        do {
+            results = try await runAllMutants(
+                deps: deps,
+                input: input,
+                sandbox: sandbox,
+                pool: pool,
+                artifact: artifact,
+                schemaBuildExcluded: schemaBuildExcluded,
+                testFilesHash: testFilesHash
             )
-            results = try await runNormal(deps: deps, context: context, schematizable: schematizable)
-        } else {
-            results = try await runFallback(deps: deps, input: input, pool: pool, testFilesHash: testFilesHash)
+        } catch {
+            await pool.tearDown()
+            try? sandbox.cleanup()
+            throw error
         }
-
-        results += try await runIncompatible(
-            deps: deps, mutants: incompatible, pool: pool, testFilesHash: testFilesHash
-        )
 
         await pool.tearDown()
         try? sandbox.cleanup()
         try await cacheStore.persist()
+
+        return results
+    }
+
+    private func runAllMutants(
+        deps: ExecutionDeps,
+        input: RunnerInput,
+        sandbox: Sandbox,
+        pool: SimulatorPool,
+        artifact: BuildArtifact?,
+        schemaBuildExcluded: [MutantDescriptor],
+        testFilesHash: String
+    ) async throws -> [ExecutionResult] {
+        let schematizable = input.mutants.filter { $0.isSchematizable }
+        let incompatible = input.mutants.filter { !$0.isSchematizable }
+
+        var results: [ExecutionResult] = []
+
+        var reroutedToIncompatible: [MutantDescriptor] = []
+        var sourceCache: [String: String] = [:]
+        let rewriter = MutationRewriter()
+
+        for mutant in schemaBuildExcluded {
+            if let rerouted = rewriteForIncompatible(mutant, rewriter: rewriter, sourceCache: &sourceCache) {
+                reroutedToIncompatible.append(rerouted)
+            } else {
+                let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+                await deps.cacheStore.store(status: .unviable, for: key)
+                let index = await deps.counter.increment()
+                await deps.reporter.report(
+                    .mutantFinished(descriptor: mutant, status: .unviable, index: index, total: deps.counter.total))
+                results.append(ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0))
+            }
+        }
+
+        if !reroutedToIncompatible.isEmpty {
+            fputs("[xmr] rerouted \(reroutedToIncompatible.count) schema-excluded mutants to incompatible executor\n", stderr)
+        }
+
+        let excludedIDs = Set(schemaBuildExcluded.map(\.id))
+        let testableSchematizable = schematizable.filter { !excludedIDs.contains($0.id) }
+
+        if let artifact {
+            if case .spm = configuration.build.projectType {
+                await validateSPMBaseline(sandbox: sandbox, deps: deps)
+            }
+            let context = TestExecutionContext(
+                artifact: artifact, sandbox: sandbox, pool: pool,
+                configuration: configuration, testFilesHash: testFilesHash
+            )
+            results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
+        } else if !testableSchematizable.isEmpty {
+            results += try await runFallback(deps: deps, input: input, pool: pool, testFilesHash: testFilesHash)
+        }
+
+        results += try await runIncompatible(
+            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool, testFilesHash: testFilesHash
+        )
 
         return results
     }
@@ -83,7 +143,11 @@ struct MutantExecutor: Sendable {
         return results
     }
 
-    private func buildArtifact(sandbox: Sandbox, deps: ExecutionDeps) async throws -> BuildArtifact? {
+    private func buildArtifact(
+        sandbox: Sandbox,
+        input: RunnerInput,
+        deps: ExecutionDeps
+    ) async throws -> (BuildArtifact?, [MutantDescriptor]) {
         await deps.reporter.report(.buildStarted)
         let start = Date()
         let stage = BuildStage(launcher: deps.launcher)
@@ -98,19 +162,112 @@ struct MutantExecutor: Sendable {
                     timeout: configuration.build.timeout
                 )
                 await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
-                return artifact
-            } catch BuildError.compilationFailed {
-                return nil
+                return (artifact, [])
+            } catch BuildError.compilationFailed(_) {
+                return (nil, [])
             }
 
         case .spm:
+            do {
+                let artifact = try await stage.buildSPM(
+                    sandbox: sandbox,
+                    testTarget: configuration.build.testTarget,
+                    timeout: configuration.build.timeout
+                )
+                await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
+                return (artifact, [])
+            } catch BuildError.compilationFailed(let output) {
+                fputs("[xmr] schematized build failed — starting retry\n", stderr)
+                let (artifact, excluded) = try await retryExcludingErrors(
+                    output: output,
+                    sandbox: sandbox,
+                    input: input,
+                    stage: stage,
+                    deps: deps,
+                    start: start,
+                    alreadyExcluded: []
+                )
+                fputs("[xmr] retry done: artifact=\(artifact != nil ? "ok" : "nil") excluded=\(excluded.count)\n", stderr)
+                return (artifact, excluded)
+            }
+        }
+    }
+
+    private func retryExcludingErrors(
+        output: String,
+        sandbox: Sandbox,
+        input: RunnerInput,
+        stage: BuildStage,
+        deps: ExecutionDeps,
+        start: Date,
+        alreadyExcluded: [MutantDescriptor]
+    ) async throws -> (BuildArtifact?, [MutantDescriptor]) {
+        let sandboxRoot = canonicalPath(sandbox.rootURL.path)
+        let projectRoot = URL(fileURLWithPath: input.projectPath).resolvingSymlinksInPath().path
+
+        fputs("[xmr] sandboxRoot=\(sandboxRoot)\n", stderr)
+
+        let errorSandboxPaths = Set(
+            output.components(separatedBy: "\n").compactMap { line -> String? in
+                guard line.hasPrefix(sandboxRoot) else { return nil }
+                let path = line.components(separatedBy: ":").first ?? ""
+                return path.hasSuffix(".swift") ? path : nil
+            }
+        )
+
+        let alreadyExcludedIDs = Set(alreadyExcluded.map(\.id))
+
+        var newlyExcluded: [MutantDescriptor] = []
+
+        for sandboxPath in errorSandboxPaths {
+            let relative = String(sandboxPath.dropFirst(sandboxRoot.count))
+            let originalPath = projectRoot + relative
+
+            guard FileManager.default.fileExists(atPath: originalPath) else { continue }
+
+            let mutantsInFile = input.mutants.filter { m in
+                m.isSchematizable
+                    && !alreadyExcludedIDs.contains(m.id)
+                    && URL(fileURLWithPath: m.filePath).resolvingSymlinksInPath().path == originalPath
+            }
+
+            guard !mutantsInFile.isEmpty else { continue }
+
+            newlyExcluded += excludeProblematicMutants(
+                sandboxPath: sandboxPath,
+                originalPath: originalPath,
+                errorOutput: output,
+                mutantsInFile: mutantsInFile
+            )
+        }
+
+        fputs("[xmr] error files=\(errorSandboxPaths.count) newly excluded=\(newlyExcluded.count)\n", stderr)
+
+        guard !newlyExcluded.isEmpty else {
+            fputs("[xmr] no files matched sandboxRoot — skipping retry\n", stderr)
+            return (nil, alreadyExcluded)
+        }
+
+        let allExcluded = alreadyExcluded + newlyExcluded
+
+        do {
             let artifact = try await stage.buildSPM(
                 sandbox: sandbox,
                 testTarget: configuration.build.testTarget,
                 timeout: configuration.build.timeout
             )
             await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
-            return artifact
+            return (artifact, allExcluded)
+        } catch BuildError.compilationFailed(let newOutput) {
+            return try await retryExcludingErrors(
+                output: newOutput,
+                sandbox: sandbox,
+                input: input,
+                stage: stage,
+                deps: deps,
+                start: start,
+                alreadyExcluded: allExcluded
+            )
         }
     }
 
@@ -140,6 +297,177 @@ struct MutantExecutor: Sendable {
     ) async throws -> [ExecutionResult] {
         try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
             .execute(mutants, configuration: configuration, pool: pool, testFilesHash: testFilesHash)
+    }
+
+    private func validateSPMBaseline(sandbox: Sandbox, deps: ExecutionDeps) async {
+        var arguments = ["test", "--skip-build"]
+        if let testTarget = configuration.build.testTarget {
+            arguments += ["--filter", testTarget]
+        }
+
+        guard let result = try? await deps.launcher.launchCapturing(
+            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+            arguments: arguments,
+            environment: nil,
+            additionalEnvironment: [:],
+            workingDirectoryURL: sandbox.rootURL,
+            timeout: configuration.build.timeout
+        ) else {
+            fputs("[xmr] baseline check failed to launch\n", stderr)
+            return
+        }
+
+        if result.exitCode == 0 {
+            fputs("[xmr] baseline passed — schematized binary is healthy\n", stderr)
+        } else {
+            let lines = result.output.components(separatedBy: "\n")
+            let failLines = lines.filter { $0.contains("failed") || $0.contains("Issue") || $0.contains("✗") || $0.contains("error:") || $0.contains("FAILED") }
+            let snippet = failLines.prefix(20).joined(separator: "↵")
+            fputs("[xmr] baseline FAILED exitCode=\(result.exitCode) failures=\(snippet)\n", stderr)
+        }
+    }
+
+    private func excludeProblematicMutants(
+        sandboxPath: String,
+        originalPath: String,
+        errorOutput: String,
+        mutantsInFile: [MutantDescriptor]
+    ) -> [MutantDescriptor] {
+        let errorLines = Set(
+            errorOutput.components(separatedBy: "\n").compactMap { line -> Int? in
+                guard line.hasPrefix(sandboxPath + ":") else { return nil }
+                let remainder = String(line.dropFirst(sandboxPath.count + 1))
+                return remainder.components(separatedBy: ":").first.flatMap { Int($0) }
+            }
+        )
+
+        guard
+            !errorLines.isEmpty,
+            let content = try? String(contentsOfFile: sandboxPath, encoding: .utf8)
+        else {
+            restoreOriginal(sandboxPath: sandboxPath, originalPath: originalPath)
+            return mutantsInFile
+        }
+
+        let lines = content.components(separatedBy: "\n")
+        let mutantIDs = Set(mutantsInFile.map(\.id))
+        var problematicIDs = Set<String>()
+
+        for errorLine in errorLines {
+            let lineIndex = errorLine - 1
+            guard lineIndex >= 0, lineIndex < lines.count else { continue }
+            var i = lineIndex
+            while i >= 0 {
+                let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
+                if let id = mutantCaseID(from: trimmed), mutantIDs.contains(id) {
+                    problematicIDs.insert(id)
+                    break
+                }
+                if trimmed == "default:" || trimmed.hasPrefix("switch ") { break }
+                i -= 1
+            }
+        }
+
+        guard !problematicIDs.isEmpty else {
+            restoreOriginal(sandboxPath: sandboxPath, originalPath: originalPath)
+            return mutantsInFile
+        }
+
+        let narrowed = removingCases(problematicIDs, from: lines)
+        try? narrowed.write(toFile: sandboxPath, atomically: true, encoding: .utf8)
+
+        let excluded = mutantsInFile.filter { problematicIDs.contains($0.id) }
+        fputs("[xmr] narrow exclusion: file=\(URL(fileURLWithPath: originalPath).lastPathComponent) total=\(mutantsInFile.count) excluded=\(excluded.count) remaining=\(mutantsInFile.count - excluded.count)\n", stderr)
+        return excluded
+    }
+
+    private func restoreOriginal(sandboxPath: String, originalPath: String) {
+        try? FileManager.default.removeItem(atPath: sandboxPath)
+        try? FileManager.default.createSymbolicLink(atPath: sandboxPath, withDestinationPath: originalPath)
+    }
+
+    private func mutantCaseID(from trimmedLine: String) -> String? {
+        let casePrefix = "case \""
+        let caseSuffix = "\":"
+        guard trimmedLine.hasPrefix(casePrefix), trimmedLine.hasSuffix(caseSuffix) else { return nil }
+        let id = String(trimmedLine.dropFirst(casePrefix.count).dropLast(caseSuffix.count))
+        return id.hasPrefix("swift-mutation-testing_") ? id : nil
+    }
+
+    private func removingCases(_ ids: Set<String>, from lines: [String]) -> String {
+        var result: [String] = []
+        var skipping = false
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let id = mutantCaseID(from: trimmed) {
+                skipping = ids.contains(id)
+                if !skipping { result.append(line) }
+            } else if skipping {
+                if trimmed == "default:" || mutantCaseID(from: trimmed) != nil {
+                    skipping = false
+                    result.append(line)
+                }
+            } else {
+                result.append(line)
+            }
+        }
+
+        return result.joined(separator: "\n")
+    }
+
+    private func rewriteForIncompatible(
+        _ mutant: MutantDescriptor,
+        rewriter: MutationRewriter,
+        sourceCache: inout [String: String]
+    ) -> MutantDescriptor? {
+        let source: String
+        if let cached = sourceCache[mutant.filePath] {
+            source = cached
+        } else if let loaded = try? String(contentsOfFile: mutant.filePath, encoding: .utf8) {
+            sourceCache[mutant.filePath] = loaded
+            source = loaded
+        } else {
+            return nil
+        }
+
+        let point = MutationPoint(
+            operatorIdentifier: mutant.operatorIdentifier,
+            filePath: mutant.filePath,
+            line: mutant.line,
+            column: mutant.column,
+            utf8Offset: mutant.utf8Offset,
+            originalText: mutant.originalText,
+            mutatedText: mutant.mutatedText,
+            replacement: mutant.replacementKind,
+            description: mutant.description
+        )
+
+        let content = rewriter.rewrite(source: source, applying: point)
+        guard content != source else { return nil }
+
+        return MutantDescriptor(
+            id: mutant.id,
+            filePath: mutant.filePath,
+            line: mutant.line,
+            column: mutant.column,
+            utf8Offset: mutant.utf8Offset,
+            originalText: mutant.originalText,
+            mutatedText: mutant.mutatedText,
+            operatorIdentifier: mutant.operatorIdentifier,
+            replacementKind: mutant.replacementKind,
+            description: mutant.description,
+            isSchematizable: mutant.isSchematizable,
+            mutatedSourceContent: content
+        )
+    }
+
+    private func canonicalPath(_ path: String) -> String {
+        path.withCString { ptr in
+            guard let resolved = realpath(ptr, nil) else { return path }
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
     }
 
     private func makePool(launcher: any ProcessLaunching) async throws -> SimulatorPool {

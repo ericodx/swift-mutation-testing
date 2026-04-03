@@ -36,24 +36,36 @@ struct FallbackExecutor: Sendable {
 
         await deps.reporter.report(.fallbackBuildStarted(filePath: file.originalPath))
 
-        guard case .xcode(let scheme, let destination) = configuration.build.projectType else {
-            try? sandbox.cleanup()
-            return await markUnviable(mutants: fileMutants, testFilesHash: testFilesHash)
-        }
-
         let artifact: BuildArtifact
-        do {
-            artifact = try await BuildStage(launcher: deps.launcher).build(
-                sandbox: sandbox,
-                scheme: scheme,
-                destination: destination,
-                timeout: configuration.build.timeout
-            )
-            await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
-        } catch {
-            await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
-            try? sandbox.cleanup()
-            return await markUnviable(mutants: fileMutants, testFilesHash: testFilesHash)
+        switch configuration.build.projectType {
+        case .xcode(let scheme, let destination):
+            do {
+                artifact = try await BuildStage(launcher: deps.launcher).build(
+                    sandbox: sandbox,
+                    scheme: scheme,
+                    destination: destination,
+                    timeout: configuration.build.timeout
+                )
+                await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
+            } catch {
+                await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
+                try? sandbox.cleanup()
+                return await markUnviable(mutants: fileMutants, testFilesHash: testFilesHash)
+            }
+
+        case .spm:
+            do {
+                artifact = try await BuildStage(launcher: deps.launcher).buildSPM(
+                    sandbox: sandbox,
+                    testTarget: configuration.build.testTarget,
+                    timeout: configuration.build.timeout
+                )
+                await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
+            } catch {
+                await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
+                try? sandbox.cleanup()
+                return await markUnviable(mutants: fileMutants, testFilesHash: testFilesHash)
+            }
         }
 
         let context = TestExecutionContext(
