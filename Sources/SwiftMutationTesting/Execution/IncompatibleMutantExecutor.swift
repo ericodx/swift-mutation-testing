@@ -152,7 +152,7 @@ struct IncompatibleMutantExecutor: Sendable {
         }
 
         let start = Date()
-        let test = try await deps.launcher.launchCapturingDeferred(
+        let test = try await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
             arguments: testArgs,
             environment: nil,
@@ -163,7 +163,6 @@ struct IncompatibleMutantExecutor: Sendable {
         let duration = Date().timeIntervalSince(start)
 
         let outcome = SPMResultParser().parse(exitCode: test.exitCode, output: test.output)
-        test.cleanup()
         let status = outcome.asExecutionStatus
 
         let index = await deps.counter.increment()
@@ -206,7 +205,6 @@ struct IncompatibleMutantExecutor: Sendable {
             timeout: configuration.build.timeout
         )
 
-        launched.cleanup()
         await pool.release(slot)
         try? sandbox.cleanup()
 
@@ -256,7 +254,7 @@ struct IncompatibleMutantExecutor: Sendable {
         }
 
         let start = Date()
-        let captured = try await deps.launcher.launchCapturingDeferred(
+        let captured = try await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: arguments,
             environment: nil,
@@ -269,8 +267,7 @@ struct IncompatibleMutantExecutor: Sendable {
             exitCode: captured.exitCode,
             output: captured.output,
             xcresultPath: xcresultPath,
-            duration: Date().timeIntervalSince(start),
-            cleanup: captured.cleanup
+            duration: Date().timeIntervalSince(start)
         )
     }
 
@@ -285,7 +282,7 @@ struct IncompatibleMutantExecutor: Sendable {
         }
 
         let start = Date()
-        let captured = try await deps.launcher.launchCapturingDeferred(
+        let captured = try await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
             arguments: arguments,
             environment: nil,
@@ -298,8 +295,7 @@ struct IncompatibleMutantExecutor: Sendable {
             exitCode: captured.exitCode,
             output: captured.output,
             xcresultPath: "",
-            duration: Date().timeIntervalSince(start),
-            cleanup: captured.cleanup
+            duration: Date().timeIntervalSince(start)
         )
     }
 
