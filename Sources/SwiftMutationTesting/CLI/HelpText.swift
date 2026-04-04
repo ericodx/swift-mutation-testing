@@ -12,6 +12,7 @@ enum HelpText {
         OPTIONS:
           --scheme <scheme>             Xcode scheme to build and test (Xcode projects only)
           --destination <destination>   xcodebuild destination specifier (Xcode projects only)
+          --testing-framework <fw>       Testing framework: xctest or swift-testing (default: swift-testing)
           --target <test-target>        Test target name
           --timeout <seconds>           Per-mutant test timeout in seconds (default: 120)
           --concurrency <n>             Number of parallel test workers (default: CPUs - 1)
