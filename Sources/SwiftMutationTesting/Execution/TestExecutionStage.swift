@@ -59,13 +59,14 @@ struct TestExecutionStage: Sendable {
             throw error
         }
 
+        await context.pool.release(slot)
+
         let outcome = try await ResultParser(launcher: deps.launcher).parse(
             exitCode: launched.exitCode,
             output: launched.output,
             xcresultPath: launched.xcresultPath,
             timeout: context.configuration.build.timeout
         )
-        await context.pool.release(slot)
         try? FileManager.default.removeItem(atPath: launched.xcresultPath)
 
         let status = outcome.asExecutionStatus

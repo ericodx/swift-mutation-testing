@@ -199,13 +199,14 @@ struct IncompatibleMutantExecutor: Sendable {
             throw error
         }
 
+        await pool.release(slot)
+
         let outcome = try await TestResultResolver(launcher: deps.launcher).resolve(
             launch: launched,
             projectType: configuration.build.projectType,
             timeout: configuration.build.timeout
         )
 
-        await pool.release(slot)
         try? sandbox.cleanup()
 
         let status = outcome.asExecutionStatus
