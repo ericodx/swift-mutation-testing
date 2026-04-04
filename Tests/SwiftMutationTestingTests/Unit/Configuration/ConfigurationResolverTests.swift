@@ -354,6 +354,98 @@ struct ConfigurationResolverTests {
         #expect(result.reporting.output == "/tmp/report.txt")
     }
 
+    @Test("Given no testingFramework anywhere, when resolved, then defaults to swiftTesting")
+    func testingFrameworkDefaultsToSwiftTesting() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
+            fileValues: [:]
+        )
+
+        #expect(result.build.testingFramework == .swiftTesting)
+    }
+
+    @Test("Given testingFramework xctest via CLI, when resolved, then testingFramework is xctest")
+    func testingFrameworkFromCLI() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d", testingFramework: "xctest")),
+            fileValues: [:]
+        )
+
+        #expect(result.build.testingFramework == .xctest)
+    }
+
+    @Test("Given testingFramework xctest in file, when resolved, then testingFramework is xctest")
+    func testingFrameworkFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
+            fileValues: ["testingFramework": "xctest"]
+        )
+
+        #expect(result.build.testingFramework == .xctest)
+    }
+
+    @Test("Given testingFramework in both CLI and file, when resolved, then CLI takes priority")
+    func testingFrameworkCLIOverridesFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d", testingFramework: "xctest")),
+            fileValues: ["testingFramework": "swift-testing"]
+        )
+
+        #expect(result.build.testingFramework == .xctest)
+    }
+
+    @Test("Given invalid testingFramework value, when resolved, then throws UsageError")
+    func testingFrameworkThrowsForInvalidValue() {
+        #expect(throws: UsageError.self) {
+            try resolver.resolve(
+                cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d", testingFramework: "junit")),
+                fileValues: [:]
+            )
+        }
+    }
+
+    @Test("Given xctest and xcode project, when resolved, then concurrency is forced to 1")
+    func xcTestForcesConcurrencyToOne() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(
+                build: .init(scheme: "App", destination: "d", concurrency: 8, testingFramework: "xctest")
+            ),
+            fileValues: [:]
+        )
+
+        #expect(result.build.concurrency == 1)
+    }
+
+    @Test("Given swift-testing and xcode project, when resolved, then concurrency is preserved")
+    func swiftTestingPreservesConcurrency() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(
+                build: .init(scheme: "App", destination: "d", concurrency: 8, testingFramework: "swift-testing")
+            ),
+            fileValues: [:]
+        )
+
+        #expect(result.build.concurrency == 8)
+    }
+
+    @Test("Given xctest and spm project, when resolved, then concurrency is not forced to 1")
+    func xcTestWithSPMDoesNotForceConcurrency() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try FileHelpers.write("// Package.swift", named: "Package.swift", in: dir)
+
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(
+                projectPath: dir.path,
+                build: .init(concurrency: 4, testingFramework: "xctest")
+            ),
+            fileValues: [:]
+        )
+
+        #expect(result.build.concurrency == 4)
+    }
+
     @Test("Given testTarget via CLI, when resolved, then testTarget is set")
     func testTargetFromCLI() throws {
         let result = try resolver.resolve(
