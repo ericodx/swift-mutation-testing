@@ -20,7 +20,8 @@ struct ConfigurationFileWriter: Sendable {
                 scheme: scheme,
                 allSchemes: allSchemes,
                 destination: destination,
-                testTarget: project.testTarget
+                testTarget: project.testTarget,
+                testingFramework: project.testingFramework
             )
         case .spm(let testTargets):
             return generateSPMContent(testTargets: testTargets, testTarget: project.testTarget)
@@ -31,7 +32,8 @@ struct ConfigurationFileWriter: Sendable {
         scheme: String?,
         allSchemes: [String],
         destination: String,
-        testTarget: String?
+        testTarget: String?,
+        testingFramework: TestingFramework
     ) -> String {
         var lines: [String] = []
 
@@ -51,6 +53,10 @@ struct ConfigurationFileWriter: Sendable {
 
         lines.append("destination: \(destination)")
         lines.append("")
+        lines.append("# Testing framework: xctest or swift-testing (default: swift-testing)")
+        lines.append("# When xctest is selected, concurrency is forced to 1 for deterministic results")
+        lines.append("testingFramework: \(testingFramework.rawValue)")
+        lines.append("")
 
         if let testTarget {
             lines.append("# Limit test execution to a specific target (recommended when the project has UI tests)")
@@ -65,7 +71,11 @@ struct ConfigurationFileWriter: Sendable {
         lines.append("timeout: 120")
         lines.append("")
         lines.append("# Number of parallel workers (default: max(1, CPU count - 1))")
-        lines.append("concurrency: 4")
+        if testingFramework == .xctest {
+            lines.append("concurrency: 1")
+        } else {
+            lines.append("concurrency: 4")
+        }
         lines.append("")
         lines.append("# Disable result cache (re-runs all mutants on every execution)")
         lines.append("# noCache: true")
