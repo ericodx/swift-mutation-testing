@@ -184,6 +184,60 @@ struct ConfigurationFileWriterTests {
         }
     }
 
+    @Test("Given Xcode project, when write called, then testingFramework option is included")
+    func testingFrameworkOptionIncludedForXcode() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(
+            to: dir.path,
+            project: DetectedProject(
+                kind: .xcode(scheme: "MyApp", allSchemes: ["MyApp"], destination: "platform=macOS"),
+                testTarget: nil
+            )
+        )
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("testingFramework"))
+        #expect(content.contains("swift-testing"))
+    }
+
+    @Test("Given Xcode project with xctest, when write called, then concurrency is 1")
+    func xcTestConcurrencyIsOneInTemplate() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(
+            to: dir.path,
+            project: DetectedProject(
+                kind: .xcode(scheme: "MyApp", allSchemes: ["MyApp"], destination: "platform=macOS"),
+                testTarget: nil,
+                testingFramework: .xctest
+            )
+        )
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("testingFramework: xctest"))
+        #expect(content.contains("concurrency: 1"))
+    }
+
+    @Test("Given SPM project, when write called, then testingFramework option is not included")
+    func testingFrameworkOptionNotIncludedForSPM() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(
+            to: dir.path,
+            project: DetectedProject(
+                kind: .spm(testTargets: ["MyTests"]),
+                testTarget: nil
+            )
+        )
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(!content.contains("testingFramework"))
+    }
+
     @Test("Given existing config file, when write called, then throws UsageError")
     func throwsWhenFileAlreadyExists() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
