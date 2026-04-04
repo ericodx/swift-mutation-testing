@@ -19,14 +19,24 @@ struct ConfigurationResolver: Sendable {
             projectPath: projectPath
         )
 
+        let testingFramework = try resolvedTestingFramework(cli: cliArguments, fileValues: fileValues)
+
+        let effectiveConcurrency: Int
+        if case .xcode = projectType, testingFramework == .xctest {
+            effectiveConcurrency = 1
+        } else {
+            effectiveConcurrency = concurrency
+        }
+
         return RunnerConfiguration(
             projectPath: projectPath,
             build: .init(
                 projectType: projectType,
                 testTarget: cliArguments.build.testTarget ?? fileValues["testTarget"],
                 timeout: timeout,
-                concurrency: concurrency,
-                noCache: cliArguments.build.noCache || fileValues["noCache"]?.lowercased() == "true"
+                concurrency: effectiveConcurrency,
+                noCache: cliArguments.build.noCache || fileValues["noCache"]?.lowercased() == "true",
+                testingFramework: testingFramework
             ),
             reporting: .init(
                 output: cliArguments.reporting.output ?? fileValues["output"],
@@ -85,6 +95,20 @@ struct ConfigurationResolver: Sendable {
         if let concurrency = cli.build.concurrency { return concurrency }
         if let concurrency = fileValues["concurrency"].flatMap(Int.init) { return concurrency }
         return RunnerConfiguration.defaultConcurrency
+    }
+
+    private func resolvedTestingFramework(cli: ParsedArguments, fileValues: [String: String]) throws -> TestingFramework {
+        let raw = cli.build.testingFramework ?? fileValues["testingFramework"]
+
+        guard let raw else {
+            return .swiftTesting
+        }
+
+        guard let framework = TestingFramework(rawValue: raw) else {
+            throw UsageError(message: "--testing-framework must be 'xctest' or 'swift-testing'")
+        }
+
+        return framework
     }
 
     private func resolveOperators(cli: ParsedArguments, fileValues: [String: String]) -> [String] {
