@@ -15,6 +15,7 @@ struct RunnerConfiguration: Sendable {
         var timeout: Double
         var concurrency: Int
         var noCache: Bool
+        var testingFramework: TestingFramework = .swiftTesting
     }
 
     struct ReportingOptions: Sendable {
