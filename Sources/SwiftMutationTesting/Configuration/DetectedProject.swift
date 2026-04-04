@@ -6,11 +6,13 @@ struct DetectedProject: Sendable {
 
     static let empty = DetectedProject(
         kind: .xcode(scheme: nil, allSchemes: [], destination: "platform=macOS"),
-        testTarget: nil
+        testTarget: nil,
+        testingFramework: .swiftTesting
     )
 
     let kind: Kind
     let testTarget: String?
+    var testingFramework: TestingFramework = .swiftTesting
 
     var scheme: String? {
         guard case .xcode(let xScheme, _, _) = kind else { return nil }
