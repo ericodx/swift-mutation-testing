@@ -99,10 +99,6 @@ struct MutantExecutor: Sendable {
             }
         }
 
-        if !reroutedToIncompatible.isEmpty {
-            fputs("[xmr] rerouted \(reroutedToIncompatible.count) schema-excluded mutants to incompatible executor\n", stderr)
-        }
-
         let excludedIDs = Set(schemaBuildExcluded.map(\.id))
         let testableSchematizable = schematizable.filter { !excludedIDs.contains($0.id) }
 
@@ -177,7 +173,6 @@ struct MutantExecutor: Sendable {
                 await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
                 return (artifact, [])
             } catch BuildError.compilationFailed(let output) {
-                fputs("[xmr] schematized build failed — starting retry\n", stderr)
                 let (artifact, excluded) = try await retryExcludingErrors(
                     output: output,
                     sandbox: sandbox,
@@ -187,7 +182,6 @@ struct MutantExecutor: Sendable {
                     start: start,
                     alreadyExcluded: []
                 )
-                fputs("[xmr] retry done: artifact=\(artifact != nil ? "ok" : "nil") excluded=\(excluded.count)\n", stderr)
                 return (artifact, excluded)
             }
         }
@@ -204,8 +198,6 @@ struct MutantExecutor: Sendable {
     ) async throws -> (BuildArtifact?, [MutantDescriptor]) {
         let sandboxRoot = canonicalPath(sandbox.rootURL.path)
         let projectRoot = URL(fileURLWithPath: input.projectPath).resolvingSymlinksInPath().path
-
-        fputs("[xmr] sandboxRoot=\(sandboxRoot)\n", stderr)
 
         let errorSandboxPaths = Set(
             output.components(separatedBy: "\n").compactMap { line -> String? in
@@ -241,10 +233,7 @@ struct MutantExecutor: Sendable {
             )
         }
 
-        fputs("[xmr] error files=\(errorSandboxPaths.count) newly excluded=\(newlyExcluded.count)\n", stderr)
-
         guard !newlyExcluded.isEmpty else {
-            fputs("[xmr] no files matched sandboxRoot — skipping retry\n", stderr)
             return (nil, alreadyExcluded)
         }
 
@@ -305,26 +294,14 @@ struct MutantExecutor: Sendable {
             arguments += ["--filter", testTarget]
         }
 
-        guard let result = try? await deps.launcher.launchCapturing(
+        _ = try? await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
             arguments: arguments,
             environment: nil,
             additionalEnvironment: [:],
             workingDirectoryURL: sandbox.rootURL,
             timeout: configuration.build.timeout
-        ) else {
-            fputs("[xmr] baseline check failed to launch\n", stderr)
-            return
-        }
-
-        if result.exitCode == 0 {
-            fputs("[xmr] baseline passed — schematized binary is healthy\n", stderr)
-        } else {
-            let lines = result.output.components(separatedBy: "\n")
-            let failLines = lines.filter { $0.contains("failed") || $0.contains("Issue") || $0.contains("✗") || $0.contains("error:") || $0.contains("FAILED") }
-            let snippet = failLines.prefix(20).joined(separator: "↵")
-            fputs("[xmr] baseline FAILED exitCode=\(result.exitCode) failures=\(snippet)\n", stderr)
-        }
+        )
     }
 
     private func excludeProblematicMutants(
@@ -377,7 +354,6 @@ struct MutantExecutor: Sendable {
         try? narrowed.write(toFile: sandboxPath, atomically: true, encoding: .utf8)
 
         let excluded = mutantsInFile.filter { problematicIDs.contains($0.id) }
-        fputs("[xmr] narrow exclusion: file=\(URL(fileURLWithPath: originalPath).lastPathComponent) total=\(mutantsInFile.count) excluded=\(excluded.count) remaining=\(mutantsInFile.count - excluded.count)\n", stderr)
         return excluded
     }
 
