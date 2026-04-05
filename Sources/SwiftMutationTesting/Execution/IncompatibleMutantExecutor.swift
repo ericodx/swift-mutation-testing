@@ -112,19 +112,11 @@ struct IncompatibleMutantExecutor: Sendable {
         let sandboxRoot = sandbox.rootURL.resolvingSymlinksInPath().path
 
         let originalCanonical = URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path
-
-        guard originalCanonical.hasPrefix(projectRoot), let content = mutant.mutatedSourceContent else {
-            return await storeAndReport(mutant: mutant, key: key, sandbox: nil)
-        }
-
+        let content = mutant.mutatedSourceContent!
         let relative = String(originalCanonical.dropFirst(projectRoot.count))
         let sandboxFilePath = sandboxRoot + relative
 
-        do {
-            try content.write(toFile: sandboxFilePath, atomically: true, encoding: .utf8)
-        } catch {
-            return await storeAndReport(mutant: mutant, key: key, sandbox: nil)
-        }
+        try content.write(toFile: sandboxFilePath, atomically: true, encoding: .utf8)
 
         defer {
             try? FileManager.default.removeItem(atPath: sandboxFilePath)
