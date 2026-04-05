@@ -8,20 +8,20 @@
 
 ```swift
 struct MutantExecutor: Sendable {
-    init(configuration: RunnerConfiguration, launcher: any ProcessLaunching = ProcessLauncher())
+    init(configuration: RunnerConfiguration, launcher: any ProcessLaunching)
     func execute(_ input: RunnerInput) async throws -> [ExecutionResult]
 }
 ```
 
-Entry point for the execution pipeline. Orchestrates sandbox creation, build, simulator pool setup, and test execution for both schematizable and incompatible mutants.
+Entry point for the execution pipeline. Orchestrates sandbox creation, build, simulator pool setup, and test execution for both schematizable and incompatible mutants. Supports both Xcode and SPM project types.
 
 ```mermaid
 flowchart TD
     IN[RunnerInput] --> CACHE{all results cached?}
     CACHE -- yes --> RETURN[return cached results]
     CACHE -- no --> SANDBOX[SandboxFactory.create\nschematized sandbox]
-    SANDBOX --> BUILD[BuildStage.build]
-    BUILD -- compilationFailed --> FALLBACK[per-file fallback\none build per schematized file]
+    SANDBOX --> BUILD[BuildStage.build / buildSPM]
+    BUILD -- compilationFailed --> FALLBACK[FallbackExecutor\none build per schematized file]
     BUILD -- success --> POOL[SimulatorPool.setUp]
     FALLBACK --> POOL
     POOL --> NORMAL[TestExecutionStage\nschematizable mutants]
@@ -32,7 +32,7 @@ flowchart TD
 
 **Normal path:** builds once, runs `TestExecutionStage` for all schematizable mutants in parallel.
 
-**Fallback path:** triggered when `BuildStage` throws `compilationFailed`. For each schematized file, creates a separate sandbox and re-attempts the build for that file alone. Mutants in files that still fail to compile are marked `.unviable`.
+**Fallback path:** triggered when `BuildStage` throws `compilationFailed`. Delegates to `FallbackExecutor`, which rebuilds one schematized file at a time. Mutants in files that still fail to compile are marked `.unviable`.
 
 **Incompatible path:** always runs after the schematizable path. Delegates to `IncompatibleMutantExecutor`.
 
@@ -64,10 +64,7 @@ Bundle of shared collaborators passed between `MutantExecutor` and the stage typ
 
 ```swift
 struct TestExecutionStage: Sendable {
-    let launcher: any ProcessLaunching
-    let cacheStore: CacheStore
-    let reporter: any ProgressReporter
-    let counter: MutationCounter
+    let deps: ExecutionDeps
 
     func execute(
         mutants: [MutantDescriptor],
@@ -144,17 +141,41 @@ Raw result from a single `xcodebuild test-without-building` invocation.
 
 ---
 
+## Execution/FallbackExecutor.swift
+
+```swift
+struct FallbackExecutor: Sendable {
+    let deps: ExecutionDeps
+    let configuration: RunnerConfiguration
+
+    func execute(
+        input: RunnerInput,
+        pool: SimulatorPool,
+        testFilesHash: String
+    ) async throws -> [ExecutionResult]
+}
+```
+
+When the baseline build for all schematized files fails (`BuildError.compilationFailed`), `MutantExecutor` delegates to `FallbackExecutor`. This executor rebuilds one schematized file at a time.
+
+```mermaid
+flowchart TD
+    FILES["[SchematizedFile]"] --> LOOP["For each file"]
+    LOOP --> SF[SandboxFactory\nsingle-file sandbox]
+    SF --> BS[BuildStage]
+    BS -- success --> TES[TestExecutionStage\ntest mutants in this file]
+    BS -- failed --> UNVIABLE[Mark all mutants in file as .unviable]
+```
+
+For each schematized file, creates a sandbox containing only that file's schematization, builds it (Xcode or SPM), and runs the test suite against its mutants. Files whose builds fail have all their mutants marked as `.unviable`. Results are cached via `CacheStore`.
+
+---
+
 ## Execution/IncompatibleMutantExecutor.swift
 
 ```swift
 struct IncompatibleMutantExecutor: Sendable {
-    init(
-        launcher: any ProcessLaunching,
-        sandboxFactory: SandboxFactory,
-        cacheStore: CacheStore,
-        reporter: any ProgressReporter,
-        counter: MutationCounter
-    )
+    let deps: ExecutionDeps
 
     func execute(
         _ mutants: [MutantDescriptor],
@@ -165,40 +186,28 @@ struct IncompatibleMutantExecutor: Sendable {
 }
 ```
 
-Handles mutants that cannot be schematized. Runs sequentially — one full build + test cycle per mutant.
+Handles mutants that cannot be schematized. Behaviour differs by project type.
+
+**Xcode path:** Each mutant creates its own sandbox via `SandboxFactory.create(projectPath:mutatedFilePath:mutatedContent:)`. Runs sequentially with a full build + test cycle per mutant.
 
 ```mermaid
 flowchart TD
-    MUTANT[MutantDescriptor\nisSchematizable = false] --> CACHE{cache hit?}
+    MUTANT[MutantDescriptor\nisSchematizable = false] --> PT{ProjectType?}
+    PT -- .xcode --> CACHE{cache hit?}
     CACHE -- yes --> CACHED[return cached result]
-    CACHE -- no --> CONTENT{mutatedSourceContent?}
-    CONTENT -- nil --> UNVIABLE[.unviable]
-    CONTENT -- present --> SF[SandboxFactory.create\nmutatedFilePath mutatedContent]
+    CACHE -- no --> SF[SandboxFactory.create\nmutatedFilePath mutatedContent]
     SF --> BS[BuildStage.build]
-    BS -- compilationFailed --> UNVIABLE2[.unviable]
+    BS -- compilationFailed --> UNVIABLE[.unviable]
     BS -- success --> SLOT[pool.acquire]
-    SLOT --> LAUNCH[xcodebuild test\n-xctestrun -destination]
+    SLOT --> LAUNCH[xcodebuild test-without-building]
     LAUNCH --> RELEASE[pool.release]
-    RELEASE --> PARSE[ResultParser.parse]
+    RELEASE --> PARSE[TestResultResolver]
     PARSE --> STORE[cacheStore.store]
+    PT -- .spm --> SPM[Shared sandbox\nwrite mutated file → swift test]
+    SPM --> SPMPARSE[SPMResultParser]
 ```
 
-Uses `xcodebuild test` (not `test-without-building`) because each incompatible mutant produces its own distinct binary.
-
----
-
-## Execution/IncompatibleTestLaunchResult.swift
-
-```swift
-struct IncompatibleTestLaunchResult: Sendable {
-    let exitCode: Int32
-    let output: String
-    let xcresultPath: String
-    let duration: Double
-}
-```
-
-Identical structure to `TestLaunchResult`. Kept separate to allow divergence if the incompatible path's launch contract changes independently.
+**SPM path:** Uses a shared sandbox created via `SandboxFactory.createClean(projectPath:)`. For each mutant, writes the mutated source content (`mutant.mutatedSourceContent!`) directly to the sandbox, runs `swift test`, and restores the original file. Pipeline invariants guarantee `mutatedSourceContent` is always non-nil for incompatible mutants.
 
 ---
 
@@ -268,12 +277,16 @@ Provides simulator lifecycle utilities.
 ## Simulator/SimulatorError.swift
 
 ```swift
-enum SimulatorError: Error, Sendable {
+enum SimulatorError: Error, LocalizedError {
     case deviceNotFound(destination: String)
     case bootTimeout(udid: String)
     case cloneFailed(udid: String)
+
+    var errorDescription: String? { get }
 }
 ```
+
+Conforms to `LocalizedError` to provide structured error descriptions that propagate through generic `catch` blocks.
 
 | Case | Condition |
 |---|---|
@@ -302,8 +315,7 @@ Tracks execution progress across concurrent tasks. `total` is set once at constr
 ```swift
 struct RunnerInput: Sendable {
     let projectPath: String
-    let scheme: String
-    let destination: String
+    let projectType: ProjectType
     let timeout: Double
     let concurrency: Int
     let noCache: Bool

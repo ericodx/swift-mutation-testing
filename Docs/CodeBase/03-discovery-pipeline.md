@@ -13,15 +13,18 @@ struct DiscoveryPipeline: Sendable {
 }
 ```
 
-Entry point for the discovery phase. Runs four stages sequentially and assembles the `RunnerInput` for the execution pipeline.
+Entry point for the discovery phase. Runs six stages sequentially and assembles the `RunnerInput` for the execution pipeline.
 
 ```mermaid
 flowchart TD
     IN[DiscoveryInput] --> FD[FileDiscoveryStage]
     FD --> PA[ParsingStage]
     PA --> MD[MutantDiscoveryStage\nwith resolved operators]
-    MD --> SC[SchematizationStage]
+    MD --> MI[MutantIndexingStage]
+    MI --> SC[SchematizationStage]
+    MI --> IR[IncompatibleRewritingStage]
     SC --> OUT[RunnerInput]
+    IR --> OUT
 ```
 
 `allOperatorNames` is the ordered list of all registered operator identifiers. `ConfigurationFileWriter` uses it to populate the operators section of the generated YAML.
@@ -47,8 +50,7 @@ When `input.operators` is empty, all seven operators are active. Otherwise only 
 ```swift
 struct DiscoveryInput: Sendable {
     let projectPath: String
-    let scheme: String
-    let destination: String
+    let projectType: ProjectType
     let timeout: Double
     let concurrency: Int
     let noCache: Bool
@@ -60,9 +62,8 @@ struct DiscoveryInput: Sendable {
 
 | Field | Description |
 |---|---|
-| `projectPath` | Absolute path to the Xcode project root |
-| `scheme` | Xcode scheme used for the build |
-| `destination` | `xcodebuild` destination specifier |
+| `projectPath` | Absolute path to the project root (Xcode or SPM) |
+| `projectType` | `ProjectType` — `.xcode(scheme:destination:)` or `.spm` |
 | `timeout` | Per-mutant test timeout in seconds |
 | `concurrency` | Number of parallel test workers |
 | `noCache` | Disable result cache |
@@ -137,46 +138,67 @@ Results are sorted by `filePath` then `utf8Offset`.
 
 ---
 
-## Discovery/Pipeline/SchematizationStage.swift
+## Discovery/Pipeline/MutantIndexingStage.swift
 
 ```swift
-struct SchematizationStage: Sendable {
-    func run(mutationPoints: [MutationPoint], sources: [ParsedSource]) -> SchematizationResult
+struct MutantIndexingStage: Sendable {
+    func run(mutationPoints: [MutationPoint], sources: [ParsedSource]) -> [IndexedMutationPoint]
 }
 ```
 
-Transforms mutation points into the final representation consumed by the execution pipeline.
-
-```mermaid
-flowchart TD
-    MP[MutationPoint sorted by file/offset] --> ASSIGN[assign global index\nclassify schematizable]
-    ASSIGN --> GROUP[group by file]
-    GROUP --> SCHEMA[SchemataGenerator per file\n→ SchematizedFile]
-    GROUP --> REWRITE[MutationRewriter per incompatible\n→ mutatedSourceContent]
-    SCHEMA & REWRITE --> RESULT[SchematizationResult]
-```
-
-Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset). The index becomes the mutant ID suffix in `"swift-mutation-testing_<index>"`.
-
-The static `supportFileContent` declares `__swiftMutationTestingID` as a computed property reading from `ProcessInfo.processInfo.environment["__SWIFT_MUTATION_TESTING_ACTIVE"]`.
+Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset) and classifies them as schematizable or incompatible using `TypeScopeVisitor`. The index becomes the mutant ID suffix in `"swift-mutation-testing_<index>"`.
 
 ---
 
-## Discovery/Pipeline/SchematizationResult.swift
+## Discovery/Pipeline/IndexedMutationPoint.swift
 
 ```swift
-struct SchematizationResult: Sendable {
-    let schematizedFiles: [SchematizedFile]
-    let descriptors: [MutantDescriptor]
-    let supportFileContent: String
+struct IndexedMutationPoint: Sendable {
+    let point: MutationPoint
+    let id: String
+    let isSchematizable: Bool
 }
 ```
 
 | Field | Description |
 |---|---|
-| `schematizedFiles` | One entry per source file that contains schematizable mutations |
-| `descriptors` | All mutants (schematizable and incompatible), sorted by index |
-| `supportFileContent` | The `__swiftMutationTestingID` global declaration |
+| `point` | The original mutation point |
+| `id` | `"swift-mutation-testing_<index>"` — unique per run |
+| `isSchematizable` | `true` if the mutation falls inside a function body (determined by `TypeScopeVisitor`) |
+
+---
+
+## Discovery/Pipeline/SchematizationStage.swift
+
+```swift
+struct SchematizationStage: Sendable {
+    static let supportFileContent: String
+    func run(indexed: [IndexedMutationPoint], sources: [ParsedSource]) -> ([SchematizedFile], [MutantDescriptor])
+}
+```
+
+Embeds all schematizable mutations into the source files via `SchemataGenerator`. Returns a tuple of schematized files and schematizable mutant descriptors.
+
+```mermaid
+flowchart TD
+    IP[IndexedMutationPoint\nisSchematizable = true] --> GROUP[group by file]
+    GROUP --> SCHEMA[SchemataGenerator per file\n→ SchematizedFile]
+    SCHEMA --> RESULT["([SchematizedFile], [MutantDescriptor])"]
+```
+
+The static `supportFileContent` declares `__swiftMutationTestingID` as a computed property reading from `ProcessInfo.processInfo.environment["__SWIFT_MUTATION_TESTING_ACTIVE"]`.
+
+---
+
+## Discovery/Pipeline/IncompatibleRewritingStage.swift
+
+```swift
+struct IncompatibleRewritingStage: Sendable {
+    func run(indexed: [IndexedMutationPoint], sources: [ParsedSource]) -> [MutantDescriptor]
+}
+```
+
+Produces full-file rewrites for mutants that cannot be schematized. Each incompatible mutation point is applied to the source via `MutationRewriter`, producing a complete replacement source file stored in `MutantDescriptor.mutatedSourceContent`.
 
 ---
 

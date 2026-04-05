@@ -71,31 +71,71 @@ struct ParsedArguments: Sendable {
 ```swift
 struct RunnerConfiguration: Sendable {
     let projectPath: String
-    let scheme: String
-    let destination: String
-    let testTarget: String?
-    let timeout: Double
-    let concurrency: Int
-    let noCache: Bool
-    let output: String?
-    let htmlOutput: String?
-    let sonarOutput: String?
-    let sourcesPath: String?
-    let excludePatterns: [String]
-    let operators: [String]
-    let quiet: Bool
+    let build: BuildOptions
+    let reporting: ReportingOptions
+    let filter: FilterOptions
 
-    static let defaultTimeout: Double
-    static let defaultConcurrency: Int
+    static let defaultXcodeTimeout: Double   // 120.0
+    static let defaultSPMTimeout: Double     // 30.0
+    static let defaultConcurrency: Int       // max(1, processorCount - 1)
+
+    struct BuildOptions: Sendable {
+        var projectType: ProjectType
+        var testTarget: String?
+        var timeout: Double
+        var concurrency: Int
+        var noCache: Bool
+        var testingFramework: TestingFramework  // default: .swiftTesting
+    }
+
+    struct ReportingOptions: Sendable {
+        var output: String?
+        var htmlOutput: String?
+        var sonarOutput: String?
+        var quiet: Bool
+    }
+
+    struct FilterOptions: Sendable {
+        var sourcesPath: String?
+        var excludePatterns: [String]
+        var operators: [String]
+    }
 }
 ```
 
-Fully resolved configuration passed to both pipelines. All fields are immutable after construction.
+Fully resolved configuration passed to both pipelines. Organized into three nested option groups: build, reporting, and filter.
 
 | Constant | Value |
 |---|---|
-| `defaultTimeout` | `60.0` |
-| `defaultConcurrency` | `max(1, ProcessInfo.activeProcessorCount - 1)` |
+| `defaultXcodeTimeout` | `120.0` |
+| `defaultSPMTimeout` | `30.0` |
+| `defaultConcurrency` | `max(1, ProcessInfo.processorCount - 1)` |
+
+---
+
+## Configuration/ProjectType.swift
+
+```swift
+enum ProjectType: Sendable, Equatable {
+    case xcode(scheme: String, destination: String)
+    case spm
+}
+```
+
+Xcode projects carry a scheme and destination. SPM projects require neither — `swift build` and `swift test` use the `Package.swift` manifest directly.
+
+---
+
+## Configuration/TestingFramework.swift
+
+```swift
+enum TestingFramework: String, Sendable {
+    case xctest
+    case swiftTesting = "swift-testing"
+}
+```
+
+Detected automatically by `ProjectDetector` via source file scanning. Influences test output parsing patterns.
 
 ---
 
@@ -109,7 +149,7 @@ struct ConfigurationResolver: Sendable {
 
 Merges `ParsedArguments` (CLI, higher priority) with `[String: String]` from the YAML parser (lower priority). CLI values always win.
 
-Throws `UsageError` if `scheme` or `destination` is absent in both sources.
+For Xcode projects, throws `UsageError` if `scheme` or `destination` is absent in both sources. SPM projects are auto-detected when a `Package.swift` exists and no `.xcodeproj`/`.xcworkspace` is found.
 
 **Operator resolution** (`resolveOperators`):
 
@@ -156,23 +196,34 @@ Generates YAML content using `DetectedProject` values where available, falling b
 struct ProjectDetector: Sendable {
     init(launcher: any ProcessLaunching)
     func detect(at projectPath: String) async -> DetectedProject
+    private func findContainer(in: String) -> (flag: String, path: String)?
+    private func listProject(container:workingDirectory:) async -> (schemes: [String], projectName: String?, testTarget: String?)
+    private func listSPMTestTargets(in: String) async -> [String]
+    private func detectDestination(in: String) async -> String
+    private func detectTestingFramework(at:testTarget:) -> TestingFramework
 }
 ```
 
-Runs `xcodebuild -list -json` to discover schemes and test targets.
+Auto-detects the project type, scheme, test targets, destination, and testing framework.
 
 ```mermaid
 flowchart TD
-    A[detect at projectPath] --> B{workspace or project?}
-    B -- workspace --> C[xcodebuild -list -json -workspace]
-    B -- project --> D[xcodebuild -list -json -project]
-    C & D --> E{parse JSON?}
-    E -- yes --> F[pick first scheme\npick first test target\nresolveDestination]
-    E -- no --> G[DetectedProject.empty]
-    F --> H[DetectedProject]
+    A[detect at projectPath] --> B{.xcworkspace or\n.xcodeproj found?}
+    B -- yes --> C[xcodebuild -list -json]
+    C --> D[DetectedProject.xcode\nscheme · testTarget · destination]
+    B -- no --> E{Package.swift found?}
+    E -- yes --> F[swift package dump-package]
+    F --> G[DetectedProject.spm\ntestTargets]
+    E -- no --> H[DetectedProject with nil fields]
+    D --> I[detectDestination\niOS/tvOS/watchOS/visionOS/macOS]
+    I --> J[detectTestingFramework\nXCTest or Swift Testing]
+    G --> J
+    J --> K[DetectedProject]
 ```
 
-`resolveDestination` queries `xcrun simctl list devices --json` and picks the first booted or available simulator for the detected platform. Falls back to hardcoded default destinations if detection fails.
+`detectDestination` queries `xcrun simctl list devices --json` and picks the first booted or available simulator for the detected platform. Falls back to hardcoded default destinations if detection fails.
+
+`detectTestingFramework` scans test target source files for `import Testing` (Swift Testing) or `import XCTest` patterns to determine the testing framework in use.
 
 ---
 
@@ -180,22 +231,24 @@ flowchart TD
 
 ```swift
 struct DetectedProject: Sendable {
-    let scheme: String?
-    let allSchemes: [String]
+    let kind: Kind
     let testTarget: String?
-    let destination: String?
+    let testingFramework: TestingFramework
 
-    static let empty: DetectedProject
+    enum Kind: Sendable {
+        case xcode(scheme: String?, allSchemes: [String], destination: String)
+        case spm(testTargets: [String])
+    }
 }
 ```
 
 | Field | Description |
 |---|---|
-| `scheme` | First scheme found by `xcodebuild -list`, or `nil` |
-| `allSchemes` | All schemes found |
+| `kind` | `.xcode` with scheme, allSchemes, destination; or `.spm` with testTargets |
 | `testTarget` | First test target found, or `nil` |
-| `destination` | Best-guess destination string, or `nil` |
-| `empty` | Static instance with all fields `nil` / empty |
+| `testingFramework` | Detected framework (`.xctest` or `.swiftTesting`) |
+
+Computed properties `scheme`, `allSchemes`, and `destination` extract values from `.xcode` kind for convenience.
 
 ---
 

@@ -4,6 +4,26 @@
 
 ---
 
+## Execution/TestResultResolver.swift
+
+```swift
+struct TestResultResolver: Sendable {
+    let launcher: any ProcessLaunching
+
+    func resolve(
+        launch: TestLaunchResult,
+        projectType: ProjectType,
+        timeout: TimeInterval
+    ) async throws -> TestRunOutcome
+}
+```
+
+Delegates to the appropriate parser based on project type:
+- `.xcode` → `ResultParser` (xcresulttool + output parsing)
+- `.spm` → `SPMResultParser` (output-only parsing)
+
+---
+
 ## Execution/Parsing/ResultParser.swift
 
 ```swift
@@ -41,26 +61,24 @@ Exit code `-1` is the sentinel set by `ProcessLauncher` when it kills the proces
 ```swift
 enum TestRunOutcome: Sendable {
     case testsSucceeded
-    case testsKilled(reason: String)
-    case processCrashed
+    case testsFailed(failingTest: String)
+    case crashed
     case timedOut
-    case compilationFailed
-    case noCoverage
+    case unviable
 
     var asExecutionStatus: ExecutionStatus { get }
 }
 ```
 
-Intermediate result from `ResultParser`, converted to `ExecutionStatus` via `asExecutionStatus`.
+Intermediate result from `TestResultResolver`/`ResultParser`/`SPMResultParser`, converted to `ExecutionStatus` via `asExecutionStatus`.
 
 | Case | Maps to |
 |---|---|
 | `testsSucceeded` | `.survived` |
-| `testsKilled(reason:)` | `.killed(by: reason)` |
-| `processCrashed` | `.killedByCrash` |
+| `testsFailed(failingTest:)` | `.killed(by: failingTest)` |
+| `crashed` | `.killedByCrash` |
 | `timedOut` | `.timeout` |
-| `compilationFailed` | `.unviable` |
-| `noCoverage` | `.noCoverage` |
+| `unviable` | `.unviable` |
 
 ---
 
@@ -86,6 +104,26 @@ Scans stdout/stderr for known failure and crash patterns when `xcresulttool` yie
 `Fatal error`, `EXC_BAD_INSTRUCTION`
 
 Returns `.testsKilled(reason: <first matching line>)` for test failures, `.processCrashed` for crashes, or `.testsKilled(reason: "other")` when no pattern matches but the exit code was non-zero.
+
+---
+
+## Execution/Parsing/SPMResultParser.swift
+
+```swift
+struct SPMResultParser: Sendable {
+    func parse(exitCode: Int32, output: String) -> TestRunOutcome
+}
+```
+
+Parses SPM test results from exit code and stdout/stderr output only (no `.xcresult` bundles). Uses `TestOutputParser` to detect failure patterns.
+
+| Condition | Outcome |
+|---|---|
+| Exit code `-1` | `.timedOut` |
+| Exit code `0` | `.testsSucceeded` |
+| Non-zero + test failure pattern | `.testsFailed(failingTest:)` |
+| Non-zero + empty output | `.crashed` |
+| Non-zero + no parseable failure | `.unviable` |
 
 ---
 

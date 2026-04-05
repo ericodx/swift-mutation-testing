@@ -10,19 +10,21 @@
 @main
 struct SwiftMutationTesting {
     static func main() async
-    static func run(args: [String], launcher: any ProcessLaunching = ProcessLauncher()) async -> ExitCode
-    private static func execute(args: [String], launcher: any ProcessLaunching) async throws -> ExitCode
-    private static func discover(configuration: RunnerConfiguration) async throws -> RunnerInput
+    static func run(args: [String], launcher: (any ProcessLaunching)? = nil) async -> ExitCode
+    private static func execute(args: [String], launcher: (any ProcessLaunching)?) async throws -> ExitCode
+    private static func discover(configuration: RunnerConfiguration) async throws -> (RunnerInput, TimeInterval)
     static func writeReports(_ summary: RunnerSummary, configuration: RunnerConfiguration)
+    static func defaultLauncher(for projectType: ProjectType) -> any ProcessLaunching
 }
 ```
 
 The program entry point. `main()` drops `CommandLine.arguments[0]` (the executable name) and delegates to `run(args:launcher:)`.
 
-`run` catches three error categories before returning an exit code:
+`run` catches two error categories before returning an exit code:
 - `UsageError` — prints `message` to stderr
-- `SimulatorError.deviceNotFound` — prints destination string to stderr
-- Any other `Error` — prints `localizedDescription` to stderr
+- Any other `Error` — prints `localizedDescription` to stderr (errors conforming to `LocalizedError`, such as `SimulatorError` and `BuildError`, provide structured descriptions)
+
+`defaultLauncher(for:)` returns the appropriate process launcher based on project type: `XcodeProcessLauncher` for `.xcode`, `SPMProcessLauncher` for `.spm`. Used when no launcher is injected via the `launcher` parameter.
 
 `execute` is the primary execution path:
 
@@ -81,7 +83,7 @@ struct UsageError: Error, Sendable {
 }
 ```
 
-Thrown by `CommandLineParser` for unknown flags and by `ConfigurationResolver` when required fields (`scheme`, `destination`) are absent in both CLI and file values.
+Thrown by `CommandLineParser` for unknown flags and by `ConfigurationResolver` when required fields are absent in both CLI and file values (e.g. `scheme` and `destination` for Xcode projects).
 
 | Field | Type | Description |
 |---|---|---|

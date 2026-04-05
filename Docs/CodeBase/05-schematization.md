@@ -8,11 +8,11 @@
 
 ```swift
 struct SchemataGenerator: Sendable {
-    func generate(source: ParsedSource, mutations: [(index: Int, point: MutationPoint)]) -> String
+    func generate(source: ParsedSource, mutations: [(id: String, point: MutationPoint)]) -> String
 }
 ```
 
-Rewrites a source file to embed all its schematizable mutations into `switch __swiftMutationTestingID` blocks. Returns the complete rewritten source as a `String`.
+Rewrites a source file to embed all its schematizable mutations into `switch __swiftMutationTestingID` blocks. Returns the complete rewritten source as a `String`. Uses force-unwrapped UTF-8 conversions because Swift source code is guaranteed to be valid UTF-8.
 
 ```mermaid
 flowchart TD
@@ -41,7 +41,7 @@ default:
 }
 ```
 
-Mutant IDs follow `"swift-mutation-testing_<index>"` where `index` is the global sequential index assigned by `SchematizationStage`.
+Mutant IDs follow `"swift-mutation-testing_<index>"` where `index` is the global sequential index assigned by `MutantIndexingStage`.
 
 ---
 
@@ -55,7 +55,7 @@ struct MutationRewriter: Sendable {
 
 Applies a single mutation to a complete source file via raw UTF-8 byte replacement. Used exclusively for incompatible mutants.
 
-Converts the source content to `Data`, replaces the subrange `utf8Offset ..< utf8Offset + originalText.utf8.count` with `mutatedText.data(using: .utf8)`, and converts back to `String`.
+Converts the source content to `Data`, replaces the subrange `utf8Offset ..< utf8Offset + originalText.utf8.count` with `mutatedText.data(using: .utf8)!`, and converts back to `String`. Uses force-unwrapped UTF-8 conversions because Swift source code is guaranteed to be valid UTF-8.
 
 ---
 
