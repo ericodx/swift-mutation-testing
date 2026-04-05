@@ -120,8 +120,8 @@ struct ConfigurationFileWriter: Sendable {
         }
 
         lines.append("")
-        lines.append("# Per-mutant test timeout in seconds (default: 120)")
-        lines.append("timeout: 120")
+        lines.append("# Per-mutant test timeout in seconds (default: 30 for SPM)")
+        lines.append("timeout: 30")
         lines.append("")
         lines.append("# Disable result cache (re-runs all mutants on every execution)")
         lines.append("# noCache: true")
