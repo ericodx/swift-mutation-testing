@@ -42,7 +42,7 @@ struct SPMProcessLauncher: Sendable, ProcessLaunching {
     }
 }
 
-private func killEscapedChildren(sandboxPath: String) {
+func killEscapedChildren(sandboxPath: String) {
     let sandboxName = URL(fileURLWithPath: sandboxPath).lastPathComponent
     guard sandboxName.hasPrefix("xmr-") else { return }
     guard let pathData = sandboxName.data(using: .utf8) else { return }
