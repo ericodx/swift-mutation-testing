@@ -6,7 +6,7 @@ public struct SwiftMutationTesting {
         exit(await run(args: Array(CommandLine.arguments.dropFirst())).rawValue)
     }
 
-    static func run(args: [String], launcher: any ProcessLaunching = ProcessLauncher()) async -> ExitCode {
+    static func run(args: [String], launcher: (any ProcessLaunching)? = nil) async -> ExitCode {
         do {
             return try await execute(args: args, launcher: launcher)
         } catch let error as UsageError {
@@ -25,7 +25,7 @@ public struct SwiftMutationTesting {
         }
     }
 
-    private static func execute(args: [String], launcher: any ProcessLaunching) async throws -> ExitCode {
+    private static func execute(args: [String], launcher: (any ProcessLaunching)?) async throws -> ExitCode {
         let parsed = try CommandLineParser().parse(args)
 
         if parsed.showHelp {
@@ -39,7 +39,8 @@ public struct SwiftMutationTesting {
         }
 
         if parsed.showInit {
-            let detected = await ProjectDetector(launcher: launcher).detect(at: parsed.projectPath)
+            let initLauncher = launcher ?? XcodeProcessLauncher()
+            let detected = await ProjectDetector(launcher: initLauncher).detect(at: parsed.projectPath)
             try ConfigurationFileWriter().write(to: parsed.projectPath, project: detected)
             return .success
         }
@@ -64,8 +65,18 @@ public struct SwiftMutationTesting {
                 ))
         }
 
+        let executionLauncher: any ProcessLaunching
+        if let launcher {
+            executionLauncher = launcher
+        } else {
+            executionLauncher = switch configuration.build.projectType {
+            case .xcode: XcodeProcessLauncher()
+            case .spm: SPMProcessLauncher()
+            }
+        }
+
         let start = Date()
-        let results = try await MutantExecutor(configuration: configuration, launcher: launcher).execute(input)
+        let results = try await MutantExecutor(configuration: configuration, launcher: executionLauncher).execute(input)
         let duration = Date().timeIntervalSince(start)
 
         let summary = RunnerSummary(results: results, totalDuration: duration)

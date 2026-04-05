@@ -59,14 +59,14 @@ struct TestExecutionStage: Sendable {
             throw error
         }
 
+        await context.pool.release(slot)
+
         let outcome = try await ResultParser(launcher: deps.launcher).parse(
             exitCode: launched.exitCode,
             output: launched.output,
             xcresultPath: launched.xcresultPath,
             timeout: context.configuration.build.timeout
         )
-        launched.cleanup()
-        await context.pool.release(slot)
         try? FileManager.default.removeItem(atPath: launched.xcresultPath)
 
         let status = outcome.asExecutionStatus
@@ -92,13 +92,8 @@ struct TestExecutionStage: Sendable {
         }
 
         let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
-        launched.cleanup()
         await context.pool.release(slot)
         let status = outcome.asExecutionStatus
-        if status == .unviable {
-            let snippet = String(launched.output.prefix(300)).replacingOccurrences(of: "\n", with: "↵")
-            fputs("[xmr] unviable mutant=\(mutant.id) file=\(URL(fileURLWithPath: mutant.filePath).lastPathComponent) exitCode=\(launched.exitCode) output=\(snippet)\n", stderr)
-        }
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
         await deps.cacheStore.store(status: status, for: key)
         let index = await deps.counter.increment()
@@ -117,7 +112,7 @@ struct TestExecutionStage: Sendable {
         }
 
         let start = Date()
-        let captured = try await deps.launcher.launchCapturingDeferred(
+        let captured = try await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
             arguments: arguments,
             environment: nil,
@@ -130,8 +125,7 @@ struct TestExecutionStage: Sendable {
             exitCode: captured.exitCode,
             output: captured.output,
             xcresultPath: "",
-            duration: Date().timeIntervalSince(start),
-            cleanup: captured.cleanup
+            duration: Date().timeIntervalSince(start)
         )
     }
 
@@ -164,7 +158,7 @@ struct TestExecutionStage: Sendable {
         }
 
         let start = Date()
-        let captured = try await deps.launcher.launchCapturingDeferred(
+        let captured = try await deps.launcher.launchCapturing(
             executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: arguments,
             environment: nil,
@@ -177,8 +171,7 @@ struct TestExecutionStage: Sendable {
             exitCode: captured.exitCode,
             output: captured.output,
             xcresultPath: xcresultPath,
-            duration: Date().timeIntervalSince(start),
-            cleanup: captured.cleanup
+            duration: Date().timeIntervalSince(start)
         )
     }
 }

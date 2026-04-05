@@ -10,13 +10,15 @@ struct ProjectDetector: Sendable {
             let (schemes, projectName, testTarget) = await listProject(
                 container: container, workingDirectory: projectURL)
             let destination = await detectDestination(in: projectURL)
+            let framework = detectTestingFramework(at: projectURL, testTarget: testTarget)
             return DetectedProject(
                 kind: .xcode(
                     scheme: selectScheme(from: schemes, projectName: projectName),
                     allSchemes: schemes,
                     destination: destination
                 ),
-                testTarget: testTarget
+                testTarget: testTarget,
+                testingFramework: framework
             )
         }
 
@@ -24,7 +26,8 @@ struct ProjectDetector: Sendable {
             let testTargets = await listSPMTestTargets(in: projectURL)
             return DetectedProject(
                 kind: .spm(testTargets: testTargets),
-                testTarget: testTargets.first
+                testTarget: testTargets.first,
+                testingFramework: .swiftTesting
             )
         }
 
@@ -221,6 +224,40 @@ struct ProjectDetector: Sendable {
         }
 
         return nil
+    }
+
+    private func detectTestingFramework(at projectURL: URL, testTarget: String?) -> TestingFramework {
+        let searchURL: URL
+        if let testTarget {
+            let targetURL = projectURL.appendingPathComponent(testTarget)
+            searchURL = FileManager.default.fileExists(atPath: targetURL.path) ? targetURL : projectURL
+        } else {
+            searchURL = projectURL
+        }
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: searchURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return .swiftTesting
+        }
+
+        var hasXCTest = false
+        var hasSwiftTesting = false
+
+        while let url = enumerator.nextObject() as? URL {
+            guard url.pathExtension == "swift" else { continue }
+            guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
+
+            if content.contains("import XCTest") { hasXCTest = true }
+            if content.contains("import Testing") { hasSwiftTesting = true }
+
+            if hasXCTest && hasSwiftTesting { break }
+        }
+
+        if hasXCTest && !hasSwiftTesting { return .xctest }
+        return .swiftTesting
     }
 
     private func runtimeVersion(from key: String) -> (Int, Int) {

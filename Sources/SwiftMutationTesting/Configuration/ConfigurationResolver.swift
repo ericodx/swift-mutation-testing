@@ -6,7 +6,6 @@ struct ConfigurationResolver: Sendable {
         fileValues: [String: String]
     ) throws -> RunnerConfiguration {
         let projectPath = resolvedPath(cliArguments.projectPath)
-        let timeout = resolvedTimeout(cli: cliArguments, fileValues: fileValues)
         let concurrency = resolvedConcurrency(cli: cliArguments, fileValues: fileValues)
 
         guard concurrency >= 1 else {
@@ -19,14 +18,25 @@ struct ConfigurationResolver: Sendable {
             projectPath: projectPath
         )
 
+        let testingFramework = try resolvedTestingFramework(cli: cliArguments, fileValues: fileValues)
+        let timeout = resolvedTimeout(cli: cliArguments, fileValues: fileValues, projectType: projectType)
+
+        let effectiveConcurrency: Int
+        if case .xcode = projectType, testingFramework == .xctest {
+            effectiveConcurrency = 1
+        } else {
+            effectiveConcurrency = concurrency
+        }
+
         return RunnerConfiguration(
             projectPath: projectPath,
             build: .init(
                 projectType: projectType,
                 testTarget: cliArguments.build.testTarget ?? fileValues["testTarget"],
                 timeout: timeout,
-                concurrency: concurrency,
-                noCache: cliArguments.build.noCache || fileValues["noCache"]?.lowercased() == "true"
+                concurrency: effectiveConcurrency,
+                noCache: cliArguments.build.noCache || fileValues["noCache"]?.lowercased() == "true",
+                testingFramework: testingFramework
             ),
             reporting: .init(
                 output: cliArguments.reporting.output ?? fileValues["output"],
@@ -75,16 +85,36 @@ struct ConfigurationResolver: Sendable {
         return FileManager.default.fileExists(atPath: packageURL.path)
     }
 
-    private func resolvedTimeout(cli: ParsedArguments, fileValues: [String: String]) -> Double {
+    private func resolvedTimeout(cli: ParsedArguments, fileValues: [String: String], projectType: ProjectType) -> Double
+    {
         if let timeout = cli.build.timeout { return timeout }
         if let timeout = fileValues["timeout"].flatMap(Double.init) { return timeout }
-        return RunnerConfiguration.defaultTimeout
+
+        return switch projectType {
+        case .xcode: RunnerConfiguration.defaultXcodeTimeout
+        case .spm: RunnerConfiguration.defaultSPMTimeout
+        }
     }
 
     private func resolvedConcurrency(cli: ParsedArguments, fileValues: [String: String]) -> Int {
         if let concurrency = cli.build.concurrency { return concurrency }
         if let concurrency = fileValues["concurrency"].flatMap(Int.init) { return concurrency }
         return RunnerConfiguration.defaultConcurrency
+    }
+
+    private func resolvedTestingFramework(cli: ParsedArguments, fileValues: [String: String]) throws -> TestingFramework
+    {
+        let raw = cli.build.testingFramework ?? fileValues["testingFramework"]
+
+        guard let raw else {
+            return .swiftTesting
+        }
+
+        guard let framework = TestingFramework(rawValue: raw) else {
+            throw UsageError(message: "--testing-framework must be 'xctest' or 'swift-testing'")
+        }
+
+        return framework
     }
 
     private func resolveOperators(cli: ParsedArguments, fileValues: [String: String]) -> [String] {

@@ -6,6 +6,7 @@ struct CommandLineParser: Sendable {
         var timeout: Double?
         var concurrency: Int?
         var noCache = false
+        var testingFramework: String?
         var output: String?
         var htmlOutput: String?
         var sonarOutput: String?
@@ -66,7 +67,8 @@ struct CommandLineParser: Sendable {
                 testTarget: flags.testTarget,
                 timeout: flags.timeout,
                 concurrency: flags.concurrency,
-                noCache: flags.noCache
+                noCache: flags.noCache,
+                testingFramework: flags.testingFramework
             ),
             reporting: .init(
                 output: flags.output,
@@ -119,6 +121,9 @@ struct CommandLineParser: Sendable {
 
         case "--no-cache":
             values.noCache = true
+
+        case "--testing-framework":
+            values.testingFramework = try nextValue(for: flag, at: &index, in: arguments)
 
         case "--output":
             values.output = try nextValue(for: flag, at: &index, in: arguments)

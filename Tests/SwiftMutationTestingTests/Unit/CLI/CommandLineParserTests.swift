@@ -190,6 +190,33 @@ struct CommandLineParserTests {
         #expect(result.filter.operators.isEmpty)
     }
 
+    @Test("Given --testing-framework xctest, when parsed, then testingFramework is xctest")
+    func parsesTestingFrameworkXCTest() throws {
+        let result = try parser.parse([
+            "run", "--scheme", "App", "--destination", "d",
+            "--testing-framework", "xctest",
+        ])
+
+        #expect(result.build.testingFramework == "xctest")
+    }
+
+    @Test("Given --testing-framework swift-testing, when parsed, then testingFramework is swift-testing")
+    func parsesTestingFrameworkSwiftTesting() throws {
+        let result = try parser.parse([
+            "run", "--scheme", "App", "--destination", "d",
+            "--testing-framework", "swift-testing",
+        ])
+
+        #expect(result.build.testingFramework == "swift-testing")
+    }
+
+    @Test("Given no --testing-framework flag, when parsed, then testingFramework is nil")
+    func testingFrameworkDefaultsToNil() throws {
+        let result = try parser.parse(["run", "--scheme", "App", "--destination", "d"])
+
+        #expect(result.build.testingFramework == nil)
+    }
+
     @Test("Given repeated --disable-mutator flags, when parsed, then all disabled mutators are collected")
     func disabledMutatorsAreCollected() throws {
         let result = try parser.parse([

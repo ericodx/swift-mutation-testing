@@ -32,7 +32,8 @@ struct ParsedArguments: Sendable {
             testTarget: String? = nil,
             timeout: Double? = nil,
             concurrency: Int? = nil,
-            noCache: Bool = false
+            noCache: Bool = false,
+            testingFramework: String? = nil
         ) {
             self.scheme = scheme
             self.destination = destination
@@ -40,6 +41,7 @@ struct ParsedArguments: Sendable {
             self.timeout = timeout
             self.concurrency = concurrency
             self.noCache = noCache
+            self.testingFramework = testingFramework
         }
 
         var scheme: String?
@@ -48,6 +50,7 @@ struct ParsedArguments: Sendable {
         var timeout: Double?
         var concurrency: Int?
         var noCache: Bool
+        var testingFramework: String?
     }
 
     struct ReportingOptions: Sendable {

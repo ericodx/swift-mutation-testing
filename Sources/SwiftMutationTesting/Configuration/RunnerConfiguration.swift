@@ -1,7 +1,8 @@
 import Foundation
 
 struct RunnerConfiguration: Sendable {
-    static let defaultTimeout: Double = 120.0
+    static let defaultXcodeTimeout: Double = 120.0
+    static let defaultSPMTimeout: Double = 30.0
     static let defaultConcurrency: Int = max(1, ProcessInfo.processInfo.processorCount - 1)
 
     let projectPath: String
@@ -15,6 +16,7 @@ struct RunnerConfiguration: Sendable {
         var timeout: Double
         var concurrency: Int
         var noCache: Bool
+        var testingFramework: TestingFramework = .swiftTesting
     }
 
     struct ReportingOptions: Sendable {
