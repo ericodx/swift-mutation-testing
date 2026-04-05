@@ -107,14 +107,14 @@ struct TestOutputParserTests {
 
         #expect(result == .crashed)
     }
-}
 
-private func loadFixture(_ name: String) throws -> String {
-    let fixturesURL = URL(filePath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .appending(path: "TestSupport/Fixtures/\(name).txt")
-    return try String(contentsOf: fixturesURL, encoding: .utf8)
+    private func loadFixture(_ name: String) throws -> String {
+        let fixturesURL = URL(filePath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appending(path: "TestSupport/Fixtures/\(name).txt")
+        return try String(contentsOf: fixturesURL, encoding: .utf8)
+    }
 }

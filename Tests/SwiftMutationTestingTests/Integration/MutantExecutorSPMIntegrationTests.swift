@@ -12,7 +12,10 @@ struct MutantExecutorSPMIntegrationTests {
         let configuration = makeConfiguration(fixtureURL: fixtureURL)
         let input = makeInput(fixtureURL: fixtureURL)
 
-        let results = try await MutantExecutor(configuration: configuration, launcher: SPMProcessLauncher()).execute(input)
+        let results = try await MutantExecutor(
+            configuration: configuration,
+            launcher: SPMProcessLauncher()
+        ).execute(input)
 
         let killed = results.filter {
             if case .killed = $0.status { return true }
@@ -35,7 +38,10 @@ struct MutantExecutorSPMIntegrationTests {
 
         let configuration = makeConfiguration(fixtureURL: fixtureURL)
         let input = makeInput(fixtureURL: fixtureURL)
-        _ = try await MutantExecutor(configuration: configuration, launcher: SPMProcessLauncher()).execute(input)
+        _ = try await MutantExecutor(
+            configuration: configuration,
+            launcher: SPMProcessLauncher()
+        ).execute(input)
 
         let after = try String(contentsOf: calculatorURL, encoding: .utf8)
 
@@ -178,7 +184,7 @@ private func incompatibleMutants(path: String) -> [MutantDescriptor] {
                     func isNonNegative(_ n: Int) -> Bool { n > 0 }
                 }
                 """
-        ),
+        )
     ]
 }
 

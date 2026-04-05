@@ -29,12 +29,14 @@ struct SimulatorManager: Sendable {
     ) async throws {
         for _ in 0 ..< maxAttempts {
             let result = try await launcher.launchCapturing(
-                executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-                arguments: ["simctl", "list", "devices", "--json"],
-                environment: nil,
-                additionalEnvironment: [:],
-                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
-                timeout: 10
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                    arguments: ["simctl", "list", "devices", "--json"],
+                    environment: nil,
+                    additionalEnvironment: [:],
+                    workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                    timeout: 10
+                )
             )
 
             if isBooted(udid: udid, in: result.output) { return }
@@ -55,12 +57,14 @@ struct SimulatorManager: Sendable {
 
     private func findUDID(named name: String, destination: String) async throws -> String {
         let result = try await launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: ["simctl", "list", "devices", "--json"],
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
-            timeout: 10
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                arguments: ["simctl", "list", "devices", "--json"],
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                timeout: 10
+            )
         )
 
         guard

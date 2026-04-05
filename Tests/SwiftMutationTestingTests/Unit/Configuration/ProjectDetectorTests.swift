@@ -544,4 +544,5 @@ struct ProjectDetectorTests {
 
         #expect(result.destination == "platform=macOS")
     }
+
 }

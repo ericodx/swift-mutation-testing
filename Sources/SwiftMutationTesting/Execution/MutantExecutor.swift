@@ -10,6 +10,24 @@ struct MutantExecutor: Sendable {
     private let configuration: RunnerConfiguration
     private let launcher: any ProcessLaunching
 
+    private struct MutantRunContext {
+        let deps: ExecutionDeps
+        let input: RunnerInput
+        let sandbox: Sandbox
+        let pool: SimulatorPool
+        let artifact: BuildArtifact?
+        let schemaBuildExcluded: [MutantDescriptor]
+        let testFilesHash: String
+    }
+
+    private struct RetryContext {
+        let sandbox: Sandbox
+        let input: RunnerInput
+        let stage: BuildStage
+        let deps: ExecutionDeps
+        let start: Date
+    }
+
     func execute(_ input: RunnerInput) async throws -> [ExecutionResult] {
         let reporter: any ProgressReporter =
             configuration.reporting.quiet
@@ -47,13 +65,15 @@ struct MutantExecutor: Sendable {
         let results: [ExecutionResult]
         do {
             results = try await runAllMutants(
-                deps: deps,
-                input: input,
-                sandbox: sandbox,
-                pool: pool,
-                artifact: artifact,
-                schemaBuildExcluded: schemaBuildExcluded,
-                testFilesHash: testFilesHash
+                MutantRunContext(
+                    deps: deps,
+                    input: input,
+                    sandbox: sandbox,
+                    pool: pool,
+                    artifact: artifact,
+                    schemaBuildExcluded: schemaBuildExcluded,
+                    testFilesHash: testFilesHash
+                )
             )
         } catch {
             await pool.tearDown()
@@ -69,14 +89,15 @@ struct MutantExecutor: Sendable {
     }
 
     private func runAllMutants(
-        deps: ExecutionDeps,
-        input: RunnerInput,
-        sandbox: Sandbox,
-        pool: SimulatorPool,
-        artifact: BuildArtifact?,
-        schemaBuildExcluded: [MutantDescriptor],
-        testFilesHash: String
+        _ context: MutantRunContext
     ) async throws -> [ExecutionResult] {
+        let deps = context.deps
+        let input = context.input
+        let sandbox = context.sandbox
+        let pool = context.pool
+        let artifact = context.artifact
+        let schemaBuildExcluded = context.schemaBuildExcluded
+        let testFilesHash = context.testFilesHash
         let schematizable = input.mutants.filter { $0.isSchematizable }
         let incompatible = input.mutants.filter { !$0.isSchematizable }
 
@@ -167,19 +188,18 @@ struct MutantExecutor: Sendable {
             do {
                 let artifact = try await stage.buildSPM(
                     sandbox: sandbox,
-                    testTarget: configuration.build.testTarget,
                     timeout: configuration.build.timeout
                 )
                 await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
                 return (artifact, [])
             } catch BuildError.compilationFailed(let output) {
+                let retryCtx = RetryContext(
+                    sandbox: sandbox, input: input,
+                    stage: stage, deps: deps, start: start
+                )
                 let (artifact, excluded) = try await retryExcludingErrors(
                     output: output,
-                    sandbox: sandbox,
-                    input: input,
-                    stage: stage,
-                    deps: deps,
-                    start: start,
+                    context: retryCtx,
                     alreadyExcluded: []
                 )
                 return (artifact, excluded)
@@ -189,24 +209,14 @@ struct MutantExecutor: Sendable {
 
     private func retryExcludingErrors(
         output: String,
-        sandbox: Sandbox,
-        input: RunnerInput,
-        stage: BuildStage,
-        deps: ExecutionDeps,
-        start: Date,
+        context: RetryContext,
         alreadyExcluded: [MutantDescriptor]
     ) async throws -> (BuildArtifact?, [MutantDescriptor]) {
+        let sandbox = context.sandbox
+        let input = context.input
         let sandboxRoot = canonicalPath(sandbox.rootURL.path)
         let projectRoot = URL(fileURLWithPath: input.projectPath).resolvingSymlinksInPath().path
-
-        let errorSandboxPaths = Set(
-            output.components(separatedBy: "\n").compactMap { line -> String? in
-                guard line.hasPrefix(sandboxRoot) else { return nil }
-                let path = line.components(separatedBy: ":").first ?? ""
-                return path.hasSuffix(".swift") ? path : nil
-            }
-        )
-
+        let errorSandboxPaths = extractErrorPaths(from: output, sandboxRoot: sandboxRoot)
         let alreadyExcludedIDs = Set(alreadyExcluded.map(\.id))
 
         var newlyExcluded: [MutantDescriptor] = []
@@ -217,10 +227,10 @@ struct MutantExecutor: Sendable {
 
             guard FileManager.default.fileExists(atPath: originalPath) else { continue }
 
-            let mutantsInFile = input.mutants.filter { m in
-                m.isSchematizable
-                    && !alreadyExcludedIDs.contains(m.id)
-                    && URL(fileURLWithPath: m.filePath).resolvingSymlinksInPath().path == originalPath
+            let mutantsInFile = input.mutants.filter { mutant in
+                mutant.isSchematizable
+                    && !alreadyExcludedIDs.contains(mutant.id)
+                    && URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path == originalPath
             }
 
             guard !mutantsInFile.isEmpty else { continue }
@@ -240,24 +250,31 @@ struct MutantExecutor: Sendable {
         let allExcluded = alreadyExcluded + newlyExcluded
 
         do {
-            let artifact = try await stage.buildSPM(
+            let artifact = try await context.stage.buildSPM(
                 sandbox: sandbox,
-                testTarget: configuration.build.testTarget,
                 timeout: configuration.build.timeout
             )
-            await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
+            await context.deps.reporter.report(
+                .buildFinished(duration: Date().timeIntervalSince(context.start))
+            )
             return (artifact, allExcluded)
         } catch BuildError.compilationFailed(let newOutput) {
             return try await retryExcludingErrors(
                 output: newOutput,
-                sandbox: sandbox,
-                input: input,
-                stage: stage,
-                deps: deps,
-                start: start,
+                context: context,
                 alreadyExcluded: allExcluded
             )
         }
+    }
+
+    private func extractErrorPaths(from output: String, sandboxRoot: String) -> Set<String> {
+        Set(
+            output.components(separatedBy: "\n").compactMap { line -> String? in
+                guard line.hasPrefix(sandboxRoot) else { return nil }
+                let path = line.components(separatedBy: ":").first ?? ""
+                return path.hasSuffix(".swift") ? path : nil
+            }
+        )
     }
 
     private func runNormal(
@@ -295,12 +312,14 @@ struct MutantExecutor: Sendable {
         }
 
         _ = try? await deps.launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
-            arguments: arguments,
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: sandbox.rootURL,
-            timeout: configuration.build.timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+                arguments: arguments,
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: sandbox.rootURL,
+                timeout: configuration.build.timeout
+            )
         )
     }
 
@@ -333,15 +352,15 @@ struct MutantExecutor: Sendable {
         for errorLine in errorLines {
             let lineIndex = errorLine - 1
             guard lineIndex >= 0, lineIndex < lines.count else { continue }
-            var i = lineIndex
-            while i >= 0 {
-                let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
+            var searchIndex = lineIndex
+            while searchIndex >= 0 {
+                let trimmed = lines[searchIndex].trimmingCharacters(in: .whitespaces)
                 if let id = mutantCaseID(from: trimmed), mutantIDs.contains(id) {
                     problematicIDs.insert(id)
                     break
                 }
                 if trimmed == "default:" || trimmed.hasPrefix("switch ") { break }
-                i -= 1
+                searchIndex -= 1
             }
         }
 
@@ -400,11 +419,12 @@ struct MutantExecutor: Sendable {
         let source: String
         if let cached = sourceCache[mutant.filePath] {
             source = cached
-        } else if let loaded = try? String(contentsOfFile: mutant.filePath, encoding: .utf8) {
+        } else {
+            guard let loaded = try? String(contentsOfFile: mutant.filePath, encoding: .utf8) else {
+                return nil
+            }
             sourceCache[mutant.filePath] = loaded
             source = loaded
-        } else {
-            return nil
         }
 
         let point = MutationPoint(

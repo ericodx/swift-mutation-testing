@@ -51,12 +51,14 @@ actor SimulatorPool {
             for index in 0 ..< size {
                 group.addTask {
                     let result = try await launcher.launchCapturing(
-                        executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-                        arguments: ["simctl", "clone", base, "XMR-\(session)-\(index)"],
-                        environment: nil,
-                        additionalEnvironment: [:],
-                        workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
-                        timeout: 60
+                        ProcessRequest(
+                            executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                            arguments: ["simctl", "clone", base, "XMR-\(session)-\(index)"],
+                            environment: nil,
+                            additionalEnvironment: [:],
+                            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                            timeout: 60
+                        )
                     )
 
                     guard result.exitCode == 0 else {

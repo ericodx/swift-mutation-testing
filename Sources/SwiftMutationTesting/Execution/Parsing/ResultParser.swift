@@ -13,12 +13,17 @@ struct ResultParser: Sendable {
         if exitCode == 0 { return .testsSucceeded }
 
         let xcresultRaw = try await launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: ["xcresulttool", "get", "test-results", "tests", "--path", xcresultPath],
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
-            timeout: timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                arguments: [
+                    "xcresulttool", "get", "test-results",
+                    "tests", "--path", xcresultPath,
+                ],
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                timeout: timeout
+            )
         )
 
         if xcresultRaw.exitCode == 0 {

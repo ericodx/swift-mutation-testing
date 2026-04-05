@@ -73,7 +73,12 @@ struct TestExecutionStage: Sendable {
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
         await deps.cacheStore.store(status: status, for: key)
         let index = await deps.counter.increment()
-        await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: deps.counter.total))
+        await deps.reporter.report(
+            .mutantFinished(
+                descriptor: mutant, status: status,
+                index: index, total: deps.counter.total
+            )
+        )
         return result
     }
 
@@ -97,7 +102,12 @@ struct TestExecutionStage: Sendable {
         let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
         await deps.cacheStore.store(status: status, for: key)
         let index = await deps.counter.increment()
-        await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: deps.counter.total))
+        await deps.reporter.report(
+            .mutantFinished(
+                descriptor: mutant, status: status,
+                index: index, total: deps.counter.total
+            )
+        )
         return result
     }
 
@@ -113,12 +123,16 @@ struct TestExecutionStage: Sendable {
 
         let start = Date()
         let captured = try await deps.launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
-            arguments: arguments,
-            environment: nil,
-            additionalEnvironment: ["__SWIFT_MUTATION_TESTING_ACTIVE": mutant.id],
-            workingDirectoryURL: context.sandbox.rootURL,
-            timeout: context.configuration.build.timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+                arguments: arguments,
+                environment: nil,
+                additionalEnvironment: [
+                    "__SWIFT_MUTATION_TESTING_ACTIVE": mutant.id
+                ],
+                workingDirectoryURL: context.sandbox.rootURL,
+                timeout: context.configuration.build.timeout
+            )
         )
 
         return TestLaunchResult(
@@ -159,12 +173,14 @@ struct TestExecutionStage: Sendable {
 
         let start = Date()
         let captured = try await deps.launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-            arguments: arguments,
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: context.sandbox.rootURL,
-            timeout: context.configuration.build.timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+                arguments: arguments,
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: context.sandbox.rootURL,
+                timeout: context.configuration.build.timeout
+            )
         )
 
         return TestLaunchResult(

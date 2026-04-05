@@ -1,5 +1,3 @@
-import Foundation
-
 struct SchematizationStage: Sendable {
     static let supportFileContent = """
         import Foundation
@@ -25,39 +23,10 @@ struct SchematizationStage: Sendable {
             schematizedFiles.append(SchematizedFile(originalPath: filePath, schematizedContent: content))
 
             for entry in entries {
-                descriptors.append(makeDescriptor(
-                    from: entry.mutation, id: mutantID(entry.index),
-                    isSchematizable: true, mutatedContent: nil
-                ))
+                descriptors.append(entry.toDescriptor(mutatedContent: nil))
             }
         }
 
         return (schematizedFiles, descriptors)
-    }
-
-    private func mutantID(_ index: Int) -> String {
-        "swift-mutation-testing_\(index)"
-    }
-
-    private func makeDescriptor(
-        from mutation: MutationPoint,
-        id: String,
-        isSchematizable: Bool,
-        mutatedContent: String?
-    ) -> MutantDescriptor {
-        MutantDescriptor(
-            id: id,
-            filePath: mutation.filePath,
-            line: mutation.line,
-            column: mutation.column,
-            utf8Offset: mutation.utf8Offset,
-            originalText: mutation.originalText,
-            mutatedText: mutation.mutatedText,
-            operatorIdentifier: mutation.operatorIdentifier,
-            replacementKind: mutation.replacement,
-            description: mutation.description,
-            isSchematizable: isSchematizable,
-            mutatedSourceContent: mutatedContent
-        )
     }
 }

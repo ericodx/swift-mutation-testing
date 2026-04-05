@@ -51,4 +51,12 @@ struct MutantIndexingStageTests {
         #expect(result[0].mutation.filePath == "a.swift")
         #expect(result[1].mutation.filePath == "b.swift")
     }
+
+    @Test("Given mutation with filePath not in sources, when run, then isSchematizable defaults to false")
+    func missingSourceDefaultsToNotSchematizable() {
+        let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
+        let points = BooleanLiteralReplacement().mutations(in: source)
+        let result = stage.run(mutationPoints: points, sources: [])
+        #expect(result.allSatisfy { !$0.isSchematizable })
+    }
 }

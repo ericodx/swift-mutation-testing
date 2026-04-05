@@ -159,7 +159,7 @@ struct BuildStageTests {
         let sandbox = Sandbox(rootURL: projectDir)
         let stage = BuildStage(launcher: MockProcessLauncher(exitCode: 0))
 
-        let artifact = try await stage.buildSPM(sandbox: sandbox, testTarget: nil, timeout: 60)
+        let artifact = try await stage.buildSPM(sandbox: sandbox, timeout: 60)
 
         #expect(artifact.derivedDataPath == projectDir.appendingPathComponent(".build").path)
         #expect(artifact.xctestrunURL == nil)
@@ -175,25 +175,11 @@ struct BuildStageTests {
         let stage = BuildStage(launcher: MockProcessLauncher(exitCode: 1))
 
         await #expect {
-            try await stage.buildSPM(sandbox: sandbox, testTarget: nil, timeout: 60)
+            try await stage.buildSPM(sandbox: sandbox, timeout: 60)
         } throws: { error in
             guard case BuildError.compilationFailed = error else { return false }
             return true
         }
     }
 
-    @Test("Given SPM build with test target, when buildSPM called, then target flag is included in arguments")
-    func spmBuildWithTestTargetIncludesTargetFlag() async throws {
-        let projectDir = try FileHelpers.makeTemporaryDirectory()
-        defer { FileHelpers.cleanup(projectDir) }
-
-        let launcher = MockProcessLauncher(exitCode: 0)
-        let sandbox = Sandbox(rootURL: projectDir)
-        let stage = BuildStage(launcher: launcher)
-
-        let artifact = try await stage.buildSPM(sandbox: sandbox, testTarget: "MyLibTests", timeout: 60)
-
-        #expect(artifact.xctestrunURL == nil)
-        #expect(artifact.plist == nil)
-    }
 }

@@ -46,7 +46,7 @@ struct ConfigurationFileParser: Sendable {
         }
 
         if !disabledMutators.isEmpty {
-            result["disabledMutators"] = disabledMutators.joined(separator: ",")
+            result["disabled-mutators"] = disabledMutators.joined(separator: ",")
         }
 
         return result

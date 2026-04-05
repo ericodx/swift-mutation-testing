@@ -55,17 +55,24 @@ struct ConfigurationFileWriter: Sendable {
         lines.append("")
         lines.append("# Testing framework: xctest or swift-testing (default: swift-testing)")
         lines.append("# When xctest is selected, concurrency is forced to 1 for deterministic results")
-        lines.append("testingFramework: \(testingFramework.rawValue)")
+        lines.append("testing-framework: \(testingFramework.rawValue)")
         lines.append("")
 
         if let testTarget {
             lines.append("# Limit test execution to a specific target (recommended when the project has UI tests)")
-            lines.append("testTarget: \(testTarget)")
+            lines.append("test-target: \(testTarget)")
         } else {
             lines.append("# Limit test execution to a specific target (recommended when the project has UI tests)")
-            lines.append("# testTarget: MyAppTests")
+            lines.append("# test-target: MyAppTests")
         }
 
+        lines.append(contentsOf: xcodeRunSection(testingFramework: testingFramework, testTarget: testTarget))
+
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private func xcodeRunSection(testingFramework: TestingFramework, testTarget: String?) -> [String] {
+        var lines: [String] = []
         lines.append("")
         lines.append("# Per-mutant test timeout in seconds (default: 120)")
         lines.append("timeout: 120")
@@ -76,28 +83,9 @@ struct ConfigurationFileWriter: Sendable {
         } else {
             lines.append("concurrency: 4")
         }
-        lines.append("")
-        lines.append("# Disable result cache (re-runs all mutants on every execution)")
-        lines.append("# noCache: true")
-        lines.append("")
-        lines.append("# Report output paths")
-        lines.append("# output: mutation-report.json")
-        lines.append("# htmlOutput: mutation-report.html")
-        lines.append("sonarOutput: sonar-mutation-report.json")
-        lines.append("")
-        lines.append("# Source file glob patterns to exclude from mutation")
-
-        if let testTarget {
-            lines.append("exclude:")
-            lines.append("  - \"/\(testTarget)/\"")
-        } else {
-            lines.append("# exclude:")
-            lines.append("#   - \"**/Generated/**\"")
-        }
-
+        lines.append(contentsOf: reportSection(testTarget: testTarget, excludeExample: "**/Generated/**"))
         lines.append(contentsOf: mutatorsSection())
-
-        return lines.joined(separator: "\n") + "\n"
+        return lines
     }
 
     private func generateSPMContent(testTargets: [String], testTarget: String?) -> String {
@@ -113,37 +101,41 @@ struct ConfigurationFileWriter: Sendable {
 
         if let testTarget {
             lines.append("# Limit test execution to a specific target")
-            lines.append("testTarget: \(testTarget)")
+            lines.append("test-target: \(testTarget)")
         } else {
             lines.append("# Limit test execution to a specific target")
-            lines.append("# testTarget: MyPackageTests")
+            lines.append("# test-target: MyPackageTests")
         }
 
         lines.append("")
         lines.append("# Per-mutant test timeout in seconds (default: 30 for SPM)")
         lines.append("timeout: 30")
+        lines.append(contentsOf: reportSection(testTarget: testTarget, excludeExample: "**/Tests/**"))
+        lines.append(contentsOf: mutatorsSection())
+
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private func reportSection(testTarget: String?, excludeExample: String) -> [String] {
+        var lines: [String] = []
         lines.append("")
         lines.append("# Disable result cache (re-runs all mutants on every execution)")
-        lines.append("# noCache: true")
+        lines.append("# no-cache: true")
         lines.append("")
         lines.append("# Report output paths")
-        lines.append("# output: mutation-report.json")
-        lines.append("# htmlOutput: mutation-report.html")
-        lines.append("sonarOutput: sonar-mutation-report.json")
+        lines.append("output: mutation-report.json")
+        lines.append("# html-output: mutation-report.html")
+        lines.append("# sonar-output: sonar-mutation-report.json")
         lines.append("")
         lines.append("# Source file glob patterns to exclude from mutation")
-
         if let testTarget {
             lines.append("exclude:")
             lines.append("  - \"/\(testTarget)/\"")
         } else {
             lines.append("# exclude:")
-            lines.append("#   - \"**/Tests/**\"")
+            lines.append("#   - \"\(excludeExample)\"")
         }
-
-        lines.append(contentsOf: mutatorsSection())
-
-        return lines.joined(separator: "\n") + "\n"
+        return lines
     }
 
     private func mutatorsSection() -> [String] {

@@ -12,13 +12,6 @@ public struct SwiftMutationTesting {
         } catch let error as UsageError {
             fputs(error.message + "\n", stderr)
             return .error
-        } catch BuildError.compilationFailed(let output) {
-            if !output.isEmpty { fputs(output + "\n", stderr) }
-            fputs("Build failed. The schematized source could not be compiled.\n", stderr)
-            return .error
-        } catch SimulatorError.deviceNotFound(let dest) {
-            fputs("Simulator not found for destination: \(dest)\n", stderr)
-            return .error
         } catch {
             fputs("Error: \(error.localizedDescription)\n", stderr)
             return .error
@@ -65,15 +58,7 @@ public struct SwiftMutationTesting {
                 ))
         }
 
-        let executionLauncher: any ProcessLaunching
-        if let launcher {
-            executionLauncher = launcher
-        } else {
-            executionLauncher = switch configuration.build.projectType {
-            case .xcode: XcodeProcessLauncher()
-            case .spm: SPMProcessLauncher()
-            }
-        }
+        let executionLauncher: any ProcessLaunching = launcher ?? defaultLauncher(for: configuration.build.projectType)
 
         let start = Date()
         let results = try await MutantExecutor(configuration: configuration, launcher: executionLauncher).execute(input)
@@ -126,6 +111,13 @@ public struct SwiftMutationTesting {
             writeReport(label: "Sonar", to: sonarOutput) {
                 try SonarReporter(outputPath: sonarOutput, projectRoot: configuration.projectPath).report(summary)
             }
+        }
+    }
+
+    static func defaultLauncher(for projectType: ProjectType) -> any ProcessLaunching {
+        switch projectType {
+        case .xcode: XcodeProcessLauncher()
+        case .spm: SPMProcessLauncher()
         }
     }
 

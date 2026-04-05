@@ -105,20 +105,20 @@ struct WriteReportsTests {
         #expect(FileManager.default.fileExists(atPath: htmlPath))
         #expect(FileManager.default.fileExists(atPath: sonarPath))
     }
-}
 
-private func makeConfiguration(
-    projectPath: String,
-    output: String? = nil,
-    htmlOutput: String? = nil,
-    sonarOutput: String? = nil
-) -> RunnerConfiguration {
-    RunnerConfiguration(
-        projectPath: projectPath,
-        build: .init(
-            projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
-            timeout: 60, concurrency: 1, noCache: false),
-        reporting: .init(output: output, htmlOutput: htmlOutput, sonarOutput: sonarOutput, quiet: true),
-        filter: .init(excludePatterns: [], operators: [])
-    )
+    private func makeConfiguration(
+        projectPath: String,
+        output: String? = nil,
+        htmlOutput: String? = nil,
+        sonarOutput: String? = nil
+    ) -> RunnerConfiguration {
+        RunnerConfiguration(
+            projectPath: projectPath,
+            build: .init(
+                projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
+                timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(output: output, htmlOutput: htmlOutput, sonarOutput: sonarOutput, quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
+        )
+    }
 }

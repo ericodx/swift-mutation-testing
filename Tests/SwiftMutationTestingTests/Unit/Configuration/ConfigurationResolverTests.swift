@@ -149,7 +149,7 @@ struct ConfigurationResolverTests {
     func noCacheFromFile() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
-            fileValues: ["noCache": "true"]
+            fileValues: ["no-cache": "true"]
         )
 
         #expect(result.build.noCache)
@@ -192,7 +192,7 @@ struct ConfigurationResolverTests {
     func sourcesPathFromFile() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
-            fileValues: ["sourcesPath": "/file/sources"]
+            fileValues: ["sources-path": "/file/sources"]
         )
 
         #expect(result.filter.sourcesPath == "/file/sources")
@@ -225,7 +225,7 @@ struct ConfigurationResolverTests {
     func excludePatternsFromFile() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
-            fileValues: ["excludePatterns": "/Generated/,/Pods/"]
+            fileValues: ["exclude-patterns": "/Generated/,/Pods/"]
         )
 
         #expect(result.filter.excludePatterns == ["/Generated/", "/Pods/"])
@@ -268,7 +268,7 @@ struct ConfigurationResolverTests {
     func disabledMutatorsFromFile() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
-            fileValues: ["disabledMutators": "RemoveSideEffects,SwapTernary"]
+            fileValues: ["disabled-mutators": "RemoveSideEffects,SwapTernary"]
         )
 
         #expect(!result.filter.operators.contains("RemoveSideEffects"))
@@ -297,7 +297,7 @@ struct ConfigurationResolverTests {
                 build: .init(scheme: "App", destination: "d"),
                 filter: .init(operators: ["NegateConditional"])
             ),
-            fileValues: ["disabledMutators": "NegateConditional"]
+            fileValues: ["disabled-mutators": "NegateConditional"]
         )
 
         #expect(result.filter.operators == ["NegateConditional"])
@@ -393,7 +393,7 @@ struct ConfigurationResolverTests {
     func testingFrameworkFromFile() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
-            fileValues: ["testingFramework": "xctest"]
+            fileValues: ["testing-framework": "xctest"]
         )
 
         #expect(result.build.testingFramework == .xctest)
@@ -403,7 +403,7 @@ struct ConfigurationResolverTests {
     func testingFrameworkCLIOverridesFile() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d", testingFramework: "xctest")),
-            fileValues: ["testingFramework": "swift-testing"]
+            fileValues: ["testing-framework": "swift-testing"]
         )
 
         #expect(result.build.testingFramework == .xctest)

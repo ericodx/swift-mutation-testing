@@ -255,7 +255,8 @@ struct TestExecutionStageTests {
         try await pool.setUp()
         let config = RunnerConfiguration(
             projectPath: "/tmp",
-            build: .init(projectType: .spm, testTarget: "MyLibTests",
+            build: .init(
+                projectType: .spm, testTarget: "MyLibTests",
                 timeout: 60, concurrency: 1, noCache: false),
             reporting: .init(quiet: true),
             filter: .init(excludePatterns: [], operators: [])
@@ -280,6 +281,84 @@ struct TestExecutionStageTests {
 
         #expect(results.count == 1)
         #expect(results.first?.status == .survived)
+    }
+
+    @Test(
+        "Given SPM launcher throws, when execute called, then pool slot is released and error propagated"
+    )
+    func spmLaunchThrowsReleasesSlotAndPropagates() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let launcher = MockProcessLauncher(exitCode: 0, throwsOnCapture: true)
+        let pool = SimulatorPool(
+            baseUDID: nil, size: 1,
+            destination: "platform=macOS", launcher: MockProcessLauncher(exitCode: 0)
+        )
+        try await pool.setUp()
+
+        let stage = TestExecutionStage(
+            deps: ExecutionDeps(
+                launcher: launcher,
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
+        )
+        let config = RunnerConfiguration(
+            projectPath: "/tmp",
+            build: .init(projectType: .spm, timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
+        )
+        let context = TestExecutionContext(
+            artifact: BuildArtifact(derivedDataPath: dir.path, xctestrunURL: nil, plist: nil),
+            sandbox: Sandbox(rootURL: dir),
+            pool: pool,
+            configuration: config,
+            testFilesHash: "hash"
+        )
+
+        await #expect(throws: (any Error).self) {
+            try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
+        }
+    }
+
+    @Test("Given Xcode artifact with nil xctestrunURL, when execute called, then sandbox root is used as base")
+    func xcodeNilXctestrunURLUsesSandboxRoot() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let launcher = MockProcessLauncher(exitCode: 0)
+        let pool = SimulatorPool(
+            baseUDID: nil, size: 1,
+            destination: "platform=macOS", launcher: launcher
+        )
+        try await pool.setUp()
+
+        let plistDict: [String: Any] = ["MyTarget": ["EnvironmentVariables": [String: String]()]]
+        let data = try PropertyListSerialization.data(fromPropertyList: plistDict, format: .xml, options: 0)
+        let plist = try #require(XCTestRunPlist(data))
+
+        let stage = TestExecutionStage(
+            deps: ExecutionDeps(
+                launcher: launcher,
+                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
+                reporter: MockProgressReporter(),
+                counter: MutationCounter(total: 1)
+            )
+        )
+        let context = TestExecutionContext(
+            artifact: BuildArtifact(derivedDataPath: dir.path, xctestrunURL: nil, plist: plist),
+            sandbox: Sandbox(rootURL: dir),
+            pool: pool,
+            configuration: makeConfiguration(),
+            testFilesHash: "hash"
+        )
+
+        let results = try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
+
+        #expect(results.count == 1)
     }
 
     private func makeFixture(

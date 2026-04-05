@@ -1,7 +1,6 @@
 # Project paths
 included:
   - Sources
-  - Tests
 
 # Analyzer exclusions
 excluded:

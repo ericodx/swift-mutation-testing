@@ -18,6 +18,7 @@ index_exclude:
   - "**/checkouts/**"
   - "**/.github/**"
   - "**/Docs/**"
+  - "**/Tests/**"
 
 # Exclude test files from reports
 report_exclude:

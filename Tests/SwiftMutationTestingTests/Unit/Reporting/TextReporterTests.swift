@@ -144,6 +144,18 @@ struct TextReporterTests {
         #expect(aIndex! < zIndex!)
     }
 
+    @Test("Given duration over 60 seconds, when format called, then duration is shown in minutes and seconds")
+    func formatShowsDurationInMinutes() {
+        let summary = RunnerSummary(
+            results: [makeResult(status: .killed(by: "t"))],
+            totalDuration: 1825.4
+        )
+
+        let output = TextReporter().format(summary)
+
+        #expect(output.contains("30m 25s"))
+    }
+
     @Test("Given noCoverage mutant, when format called, then it appears in survived section")
     func noCoverageAppearsInSurvivedSection() {
         let summary = RunnerSummary(

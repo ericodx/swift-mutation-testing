@@ -31,15 +31,10 @@ struct MockProcessLauncher: ProcessLaunching {
     }
 
     func launchCapturing(
-        executableURL: URL,
-        arguments: [String],
-        environment: [String: String]?,
-        additionalEnvironment: [String: String],
-        workingDirectoryURL: URL,
-        timeout: Double
+        _ request: ProcessRequest
     ) async throws -> (exitCode: Int32, output: String) {
         if throwsOnCapture { throw CocoaError(.fileReadNoSuchFile) }
-        let key = executableURL.lastPathComponent
+        let key = request.executableURL.lastPathComponent
         return responses[key] ?? (exitCode: exitCode, output: output)
     }
 
