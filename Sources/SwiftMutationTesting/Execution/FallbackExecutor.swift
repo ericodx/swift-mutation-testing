@@ -1,5 +1,3 @@
-import Foundation
-
 struct FallbackExecutor: Sendable {
     let deps: ExecutionDeps
     let configuration: RunnerConfiguration
@@ -57,7 +55,6 @@ struct FallbackExecutor: Sendable {
             do {
                 artifact = try await BuildStage(launcher: deps.launcher).buildSPM(
                     sandbox: sandbox,
-                    testTarget: configuration.build.testTarget,
                     timeout: configuration.build.timeout
                 )
                 await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))

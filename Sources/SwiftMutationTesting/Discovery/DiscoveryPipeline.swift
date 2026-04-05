@@ -17,7 +17,8 @@ struct DiscoveryPipeline: Sendable {
         let ops = resolvedOperators(from: input.operators)
         let mutationPoints = await MutantDiscoveryStage(operators: ops).run(sources: parsedSources)
         let indexed = MutantIndexingStage().run(mutationPoints: mutationPoints, sources: parsedSources)
-        let (schematizedFiles, schematizableDescriptors) = SchematizationStage().run(indexed: indexed, sources: parsedSources)
+        let (schematizedFiles, schematizableDescriptors) = SchematizationStage()
+            .run(indexed: indexed, sources: parsedSources)
         let incompatibleDescriptors = IncompatibleRewritingStage().run(indexed: indexed, sources: parsedSources)
         let allDescriptors = (schematizableDescriptors + incompatibleDescriptors)
             .sorted { indexFromID($0.id) < indexFromID($1.id) }

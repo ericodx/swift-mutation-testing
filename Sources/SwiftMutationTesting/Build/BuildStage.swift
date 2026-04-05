@@ -25,12 +25,14 @@ struct BuildStage: Sendable {
         }
 
         let (exitCode, buildOutput) = try await launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-            arguments: arguments,
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: sandbox.rootURL,
-            timeout: timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+                arguments: arguments,
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: sandbox.rootURL,
+                timeout: timeout
+            )
         )
 
         guard exitCode == 0 else {
@@ -58,18 +60,19 @@ struct BuildStage: Sendable {
 
     func buildSPM(
         sandbox: Sandbox,
-        testTarget: String?,
         timeout: Double
     ) async throws -> BuildArtifact {
         let arguments = ["build", "--build-tests"]
 
         let (exitCode, buildOutput) = try await launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
-            arguments: arguments,
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: sandbox.rootURL,
-            timeout: timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+                arguments: arguments,
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: sandbox.rootURL,
+                timeout: timeout
+            )
         )
 
         guard exitCode == 0 else { throw BuildError.compilationFailed(output: buildOutput) }

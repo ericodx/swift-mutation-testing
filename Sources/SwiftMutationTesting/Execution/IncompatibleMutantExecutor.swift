@@ -31,10 +31,13 @@ struct IncompatibleMutantExecutor: Sendable {
         if case .spm = configuration.build.projectType {
             results += try await runSPMShared(
                 mutants: pending, configuration: configuration, testFilesHash: testFilesHash)
-        } else {
+        } else if case .xcode(let scheme, _) = configuration.build.projectType {
             for mutant in pending {
                 let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
-                results.append(try await run(mutant: mutant, key: key, configuration: configuration, pool: pool))
+                results.append(
+                    try await run(
+                        mutant: mutant, key: key, scheme: scheme,
+                        configuration: configuration, pool: pool))
             }
         }
 
@@ -60,12 +63,14 @@ struct IncompatibleMutantExecutor: Sendable {
         let sandbox = try await sandboxFactory.createClean(projectPath: configuration.projectPath)
 
         let initialBuild = try await deps.launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
-            arguments: spmBuildArguments(configuration: configuration),
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: sandbox.rootURL,
-            timeout: configuration.build.timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+                arguments: spmBuildArguments(),
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: sandbox.rootURL,
+                timeout: configuration.build.timeout
+            )
         )
 
         guard initialBuild.exitCode == 0 else {
@@ -77,18 +82,13 @@ struct IncompatibleMutantExecutor: Sendable {
             return results
         }
 
-        let projectRoot = URL(fileURLWithPath: configuration.projectPath).resolvingSymlinksInPath().path
-        let sandboxRoot = sandbox.rootURL.resolvingSymlinksInPath().path
-
         for mutant in viable {
             let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
             let result = try await runInSharedSandbox(
                 mutant: mutant,
                 key: key,
                 configuration: configuration,
-                sandbox: sandbox,
-                projectRoot: projectRoot,
-                sandboxRoot: sandboxRoot
+                sandbox: sandbox
             )
             results.append(result)
         }
@@ -97,7 +97,7 @@ struct IncompatibleMutantExecutor: Sendable {
         return results
     }
 
-    private func spmBuildArguments(configuration: RunnerConfiguration) -> [String] {
+    private func spmBuildArguments() -> [String] {
         ["build", "--build-tests"]
     }
 
@@ -105,10 +105,12 @@ struct IncompatibleMutantExecutor: Sendable {
         mutant: MutantDescriptor,
         key: MutantCacheKey,
         configuration: RunnerConfiguration,
-        sandbox: Sandbox,
-        projectRoot: String,
-        sandboxRoot: String
+        sandbox: Sandbox
     ) async throws -> ExecutionResult {
+        let projectRoot = URL(fileURLWithPath: configuration.projectPath)
+            .resolvingSymlinksInPath().path
+        let sandboxRoot = sandbox.rootURL.resolvingSymlinksInPath().path
+
         let originalCanonical = URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path
 
         guard originalCanonical.hasPrefix(projectRoot), let content = mutant.mutatedSourceContent else {
@@ -134,18 +136,31 @@ struct IncompatibleMutantExecutor: Sendable {
         )
 
         let build = try await deps.launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
-            arguments: spmBuildArguments(configuration: configuration),
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: sandbox.rootURL,
-            timeout: configuration.build.timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+                arguments: spmBuildArguments(),
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: sandbox.rootURL,
+                timeout: configuration.build.timeout
+            )
         )
 
         guard build.exitCode == 0 else {
             return await storeAndReport(mutant: mutant, key: key, sandbox: nil)
         }
 
+        return try await runSPMTest(
+            mutant: mutant, key: key, configuration: configuration, sandbox: sandbox
+        )
+    }
+
+    private func runSPMTest(
+        mutant: MutantDescriptor,
+        key: MutantCacheKey,
+        configuration: RunnerConfiguration,
+        sandbox: Sandbox
+    ) async throws -> ExecutionResult {
         var testArgs = ["test", "--skip-build"]
         if let testTarget = configuration.build.testTarget {
             testArgs += ["--filter", testTarget]
@@ -153,12 +168,14 @@ struct IncompatibleMutantExecutor: Sendable {
 
         let start = Date()
         let test = try await deps.launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
-            arguments: testArgs,
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: sandbox.rootURL,
-            timeout: configuration.build.timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+                arguments: testArgs,
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: sandbox.rootURL,
+                timeout: configuration.build.timeout
+            )
         )
         let duration = Date().timeIntervalSince(start)
 
@@ -176,6 +193,7 @@ struct IncompatibleMutantExecutor: Sendable {
     private func run(
         mutant: MutantDescriptor,
         key: MutantCacheKey,
+        scheme: String,
         configuration: RunnerConfiguration,
         pool: SimulatorPool
     ) async throws -> ExecutionResult {
@@ -192,7 +210,8 @@ struct IncompatibleMutantExecutor: Sendable {
         let slot = try await pool.acquire()
         let launched: TestLaunchResult
         do {
-            launched = try await launch(slot: slot, sandbox: sandbox, configuration: configuration)
+            launched = try await launchXcode(
+                scheme: scheme, slot: slot, sandbox: sandbox, configuration: configuration)
         } catch {
             await pool.release(slot)
             try? sandbox.cleanup()
@@ -215,20 +234,6 @@ struct IncompatibleMutantExecutor: Sendable {
         await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: total))
         await deps.cacheStore.store(status: status, for: key)
         return ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
-    }
-
-    private func launch(
-        slot: SimulatorSlot,
-        sandbox: Sandbox,
-        configuration: RunnerConfiguration
-    ) async throws -> TestLaunchResult {
-        switch configuration.build.projectType {
-        case .xcode(let scheme, _):
-            return try await launchXcode(
-                scheme: scheme, slot: slot, sandbox: sandbox, configuration: configuration)
-        case .spm:
-            return try await launchSPM(sandbox: sandbox, configuration: configuration)
-        }
     }
 
     private func launchXcode(
@@ -256,46 +261,20 @@ struct IncompatibleMutantExecutor: Sendable {
 
         let start = Date()
         let captured = try await deps.launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-            arguments: arguments,
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: sandbox.rootURL,
-            timeout: configuration.build.timeout
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+                arguments: arguments,
+                environment: nil,
+                additionalEnvironment: [:],
+                workingDirectoryURL: sandbox.rootURL,
+                timeout: configuration.build.timeout
+            )
         )
 
         return TestLaunchResult(
             exitCode: captured.exitCode,
             output: captured.output,
             xcresultPath: xcresultPath,
-            duration: Date().timeIntervalSince(start)
-        )
-    }
-
-    private func launchSPM(
-        sandbox: Sandbox,
-        configuration: RunnerConfiguration
-    ) async throws -> TestLaunchResult {
-        var arguments = ["test"]
-
-        if let testTarget = configuration.build.testTarget {
-            arguments += ["--filter", testTarget]
-        }
-
-        let start = Date()
-        let captured = try await deps.launcher.launchCapturing(
-            executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
-            arguments: arguments,
-            environment: nil,
-            additionalEnvironment: [:],
-            workingDirectoryURL: sandbox.rootURL,
-            timeout: configuration.build.timeout
-        )
-
-        return TestLaunchResult(
-            exitCode: captured.exitCode,
-            output: captured.output,
-            xcresultPath: "",
             duration: Date().timeIntervalSince(start)
         )
     }
