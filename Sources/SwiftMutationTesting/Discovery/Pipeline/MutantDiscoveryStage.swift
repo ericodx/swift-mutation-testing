@@ -4,10 +4,20 @@ struct MutantDiscoveryStage: Sendable {
     func run(sources: [ParsedSource]) async -> [MutationPoint] {
         let extractor = SuppressionAnnotationExtractor()
         let filter = SuppressionFilter()
+        let loopExtractor = InfiniteLoopBodyExtractor()
+        let loopFilter = InfiniteLoopFilter()
 
         let allMutations = await withTaskGroup(of: [MutationPoint].self) { group in
             for source in sources {
-                group.addTask { self.mutationPoints(for: source, extractor: extractor, filter: filter) }
+                group.addTask {
+                    self.mutationPoints(
+                        for: source,
+                        extractor: extractor,
+                        filter: filter,
+                        loopExtractor: loopExtractor,
+                        loopFilter: loopFilter
+                    )
+                }
             }
 
             var collected: [MutationPoint] = []
@@ -31,10 +41,14 @@ struct MutantDiscoveryStage: Sendable {
     private func mutationPoints(
         for source: ParsedSource,
         extractor: SuppressionAnnotationExtractor,
-        filter: SuppressionFilter
+        filter: SuppressionFilter,
+        loopExtractor: InfiniteLoopBodyExtractor,
+        loopFilter: InfiniteLoopFilter
     ) -> [MutationPoint] {
         let suppressedRanges = extractor.extractSuppressedRanges(from: source.syntax)
+        let loopBodyRanges = loopExtractor.extractLoopBodyRanges(from: source.syntax)
         let mutations = operators.flatMap { $0.mutations(in: source) }
-        return filter.filter(mutations, suppressedRanges: suppressedRanges)
+        let afterSuppression = filter.filter(mutations, suppressedRanges: suppressedRanges)
+        return loopFilter.filter(afterSuppression, loopBodyRanges: loopBodyRanges)
     }
 }
