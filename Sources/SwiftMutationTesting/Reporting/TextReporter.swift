@@ -56,9 +56,19 @@ struct TextReporter: Sendable {
                 + " / Unviable: \(summary.unviable.count)"
                 + " / NoCoverage: \(summary.noCoverage.count)"
         )
-        lines.append("Total duration: \(String(format: "%.1f", summary.totalDuration))s")
+        lines.append("Total duration: \(formattedDuration(summary.totalDuration))")
 
         return lines.joined(separator: "\n")
+    }
+
+    private func formattedDuration(_ seconds: Double) -> String {
+        let totalSeconds = Int(seconds)
+        let minutes = totalSeconds / 60
+        let remainingSeconds = totalSeconds % 60
+        if minutes > 0 {
+            return "\(minutes)m \(remainingSeconds)s"
+        }
+        return String(format: "%.1fs", seconds)
     }
 
     private func relative(_ path: String) -> String {
