@@ -1,9 +1,8 @@
 struct MutationRewriter: Sendable {
     func rewrite(source: String, applying mutation: MutationPoint) -> String {
-        guard let sourceData = source.data(using: .utf8),
-            let originalData = mutation.originalText.data(using: .utf8),
-            let mutatedData = mutation.mutatedText.data(using: .utf8)
-        else { return source }
+        let sourceData = source.data(using: .utf8)!
+        let originalData = mutation.originalText.data(using: .utf8)!
+        let mutatedData = mutation.mutatedText.data(using: .utf8)!
 
         let offset = mutation.utf8Offset
 
@@ -12,6 +11,6 @@ struct MutationRewriter: Sendable {
 
         var result = sourceData
         result.replaceSubrange(offset ..< offset + originalData.count, with: mutatedData)
-        return String(data: result, encoding: .utf8) ?? source
+        return String(data: result, encoding: .utf8)!
     }
 }
