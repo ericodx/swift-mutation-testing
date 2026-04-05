@@ -36,7 +36,7 @@ struct DiscoveryPipeline: Sendable {
     }
 
     private func indexFromID(_ id: String) -> Int {
-        Int(id.replacingOccurrences(of: "swift-mutation-testing_", with: "")) ?? 0
+        Int(id.replacingOccurrences(of: "swift-mutation-testing_", with: ""))!
     }
 
     private func resolvedOperators(from identifiers: [String]) -> [any MutationOperator] {
