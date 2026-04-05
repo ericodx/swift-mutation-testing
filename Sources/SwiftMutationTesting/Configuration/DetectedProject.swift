@@ -10,16 +10,19 @@ struct DetectedProject: Sendable {
     let testTarget: String?
     var testingFramework: TestingFramework = .swiftTesting
 
+    // periphery:ignore
     var scheme: String? {
         guard case .xcode(let xScheme, _, _) = kind else { return nil }
         return xScheme
     }
 
+    // periphery:ignore
     var allSchemes: [String] {
         guard case .xcode(_, let all, _) = kind else { return [] }
         return all
     }
 
+    // periphery:ignore
     var destination: String {
         guard case .xcode(_, _, let dest) = kind else { return "platform=macOS" }
         return dest
