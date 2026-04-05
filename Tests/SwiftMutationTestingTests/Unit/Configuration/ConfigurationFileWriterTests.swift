@@ -62,8 +62,8 @@ struct ConfigurationFileWriterTests {
         )
 
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
-        #expect(content.contains("testTarget: MyAppTests"))
-        #expect(!content.contains("# testTarget:"))
+        #expect(content.contains("test-target: MyAppTests"))
+        #expect(!content.contains("# test-target:"))
     }
 
     @Test("Given detected destination, when write called, then destination is filled")
@@ -154,8 +154,8 @@ struct ConfigurationFileWriterTests {
         try writer.write(to: dir.path, project: .empty)
 
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
-        #expect(content.contains("# noCache: true"))
-        #expect(!content.contains("\nnoCache:"))
+        #expect(content.contains("# no-cache: true"))
+        #expect(!content.contains("\nno-cache:"))
     }
 
     @Test("Given any project, when write called, then output is set to mutation-report.json")
@@ -166,7 +166,8 @@ struct ConfigurationFileWriterTests {
         try writer.write(to: dir.path, project: .empty)
 
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
-        #expect(content.contains("# output: mutation-report.json"))
+        #expect(content.contains("output: mutation-report.json"))
+        #expect(!content.contains("# output:"))
     }
 
     @Test("Given any project, when write called, then mutators section lists all operators as active")
@@ -198,7 +199,7 @@ struct ConfigurationFileWriterTests {
         )
 
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
-        #expect(content.contains("testingFramework"))
+        #expect(content.contains("testing-framework"))
         #expect(content.contains("swift-testing"))
     }
 
@@ -217,7 +218,7 @@ struct ConfigurationFileWriterTests {
         )
 
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
-        #expect(content.contains("testingFramework: xctest"))
+        #expect(content.contains("testing-framework: xctest"))
         #expect(content.contains("concurrency: 1"))
     }
 
@@ -235,7 +236,28 @@ struct ConfigurationFileWriterTests {
         )
 
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
-        #expect(!content.contains("testingFramework"))
+        #expect(!content.contains("testing-framework"))
+    }
+
+    @Test(
+        "Given SPM with multiple test targets and testTarget, when write called, then config is correct"
+    )
+    func spmMultipleTestTargetsAndTestTarget() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(
+            to: dir.path,
+            project: DetectedProject(
+                kind: .spm(testTargets: ["FooTests", "BarTests"]),
+                testTarget: "FooTests"
+            )
+        )
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("# Available test targets: FooTests, BarTests"))
+        #expect(content.contains("test-target: FooTests"))
+        #expect(!content.contains("# test-target:"))
     }
 
     @Test("Given existing config file, when write called, then throws UsageError")

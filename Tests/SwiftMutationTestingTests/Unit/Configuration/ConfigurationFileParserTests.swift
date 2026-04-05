@@ -107,14 +107,14 @@ struct ConfigurationFileParserTests {
         defer { FileHelpers.cleanup(dir) }
 
         try FileHelpers.write(
-            "excludePatterns:\n  - /Generated/\n  - /Pods/\n",
+            "exclude-patterns:\n  - /Generated/\n  - /Pods/\n",
             named: ".swift-mutation-testing.yml",
             in: dir
         )
 
         let result = try parser.parse(at: dir.path)
 
-        #expect(result["excludePatterns"] == "/Generated/,/Pods/")
+        #expect(result["exclude-patterns"] == "/Generated/,/Pods/")
     }
 
     @Test("Given mutators block with all active true, when parsed, then disabledMutators is absent")
@@ -133,7 +133,7 @@ struct ConfigurationFileParserTests {
 
         let result = try parser.parse(at: dir.path)
 
-        #expect(result["disabledMutators"] == nil)
+        #expect(result["disabled-mutators"] == nil)
     }
 
     @Test("Given mutators block with some active false, when parsed, then disabledMutators lists them")
@@ -154,7 +154,7 @@ struct ConfigurationFileParserTests {
 
         let result = try parser.parse(at: dir.path)
 
-        #expect(result["disabledMutators"] == "RemoveSideEffects,SwapTernary")
+        #expect(result["disabled-mutators"] == "RemoveSideEffects,SwapTernary")
     }
 
     @Test("Given a config file with sourcesPath key, when parsed, then value is returned")
@@ -163,13 +163,13 @@ struct ConfigurationFileParserTests {
         defer { FileHelpers.cleanup(dir) }
 
         try FileHelpers.write(
-            "sourcesPath: /my/sources\n",
+            "sources-path: /my/sources\n",
             named: ".swift-mutation-testing.yml",
             in: dir
         )
 
         let result = try parser.parse(at: dir.path)
 
-        #expect(result["sourcesPath"] == "/my/sources")
+        #expect(result["sources-path"] == "/my/sources")
     }
 }
