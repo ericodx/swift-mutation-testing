@@ -419,11 +419,12 @@ struct MutantExecutor: Sendable {
         let source: String
         if let cached = sourceCache[mutant.filePath] {
             source = cached
-        } else if let loaded = try? String(contentsOfFile: mutant.filePath, encoding: .utf8) {
+        } else {
+            guard let loaded = try? String(contentsOfFile: mutant.filePath, encoding: .utf8) else {
+                return nil
+            }
             sourceCache[mutant.filePath] = loaded
             source = loaded
-        } else {
-            return nil
         }
 
         let point = MutationPoint(
