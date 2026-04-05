@@ -9,11 +9,6 @@ protocol ProcessLaunching: Sendable {
     ) async throws -> Int32
 
     func launchCapturing(
-        executableURL: URL,
-        arguments: [String],
-        environment: [String: String]?,
-        additionalEnvironment: [String: String],
-        workingDirectoryURL: URL,
-        timeout: Double
+        _ request: ProcessRequest
     ) async throws -> (exitCode: Int32, output: String)
 }
