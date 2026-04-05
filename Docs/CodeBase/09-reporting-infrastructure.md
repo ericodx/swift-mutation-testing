@@ -379,37 +379,79 @@ protocol ProcessLaunching: Sendable {
     ) async throws -> Int32
 
     func launchCapturing(
-        executableURL: URL,
-        arguments: [String],
-        environment: [String: String]?,
-        workingDirectoryURL: URL,
-        timeout: Double
+        _ request: ProcessRequest
     ) async throws -> (exitCode: Int32, output: String)
 }
 ```
 
-Abstraction over process execution. `launch` discards output (stdout/stderr → `/dev/null`). `launchCapturing` captures combined stdout+stderr and returns it as a `String`.
+Abstraction over process execution. `launch` discards output (stdout/stderr → `/dev/null`). `launchCapturing` accepts a `ProcessRequest` value, captures combined stdout+stderr, and returns it as a `String`.
 
 Return value `-1` from either method means the process was killed by the timeout handler.
 
 ---
 
-## Infrastructure/ProcessLauncher.swift
+## Infrastructure/ProcessRequest.swift
 
 ```swift
-struct ProcessLauncher: Sendable, ProcessLaunching {
-    func launch(...) async throws -> Int32
-    func launchCapturing(...) async throws -> (exitCode: Int32, output: String)
+struct ProcessRequest: Sendable {
+    let executableURL: URL
+    let arguments: [String]
+    let environment: [String: String]?
+    let additionalEnvironment: [String: String]
+    let workingDirectoryURL: URL
+    let timeout: Double
 }
 ```
 
-Production implementation of `ProcessLaunching`. Uses `withTaskCancellationHandler` + `withCheckedThrowingContinuation` to bridge `Process.terminationHandler` into the Swift Concurrency runtime.
+| Field | Description |
+|---|---|
+| `executableURL` | Path to the executable |
+| `arguments` | Command-line arguments |
+| `environment` | Full environment override (replaces inherited environment when non-nil) |
+| `additionalEnvironment` | Key-value pairs merged into the existing environment |
+| `workingDirectoryURL` | Working directory for the process |
+| `timeout` | Maximum execution time in seconds |
 
-**Timeout handling:** a `Task` sleeping for `timeout` seconds marks a `KilledByUsFlag` and calls `kill(-pid, SIGTERM)` + a delayed `kill(-pid, SIGKILL)`. The `terminationHandler` checks the flag and returns `-1` instead of the actual exit code.
+---
 
-**Cancellation handling:** `onCancel` marks the flag and terminates the process group immediately, ensuring the continuation is always resumed via the `terminationHandler`.
+## Infrastructure/ProcessRunner.swift
 
-`launchCapturing` writes output to a temporary file (UUID-named) and reads it in the `terminationHandler` to avoid pipe buffer limits.
+```swift
+struct ProcessRunner: Sendable {
+    var postTerminationCleanup: (@Sendable (Int32) -> Void)?
+    let onTimeout: @Sendable (Int32) -> Void
+
+    func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
+    func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
+}
+```
+
+Low-level process execution engine. Uses `withTaskCancellationHandler` + `withCheckedThrowingContinuation` to bridge `Process.terminationHandler` into the Swift Concurrency runtime.
+
+**Timeout handling:** a `Task` sleeping for `timeout` seconds marks a `KilledByUsFlag` and calls `onTimeout(pid)`. The `terminationHandler` checks the flag and returns `-1` instead of the actual exit code.
+
+**Cancellation handling:** `onCancel` marks the flag and calls `onTimeout(pid)` immediately, ensuring the continuation is always resumed via the `terminationHandler`.
+
+**Post-termination cleanup:** `postTerminationCleanup` is called after every process termination (success or failure), used by `SPMProcessLauncher` to clean up escaped child processes.
+
+`launchCapturing` writes output to a temporary file (UUID-named) and reads it in the `terminationHandler` to avoid pipe buffer limits. Sets process group via `setpgid(pid, pid)` to enable group signaling.
+
+---
+
+## Infrastructure/SPMProcessLauncher.swift
+
+```swift
+struct SPMProcessLauncher: Sendable, ProcessLaunching {
+    func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
+    func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
+}
+```
+
+SPM-specific implementation of `ProcessLaunching`. Creates a `ProcessRunner` with:
+- `onTimeout`: kills the process group via `kill(-pid, SIGKILL)` + `kill(pid, SIGKILL)`
+- `postTerminationCleanup`: calls `killEscapedChildren(sandboxPath:)` to clean up orphaned child processes
+
+**`killEscapedChildren(sandboxPath:)`** — inspects running processes via `sysctl` `KERN_PROCARGS2` to find any whose arguments contain the sandbox path prefix `xmr-`. Sends `SIGKILL` to matching processes to prevent resource leaks from spawned child processes that outlive the parent.
 
 ---
 

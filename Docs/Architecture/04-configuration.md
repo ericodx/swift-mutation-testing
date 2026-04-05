@@ -8,7 +8,7 @@
 
 `swift-mutation-testing` reads `.swift-mutation-testing.yml` from the project root. `ConfigurationFileParser` looks for the file at `<project-path>/.swift-mutation-testing.yml`. If the file is absent, all values default to their built-in defaults and required options must be supplied via CLI.
 
-`swift-mutation-testing init` generates a starter configuration file by running `ProjectDetector` to auto-detect the scheme, test target, and destination.
+`swift-mutation-testing init` generates a starter configuration file by running `ProjectDetector` to auto-detect the project type, scheme, test targets, destination, and testing framework.
 
 ```yaml
 scheme: MyApp
@@ -52,23 +52,50 @@ operators:
 
 ## Configuration Model
 
+`RunnerConfiguration` is organized into three nested option groups:
+
 ```
 RunnerConfiguration
-├── projectPath         — absolute path to the Xcode project root
-├── scheme              — Xcode scheme (required)
-├── destination         — xcodebuild destination specifier (required)
-├── testTarget          — optional -only-testing filter
-├── timeout             — per-mutant test timeout in seconds (default: 60)
-├── concurrency         — parallel workers (default: ProcessInfo.activeProcessorCount - 1)
-├── noCache             — disable result caching (default: false)
-├── output              — path for JSON report (optional)
-├── htmlOutput          — path for HTML report (optional)
-├── sonarOutput         — path for Sonar report (optional)
-├── sourcesPath         — root directory for source file discovery (default: projectPath)
-├── excludePatterns     — glob patterns for files to exclude
-├── operators           — active mutation operator identifiers
-└── quiet               — suppress progress output (default: false)
+├── projectPath           — absolute path to the project root
+├── build: BuildOptions
+│   ├── projectType       — ProjectType (.xcode(scheme:destination:) or .spm)
+│   ├── testTarget        — optional test target filter
+│   ├── timeout           — per-mutant test timeout (Xcode default: 120s, SPM default: 30s)
+│   ├── concurrency       — parallel workers (default: ProcessInfo.processorCount - 1)
+│   ├── noCache           — disable result caching (default: false)
+│   └── testingFramework  — TestingFramework (.xctest or .swiftTesting, default: .swiftTesting)
+├── reporting: ReportingOptions
+│   ├── output            — path for JSON report (optional)
+│   ├── htmlOutput        — path for HTML report (optional)
+│   ├── sonarOutput       — path for Sonar report (optional)
+│   └── quiet             — suppress progress output (default: false)
+└── filter: FilterOptions
+    ├── sourcesPath       — root directory for source file discovery (default: projectPath)
+    ├── excludePatterns   — glob patterns for files to exclude
+    └── operators         — active mutation operator identifiers
 ```
+
+### ProjectType
+
+```swift
+enum ProjectType: Sendable, Equatable {
+    case xcode(scheme: String, destination: String)
+    case spm
+}
+```
+
+Xcode projects require a scheme and destination. SPM projects are detected automatically when a `Package.swift` exists and no `.xcodeproj` or `.xcworkspace` is found.
+
+### TestingFramework
+
+```swift
+enum TestingFramework: String, Sendable {
+    case xctest
+    case swiftTesting = "swift-testing"
+}
+```
+
+`ProjectDetector` automatically detects the testing framework by scanning test target source files for `import Testing` (Swift Testing) or `import XCTest` patterns. The detected framework influences test output parsing.
 
 ## CLI Arguments
 
@@ -108,23 +135,36 @@ flowchart TD
     R --> CFG[RunnerConfiguration]
 ```
 
-Required fields (`scheme`, `destination`) throw `UsageError` if absent in both sources. Optional fields fall back to their built-in defaults when absent in both.
+For Xcode projects, `scheme` and `destination` are required and throw `UsageError` if absent in both sources. SPM projects require neither — `ProjectType.spm` is used automatically. Optional fields fall back to their built-in defaults when absent in both.
 
 ## Project Detection
 
-`ProjectDetector` runs `xcodebuild -list` against the project to discover available schemes and test targets. `swift-mutation-testing init` uses it to pre-populate the generated configuration file.
+`ProjectDetector` auto-detects the project type, scheme, test targets, destination, and testing framework.
 
 ```mermaid
 flowchart TD
-    A[ProjectDetector.detect] --> B[xcodebuild -list -json]
-    B --> C{Parsed?}
-    C -- yes --> D[DetectedProject\nscheme · testTarget · destination]
-    C -- no --> E[DetectedProject with nil fields]
-    D --> F[ConfigurationFileWriter\nwrites .swift-mutation-testing.yml]
-    E --> F
+    A[ProjectDetector.detect] --> B{.xcworkspace or\n.xcodeproj found?}
+    B -- yes --> C[xcodebuild -list -json]
+    C --> D[DetectedProject.xcode\nscheme · testTarget · destination]
+    B -- no --> E{Package.swift found?}
+    E -- yes --> F[swift package dump-package]
+    F --> G[DetectedProject.spm\ntestTargets]
+    E -- no --> H[DetectedProject with nil fields]
+    D --> I[detectDestination\niOS/tvOS/watchOS/visionOS/macOS]
+    I --> J[detectTestingFramework\nXCTest or Swift Testing]
+    G --> J
+    J --> K[ConfigurationFileWriter\nwrites .swift-mutation-testing.yml]
+    H --> K
 ```
 
-`DetectedProject` carries the best-guess scheme (first scheme found), first test target, and the default destination inferred from the project type. Fields are `nil` when detection fails, producing a template file with placeholder comments.
+**Detection steps:**
+1. `findContainer` — looks for `.xcworkspace` or `.xcodeproj` in the project directory
+2. If found: `listProject` queries `xcodebuild -list` for schemes and test targets → `DetectedProject.xcode`
+3. If not found: `listSPMTestTargets` queries `swift package dump-package` for test targets → `DetectedProject.spm`
+4. `detectDestination` — scans project settings for platform SDKs (iOS, tvOS, watchOS, visionOS, macOS)
+5. `detectTestingFramework` — scans test target source files for `import Testing` vs `import XCTest` to determine `TestingFramework`
+
+`DetectedProject` carries the best-guess scheme (first scheme found), test targets, destination, and testing framework. Fields are `nil` when detection fails, producing a template file with placeholder comments.
 
 ## Mutation Operators Reference
 

@@ -14,6 +14,10 @@ struct SandboxFactory: Sendable {
         supportFileContent: String
     ) async throws -> Sandbox
 
+    func createClean(
+        projectPath: String
+    ) async throws -> Sandbox
+
     func create(
         projectPath: String,
         mutatedFilePath: String,
@@ -22,14 +26,15 @@ struct SandboxFactory: Sendable {
 }
 ```
 
-Creates an isolated copy of the Xcode project in `$TMPDIR/xmr-<UUID>/`. The original project is never modified.
+Creates an isolated copy of the project in `$TMPDIR/xmr-<UUID>/`. Supports both Xcode and SPM projects. The original project is never modified.
 
-**Two overloads:**
+**Three factory methods:**
 
-| Overload | Used by | Description |
+| Method | Used by | Description |
 |---|---|---|
-| `(projectPath:schematizedFiles:supportFileContent:)` | `MutantExecutor` for schematizable path | Embeds all schematized files; injects support file; disables SwiftLint phases |
-| `(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor` | Writes a single mutated file; no support file injection |
+| `create(projectPath:schematizedFiles:supportFileContent:)` | `MutantExecutor` for schematizable path | Embeds all schematized files; injects support file; disables SwiftLint phases |
+| `createClean(projectPath:)` | `IncompatibleMutantExecutor` for SPM shared sandbox | Clean sandbox without mutations; mutated files are written directly later |
+| `create(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor` for Xcode path | Writes a single mutated file; no support file injection |
 
 **Copy strategy:**
 
@@ -81,16 +86,24 @@ A lightweight wrapper around the sandbox root URL.
 ```swift
 struct BuildStage: Sendable {
     let launcher: any ProcessLaunching
+
     func build(
         sandbox: Sandbox,
         scheme: String,
         destination: String,
         timeout: Double
     ) async throws -> BuildArtifact
+
+    func buildSPM(
+        sandbox: Sandbox,
+        timeout: Double
+    ) async throws -> BuildArtifact
 }
 ```
 
-Runs `xcodebuild build-for-testing` once inside the sandbox.
+Runs a single build inside the sandbox.
+
+**Xcode path (`build`):**
 
 ```mermaid
 flowchart TD
@@ -104,7 +117,9 @@ flowchart TD
     E -- plist --> F[BuildArtifact]
 ```
 
-Auto-detects project format: prefers `-workspace` if a `.xcworkspace` exists, falls back to `-project` for `.xcodeproj`, or omits both for SPM packages.
+Auto-detects project format: prefers `-workspace` if a `.xcworkspace` exists, falls back to `-project` for `.xcodeproj`.
+
+**SPM path (`buildSPM`):** Runs `swift build --build-tests` in the sandbox directory. Returns a `BuildArtifact` with the sandbox path (no `.xctestrun` needed).
 
 Derived data is placed at `<sandbox>/.xmr-derived-data` to keep it inside the sandbox directory.
 
@@ -131,15 +146,19 @@ struct BuildArtifact: Sendable {
 ## Build/BuildError.swift
 
 ```swift
-enum BuildError: Error, Sendable {
-    case compilationFailed
+enum BuildError: Error, Equatable, LocalizedError {
+    case compilationFailed(output: String)
     case xctestrunNotFound
+
+    var errorDescription: String? { get }
 }
 ```
 
+Conforms to `LocalizedError` to provide structured error descriptions that propagate through generic `catch` blocks.
+
 | Case | Condition | Handling |
 |---|---|---|
-| `compilationFailed` | `xcodebuild` exits with non-zero code | Caught by `MutantExecutor`; triggers fallback path |
+| `compilationFailed(output:)` | Build exits with non-zero code | Caught by `MutantExecutor`; triggers `FallbackExecutor` |
 | `xctestrunNotFound` | No `.xctestrun` in `Build/Products`, or plist parse failure | Propagates; fatal |
 
 ---

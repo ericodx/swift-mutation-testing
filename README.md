@@ -8,7 +8,7 @@
 
 **Measure and improve test effectiveness in Swift codebases using mutation testing.**
 
-`swift-mutation-testing` is a CLI for mutation testing of Xcode + XCTest projects. It modifies your source code in small, targeted ways — mutations — and runs your test suite against each one. A mutation that goes undetected reveals missing tests or weak assertions. The result is a mutation score that reflects how effectively your tests catch real bugs.
+`swift-mutation-testing` is a CLI for mutation testing of Swift projects — both Xcode and Swift Package Manager. It modifies your source code in small, targeted ways — mutations — and runs your test suite against each one. A mutation that goes undetected reveals missing tests or weak assertions. The result is a mutation score that reflects how effectively your tests catch real bugs.
 
 ## Why
 
@@ -18,12 +18,17 @@ Mutation testing introduces controlled changes to your code to verify that your 
 
 ## Features
 
-- Mutation testing for Xcode + XCTest projects
-- Measures test effectiveness through mutation score
-- Supports multiple mutation operators
-- Provides detailed reports per file and mutation
-- Configurable via YAML
-- Can be integrated into CI pipelines
+- Mutation testing for Xcode and SPM projects
+- Supports both XCTest and Swift Testing frameworks
+- 7 mutation operators (relational, boolean, logical, arithmetic, negate conditional, swap ternary, remove side effects)
+- Schematization — builds once, tests all mutants via runtime switch
+- Parallel test execution with configurable concurrency
+- SHA256-based result caching across runs
+- Multiple report formats: text, JSON (Stryker-compatible), HTML, SonarQube
+- Simulator pool management for iOS/tvOS/watchOS targets
+- Per-scope mutation suppression via `@SwiftMutationTestingDisabled`
+- Configurable via YAML or CLI flags
+- CI/CD ready with caching support
 
 ## Install
 
@@ -37,11 +42,14 @@ Other installation methods — pre-built binary, build from source — are cover
 ## Quick start
 
 ```bash
-# Generate a config file (auto-detects scheme and destination)
+# Generate a config file (auto-detects project type, scheme, destination, and test targets)
 swift-mutation-testing init
 
 # Run mutation testing
 swift-mutation-testing
+
+# Run on an SPM package (no scheme or destination needed)
+swift-mutation-testing /path/to/my-package
 ```
 
 Example output:
@@ -74,14 +82,27 @@ Total duration: 312.7s
 
 Drop a `.swift-mutation-testing.yml` in the project root:
 
+**Xcode project:**
+
 ```yaml
 scheme: MyApp
 destination: platform=iOS Simulator,name=iPhone 16
 # testTarget: MyAppTests
-timeout: 60
+# timeout: 120
 # concurrency: 4
+```
 
-# Mutation operators — set active: false to disable
+**SPM package** (scheme and destination are not needed):
+
+```yaml
+# testTarget: MyPackageTests
+# timeout: 30
+# concurrency: 4
+```
+
+**Mutation operators** (both project types — all active by default):
+
+```yaml
 mutators:
   - name: RelationalOperatorReplacement
     active: true

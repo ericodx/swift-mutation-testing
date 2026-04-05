@@ -17,7 +17,8 @@
         </linearGradient>
         <path id="path5" fill="url(#linearGradient2)" stroke="none" d="M 59 116 L 59 116 C 60.656853 116 62 117.34314 62 119 L 62 221 C 62 222.65686 60.656853 224 59 224 L 59 224 C 57.343147 224 56 222.65686 56 221 L 56 119 C 56 117.34314 57.343147 116 59 116 Z"/>
         <text id="SwiftMutationTesting" xml:space="preserve" x="83" y="210" font-family="Helvetica" font-size="52" fill="#ffffff" letter-spacing="-2">Swift Mutation Testing</text>
-        <text id="subtitle" xml:space="preserve" x="85" y="265" font-family="Helvetica" font-size="25" fill="#8b949e" letter-spacing="0.3">Find untested behaviour in Swift codebases</text>
+        <text id="subtitle-line1" xml:space="preserve" x="85" y="255" font-family="Helvetica" font-size="25" fill="#8b949e" letter-spacing="0.3">Measure and improve test effectiveness in</text>
+        <text id="subtitle-line2" xml:space="preserve" x="85" y="285" font-family="Helvetica" font-size="25" fill="#8b949e" letter-spacing="0.3">Swift codebases using mutation testing</text>
         <path id="path6" fill="#f05138" stroke="none" opacity="0.55" d="M 87.400002 305 L 476.600006 305 C 477.373199 305 478 305.111938 478 305.25 L 478 305.25 C 478 305.388062 477.373199 305.5 476.600006 305.5 L 87.400002 305.5 C 86.626801 305.5 86 305.388062 86 305.25 L 86 305.25 C 86 305.111938 86.626801 305 87.400002 305 Z"/>
         <path id="path7" fill="#f05138" stroke="none" d="M 88 342 L 92 342 C 93.104568 342 94 342.895416 94 344 L 94 348 C 94 349.104584 93.104568 350 92 350 L 88 350 C 86.895432 350 86 349.104584 86 348 L 86 344 C 86 342.895416 86.895432 342 88 342 Z"/>
         <text id="feature1" xml:space="preserve" x="105" y="353" font-family="Helvetica" font-size="19" fill="#c9d1d9">discover mutants using operator visitors</text>

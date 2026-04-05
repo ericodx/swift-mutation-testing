@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-`swift-mutation-testing` is a CLI for mutation testing of Xcode + XCTest projects. It covers the full cycle: discovery (source file collection, AST parsing, mutant identification, schematization) followed by execution (sandbox creation, build, parallel test execution, result reporting).
+`swift-mutation-testing` is a CLI for mutation testing of Swift projects (Xcode and SPM). It covers the full cycle: discovery (source file collection, AST parsing, mutant identification, indexing, schematization, incompatible rewriting) followed by execution (sandbox creation, build, parallel test execution, result reporting).
 
 ## Documents
 
