@@ -13,11 +13,10 @@ struct IOSSimulatorMock: ProcessLaunching {
     }
 
     func launchCapturing(
-        executableURL: URL, arguments: [String], environment: [String: String]?,
-        additionalEnvironment: [String: String], workingDirectoryURL: URL, timeout: Double
+        _ request: ProcessRequest
     ) async throws -> (exitCode: Int32, output: String) {
-        if arguments.contains("clone") { return (0, cloneUDID + "\n") }
-        if executableURL.lastPathComponent == "xcodebuild" { return (1, "") }
+        if request.arguments.contains("clone") { return (0, cloneUDID + "\n") }
+        if request.executableURL.lastPathComponent == "xcodebuild" { return (1, "") }
         return (0, listJSON)
     }
 }

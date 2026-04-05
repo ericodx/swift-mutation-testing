@@ -23,18 +23,13 @@ struct SimulatorCommandMock: ProcessLaunching {
     }
 
     func launchCapturing(
-        executableURL: URL,
-        arguments: [String],
-        environment: [String: String]?,
-        additionalEnvironment: [String: String],
-        workingDirectoryURL: URL,
-        timeout: Double
+        _ request: ProcessRequest
     ) async throws -> (exitCode: Int32, output: String) {
-        if arguments.contains("clone") {
+        if request.arguments.contains("clone") {
             return (0, cloneUDID + "\n")
         }
 
-        if arguments.contains("list") {
+        if request.arguments.contains("list") {
             return (0, listOutput)
         }
 

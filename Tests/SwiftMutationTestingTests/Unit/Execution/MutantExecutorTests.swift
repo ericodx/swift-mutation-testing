@@ -3,109 +3,8 @@ import Testing
 
 @testable import SwiftMutationTesting
 
-private actor SPMRetryExcludingErrorsMock: ProcessLaunching {
-    private var buildCallCount = 0
-
-    func launch(
-        executableURL: URL,
-        arguments: [String],
-        workingDirectoryURL: URL,
-        timeout: Double
-    ) async throws -> Int32 { 0 }
-
-    func launchCapturing(
-        executableURL: URL,
-        arguments: [String],
-        environment: [String: String]?,
-        additionalEnvironment: [String: String],
-        workingDirectoryURL: URL,
-        timeout: Double
-    ) async throws -> (exitCode: Int32, output: String) {
-        guard arguments.first == "build" else { return (0, "") }
-        buildCallCount += 1
-        if buildCallCount == 1 {
-            let fooPath = workingDirectoryURL.appendingPathComponent("Foo.swift").path
-            let canonical = fooPath.withCString { ptr in
-                guard let resolved = realpath(ptr, nil) else { return fooPath }
-                defer { free(resolved) }
-                return String(cString: resolved)
-            }
-            return (1, "\(canonical):1:5: error: cannot convert value")
-        }
-        return (0, "")
-    }
-}
-
-private actor SPMNarrowExclusionMock: ProcessLaunching {
-    private var buildCallCount = 0
-
-    func launch(
-        executableURL: URL,
-        arguments: [String],
-        workingDirectoryURL: URL,
-        timeout: Double
-    ) async throws -> Int32 { 0 }
-
-    func launchCapturing(
-        executableURL: URL,
-        arguments: [String],
-        environment: [String: String]?,
-        additionalEnvironment: [String: String],
-        workingDirectoryURL: URL,
-        timeout: Double
-    ) async throws -> (exitCode: Int32, output: String) {
-        guard arguments.first == "build" else { return (0, "") }
-        buildCallCount += 1
-        if buildCallCount == 1 {
-            let fooPath = workingDirectoryURL.appendingPathComponent("Foo.swift").path
-            let canonical = fooPath.withCString { ptr in
-                guard let resolved = realpath(ptr, nil) else { return fooPath }
-                defer { free(resolved) }
-                return String(cString: resolved)
-            }
-            return (1, "\(canonical):4:1: error: type mismatch")
-        }
-        return (0, "")
-    }
-}
-
-private actor FallbackBuildSucceedingMock: ProcessLaunching {
-    private var captureCount = 0
-
-    func launch(
-        executableURL: URL,
-        arguments: [String],
-        workingDirectoryURL: URL,
-        timeout: Double
-    ) async throws -> Int32 {
-        0
-    }
-
-    func launchCapturing(
-        executableURL: URL,
-        arguments: [String],
-        environment: [String: String]?,
-        additionalEnvironment: [String: String],
-        workingDirectoryURL: URL,
-        timeout: Double
-    ) async throws -> (exitCode: Int32, output: String) {
-        captureCount += 1
-        if captureCount == 1 { return (1, "") }
-        if let idx = arguments.firstIndex(of: "-derivedDataPath"), idx + 1 < arguments.count {
-            let productsURL = URL(fileURLWithPath: arguments[idx + 1])
-                .appendingPathComponent("Build/Products")
-            try? FileManager.default.createDirectory(at: productsURL, withIntermediateDirectories: true)
-            let plist: [String: Any] = ["MyTarget": ["EnvironmentVariables": [String: String]()]]
-            let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
-            try? data?.write(to: productsURL.appendingPathComponent("fake.xctestrun"))
-        }
-        return (0, "")
-    }
-}
-
 @Suite("MutantExecutor")
 struct MutantExecutorTests {
-
     @Test("Given empty mutant list, when execute called, then returns empty results")
     func emptyMutantsReturnsEmpty() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
@@ -339,7 +238,7 @@ struct MutantExecutorTests {
         #expect(results[0].status == .unviable)
     }
 
-    @Test("Given SPM build fails with canonical /private/var path in error, when retry succeeds, then only failing file is unviable")
+    @Test("Given SPM build fails with canonical path in error, when retry succeeds, then only failing file is unviable")
     func spmRetryExcludingErrorsMatchesCanonicalPaths() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -354,7 +253,10 @@ struct MutantExecutorTests {
             launcher: SPMRetryExcludingErrorsMock()
         )
         let mutantFoo = makeMutant(id: "m0", filePath: fooFile.path, isSchematizable: true)
-        let mutantBar = makeMutant(id: "m1", filePath: barFile.path, isSchematizable: true, mutatedContent: "let y = false")
+        let mutantBar = makeMutant(
+            id: "m1", filePath: barFile.path,
+            isSchematizable: true, mutatedContent: "let y = false"
+        )
         let input = makeInputSPM(
             projectPath: dir.path,
             schematizedFiles: [
@@ -398,21 +300,219 @@ struct MutantExecutorTests {
             configuration: makeConfigurationSPM(projectPath: dir.path),
             launcher: SPMNarrowExclusionMock()
         )
-        let m0 = makeMutant(id: "swift-mutation-testing_0", filePath: fooFile.path, isSchematizable: true)
-        let m1 = makeMutant(id: "swift-mutation-testing_1", filePath: fooFile.path, isSchematizable: true, mutatedContent: "let y = false")
+        let mutantFoo = makeMutant(
+            id: "swift-mutation-testing_0",
+            filePath: fooFile.path,
+            isSchematizable: true
+        )
+        let mutantBar = makeMutant(
+            id: "swift-mutation-testing_1",
+            filePath: fooFile.path,
+            isSchematizable: true,
+            mutatedContent: "let y = false"
+        )
         let input = makeInputSPM(
             projectPath: dir.path,
-            schematizedFiles: [SchematizedFile(originalPath: fooFile.path, schematizedContent: schematized)],
-            mutants: [m0, m1]
+            schematizedFiles: [
+                SchematizedFile(originalPath: fooFile.path, schematizedContent: schematized)
+            ],
+            mutants: [mutantFoo, mutantBar]
         )
 
         let results = try await executor.execute(input)
 
         #expect(results.count == 2)
-        let r0 = results.first { $0.descriptor.id == "swift-mutation-testing_0" }
-        let r1 = results.first { $0.descriptor.id == "swift-mutation-testing_1" }
-        #expect(r0?.status == .survived)
-        #expect(r1?.status == .survived)
+        let resultFirst = results.first { $0.descriptor.id == "swift-mutation-testing_0" }
+        let resultSecond = results.first { $0.descriptor.id == "swift-mutation-testing_1" }
+        #expect(resultFirst?.status == .survived)
+        #expect(resultSecond?.status == .survived)
+    }
+
+    @Test("Given excluded mutants with same file, when rewrite attempted, then source is cached for second mutant")
+    func excludedMutantsFromSameFileUsesSourceCache() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let fooFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: fooFile, atomically: true, encoding: .utf8)
+
+        let executor = MutantExecutor(
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            launcher: SPMRetryExcludingErrorsMock()
+        )
+
+        let mutantA = MutantDescriptor(
+            id: "swift-mutation-testing_0",
+            filePath: fooFile.path,
+            line: 1,
+            column: 9,
+            utf8Offset: 8,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: nil
+        )
+
+        let mutantB = MutantDescriptor(
+            id: "swift-mutation-testing_1",
+            filePath: fooFile.path,
+            line: 1,
+            column: 9,
+            utf8Offset: 8,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: nil
+        )
+
+        let input = makeInputSPM(
+            projectPath: dir.path,
+            schematizedFiles: [SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false")],
+            mutants: [mutantA, mutantB]
+        )
+
+        let results = try await executor.execute(input)
+        #expect(results.count == 2)
+    }
+
+    @Test("Given excluded mutant with mismatched offset, when rewrite attempted, then marked unviable")
+    func excludedMutantWithMismatchedOffsetIsUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let fooFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: fooFile, atomically: true, encoding: .utf8)
+
+        let executor = MutantExecutor(
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            launcher: SPMRetryExcludingErrorsMock()
+        )
+
+        let badMutant = MutantDescriptor(
+            id: "swift-mutation-testing_0",
+            filePath: fooFile.path,
+            line: 1,
+            column: 1,
+            utf8Offset: 9999,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: nil
+        )
+
+        let input = makeInputSPM(
+            projectPath: dir.path,
+            schematizedFiles: [SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false")],
+            mutants: [badMutant]
+        )
+
+        let results = try await executor.execute(input)
+        #expect(results.count == 1)
+        #expect(results.first?.status == .unviable)
+    }
+
+    @Test("Given SPM project type with testTarget, when execute called, then testTarget is used in baseline validation")
+    func spmWithTestTargetAppliesFilter() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let config = RunnerConfiguration(
+            projectPath: dir.path,
+            build: .init(projectType: .spm, testTarget: "FooTests", timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
+        )
+
+        let executor = MutantExecutor(
+            configuration: config,
+            launcher: MockProcessLauncher(exitCode: 0)
+        )
+        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
+        let input = makeInputSPM(
+            projectPath: dir.path,
+            schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+            mutants: [mutant]
+        )
+        let results = try await executor.execute(input)
+        #expect(results.count == 1)
+    }
+
+    @Test("Given SPM build fails twice with error paths, when retry recurses, then second retry excludes more mutants")
+    func spmRecursiveRetryExcludesAdditionalMutants() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let fooFile = dir.appendingPathComponent("Foo.swift")
+        let barFile = dir.appendingPathComponent("Bar.swift")
+        try "let x = true".write(to: fooFile, atomically: true, encoding: .utf8)
+        try "let y = true".write(to: barFile, atomically: true, encoding: .utf8)
+
+        let executor = MutantExecutor(
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            launcher: SPMDoubleFailMock()
+        )
+        let mutantFoo = makeMutant(id: "swift-mutation-testing_0", filePath: fooFile.path, isSchematizable: true)
+        let mutantBar = makeMutant(
+            id: "swift-mutation-testing_1", filePath: barFile.path,
+            isSchematizable: true, mutatedContent: "let y = false"
+        )
+        let input = makeInputSPM(
+            projectPath: dir.path,
+            schematizedFiles: [
+                SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false"),
+                SchematizedFile(originalPath: barFile.path, schematizedContent: "let y = false"),
+            ],
+            mutants: [mutantFoo, mutantBar]
+        )
+
+        let results = try await executor.execute(input)
+
+        #expect(results.count == 2)
+    }
+
+    @Test("Given excluded mutant with non-existent source file, when rewrite attempted, then marked unviable")
+    func excludedMutantWithMissingSourceIsUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let fooFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: fooFile, atomically: true, encoding: .utf8)
+
+        let config = makeConfigurationSPM(projectPath: dir.path)
+        let executor = MutantExecutor(
+            configuration: config,
+            launcher: SPMRetryExcludingErrorsMock()
+        )
+
+        let validMutant = makeMutant(id: "m0", filePath: fooFile.path, isSchematizable: true)
+        let missingMutant = makeMutant(
+            id: "m1",
+            filePath: dir.appendingPathComponent("NonExistent.swift").path,
+            isSchematizable: true
+        )
+        let input = makeInputSPM(
+            projectPath: dir.path,
+            schematizedFiles: [
+                SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false")
+            ],
+            mutants: [validMutant, missingMutant]
+        )
+
+        let results = try await executor.execute(input)
+
+        #expect(results.count == 2)
     }
 
     private func makeConfiguration(

@@ -3,33 +3,6 @@ import Testing
 
 @testable import SwiftMutationTesting
 
-private actor SPMBuildSuccessTestFailureMock: ProcessLaunching {
-    private let failureOutput: String
-
-    init(failureOutput: String) {
-        self.failureOutput = failureOutput
-    }
-
-    func launch(
-        executableURL: URL,
-        arguments: [String],
-        workingDirectoryURL: URL,
-        timeout: Double
-    ) async throws -> Int32 { 0 }
-
-    func launchCapturing(
-        executableURL: URL,
-        arguments: [String],
-        environment: [String: String]?,
-        additionalEnvironment: [String: String],
-        workingDirectoryURL: URL,
-        timeout: Double
-    ) async throws -> (exitCode: Int32, output: String) {
-        if arguments.first == "test" { return (1, failureOutput) }
-        return (0, "")
-    }
-}
-
 @Suite("IncompatibleMutantExecutor")
 struct IncompatibleMutantExecutorTests {
     @Test("Given 3 mutants with content, when execute called, then 3 results are returned in order")
@@ -301,6 +274,88 @@ struct IncompatibleMutantExecutorTests {
         )
 
         #expect(results.first?.status == .killed(by: "myTest"))
+    }
+
+    @Test("Given SPM project type and initial build failure, when execute called, then all viable mutants are unviable")
+    func spmInitialBuildFailureMarksAllUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let executor = makeExecutorSPM(in: dir, launcher: MockProcessLauncher(exitCode: 1))
+        let pool = makePool()
+        try await pool.setUp()
+
+        let mutants = [
+            makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = false"),
+            makeMutant(id: "m1", filePath: sourceFile.path, content: "let x = 0"),
+        ]
+
+        let results = try await executor.execute(
+            mutants,
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            pool: pool,
+            testFilesHash: "hash"
+        )
+
+        #expect(results.count == 2)
+        #expect(results.allSatisfy { $0.status == .unviable })
+    }
+
+    @Test("Given SPM project type with testTarget, when execute called, then filter is applied")
+    func spmTestTargetFilterIsApplied() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let output = #"Test "myTest" failed after 0.001 seconds."#
+        let executor = makeExecutorSPM(
+            in: dir, launcher: SPMBuildSuccessTestFailureMock(failureOutput: output))
+        let pool = makePool()
+        try await pool.setUp()
+
+        let config = RunnerConfiguration(
+            projectPath: dir.path,
+            build: .init(projectType: .spm, testTarget: "FooTests", timeout: 60, concurrency: 1, noCache: false),
+            reporting: .init(quiet: true),
+            filter: .init(excludePatterns: [], operators: [])
+        )
+
+        let results = try await executor.execute(
+            [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = 1")],
+            configuration: config,
+            pool: pool,
+            testFilesHash: "hash"
+        )
+
+        #expect(results.count == 1)
+    }
+
+    @Test("Given SPM project type and per-mutant build failure, when execute called, then mutant is unviable")
+    func spmPerMutantBuildFailureReturnsUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let executor = makeExecutorSPM(
+            in: dir, launcher: SPMInitialBuildSuccessThenFailMock())
+        let pool = makePool()
+        try await pool.setUp()
+
+        let results = try await executor.execute(
+            [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = INVALID")],
+            configuration: makeConfigurationSPM(projectPath: dir.path),
+            pool: pool,
+            testFilesHash: "hash"
+        )
+
+        #expect(results.first?.status == .unviable)
     }
 
     private func makeExecutorSPM(
