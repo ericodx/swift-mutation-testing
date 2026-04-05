@@ -3,10 +3,6 @@ import Testing
 
 @testable import SwiftMutationTesting
 
-extension Tag {
-    @Tag static var integration: Self
-}
-
 @Suite(.tags(.integration))
 struct MutantExecutorIntegrationTests {
 
@@ -16,7 +12,10 @@ struct MutantExecutorIntegrationTests {
         let configuration = makeConfiguration(fixtureURL: fixtureURL)
         let input = makeInput(fixtureURL: fixtureURL)
 
-        let results = try await MutantExecutor(configuration: configuration, launcher: XcodeProcessLauncher()).execute(input)
+        let results = try await MutantExecutor(
+            configuration: configuration,
+            launcher: XcodeProcessLauncher()
+        ).execute(input)
 
         let killed = results.filter {
             if case .killed = $0.status { return true }
@@ -39,7 +38,10 @@ struct MutantExecutorIntegrationTests {
 
         let configuration = makeConfiguration(fixtureURL: fixtureURL)
         let input = makeInput(fixtureURL: fixtureURL)
-        _ = try await MutantExecutor(configuration: configuration, launcher: XcodeProcessLauncher()).execute(input)
+        _ = try await MutantExecutor(
+            configuration: configuration,
+            launcher: XcodeProcessLauncher()
+        ).execute(input)
 
         let after = try String(contentsOf: calculatorURL, encoding: .utf8)
 

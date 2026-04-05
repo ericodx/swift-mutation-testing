@@ -91,6 +91,51 @@ struct XCTestRunPlistTests {
         #expect(envVars["__SWIFT_MUTATION_TESTING_ACTIVE"] == "id_x")
     }
 
+    @Test("Given new-format plist without EnvironmentVariables, when activating, then env var is created")
+    func activatingCreatesEnvVarsInNewFormatWhenMissing() throws {
+        let plistDict: [String: Any] = [
+            "TestConfigurations": [
+                [
+                    "Name": "Config",
+                    "TestTargets": [
+                        ["BlueprintName": "AppTests"] as [String: Any]
+                    ],
+                ] as [String: Any]
+            ]
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plistDict, format: .xml, options: 0)
+        let plist = try #require(XCTestRunPlist(data))
+
+        let result = plist.activating("id_new")
+        let resultDict = try #require(
+            PropertyListSerialization.propertyList(from: result, options: [], format: nil) as? [String: Any]
+        )
+        let configs = try #require(resultDict["TestConfigurations"] as? [[String: Any]])
+        let targets = try #require(configs[0]["TestTargets"] as? [[String: Any]])
+        let envVars = try #require(targets[0]["EnvironmentVariables"] as? [String: String])
+
+        #expect(envVars["__SWIFT_MUTATION_TESTING_ACTIVE"] == "id_new")
+    }
+
+    @Test("Given legacy-format plist without EnvironmentVariables, when activating, then env var is created")
+    func activatingCreatesEnvVarsInLegacyFormatWhenMissing() throws {
+        let plistDict: [String: Any] = [
+            "__xctestrun_metadata__": ["FormatVersion": 1],
+            "AppTests": ["BlueprintName": "AppTests"] as [String: Any],
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plistDict, format: .xml, options: 0)
+        let plist = try #require(XCTestRunPlist(data))
+
+        let result = plist.activating("id_leg")
+        let resultDict = try #require(
+            PropertyListSerialization.propertyList(from: result, options: [], format: nil) as? [String: Any]
+        )
+        let targetDict = try #require(resultDict["AppTests"] as? [String: Any])
+        let envVars = try #require(targetDict["EnvironmentVariables"] as? [String: String])
+
+        #expect(envVars["__SWIFT_MUTATION_TESTING_ACTIVE"] == "id_leg")
+    }
+
     @Test("Given legacy-format plist, when activating mutant, then metadata key is not modified")
     func activatingDoesNotModifyMetadataKey() throws {
         let plistDict: [String: Any] = [
