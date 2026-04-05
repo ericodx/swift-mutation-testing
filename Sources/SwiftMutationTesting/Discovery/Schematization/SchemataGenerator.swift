@@ -60,17 +60,16 @@ struct SchemataGenerator: Sendable {
     }
 
     private func extract(from content: String, start: Int, end: Int) -> String? {
-        guard let data = content.data(using: .utf8),
-            start >= 0, end <= data.count, start <= end
+        let data = content.data(using: .utf8)!
+        guard start >= 0, end <= data.count, start <= end
         else { return nil }
-        return String(data: data.subdata(in: start ..< end), encoding: .utf8)
+        return String(data: data.subdata(in: start ..< end), encoding: .utf8)!
     }
 
     private func apply(_ mutation: MutationPoint, to statementsText: String, startOffset: Int) -> String {
-        guard let statementsData = statementsText.data(using: .utf8),
-            let originalData = mutation.originalText.data(using: .utf8),
-            let mutatedData = mutation.mutatedText.data(using: .utf8)
-        else { return statementsText }
+        let statementsData = statementsText.data(using: .utf8)!
+        let originalData = mutation.originalText.data(using: .utf8)!
+        let mutatedData = mutation.mutatedText.data(using: .utf8)!
 
         let relativeOffset = mutation.utf8Offset - startOffset
 
@@ -79,7 +78,7 @@ struct SchemataGenerator: Sendable {
 
         var result = statementsData
         result.replaceSubrange(relativeOffset ..< relativeOffset + originalData.count, with: mutatedData)
-        return String(data: result, encoding: .utf8) ?? statementsText
+        return String(data: result, encoding: .utf8)!
     }
 
     private func buildSwitchBody(
@@ -104,13 +103,13 @@ struct SchemataGenerator: Sendable {
     )
         -> String
     {
-        guard let contentData = content.data(using: .utf8),
-            let replacementData = replacement.data(using: .utf8),
-            start >= 0, end <= contentData.count
+        let contentData = content.data(using: .utf8)!
+        let replacementData = replacement.data(using: .utf8)!
+        guard start >= 0, end <= contentData.count
         else { return content }
 
         var result = contentData
         result.replaceSubrange(start ..< end, with: replacementData)
-        return String(data: result, encoding: .utf8) ?? content
+        return String(data: result, encoding: .utf8)!
     }
 }
