@@ -76,6 +76,18 @@ struct SwiftMutationTestingExecutionPathTests {
         #expect(result == .success)
     }
 
+    @Test("Given xcode project type, when defaultLauncher called, then returns XcodeProcessLauncher")
+    func defaultLauncherForXcodeReturnsXcodeProcessLauncher() {
+        let launcher = SwiftMutationTesting.defaultLauncher(for: .xcode(scheme: "S", destination: "d"))
+        #expect(launcher is XcodeProcessLauncher)
+    }
+
+    @Test("Given spm project type, when defaultLauncher called, then returns SPMProcessLauncher")
+    func defaultLauncherForSPMReturnsSPMProcessLauncher() {
+        let launcher = SwiftMutationTesting.defaultLauncher(for: .spm)
+        #expect(launcher is SPMProcessLauncher)
+    }
+
     @Test("Given corrupted cache file at project path, when run called, then returns error")
     func corruptedCacheFileReturnsError() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
