@@ -1,8 +1,4 @@
 struct DetectedProject: Sendable {
-    enum Kind: Sendable {
-        case xcode(scheme: String?, allSchemes: [String], destination: String)
-        case spm(testTargets: [String])
-    }
 
     static let empty = DetectedProject(
         kind: .xcode(scheme: nil, allSchemes: [], destination: "platform=macOS"),
@@ -27,5 +23,10 @@ struct DetectedProject: Sendable {
     var destination: String {
         guard case .xcode(_, _, let dest) = kind else { return "platform=macOS" }
         return dest
+    }
+
+    enum Kind: Sendable {
+        case xcode(scheme: String?, allSchemes: [String], destination: String)
+        case spm(testTargets: [String])
     }
 }

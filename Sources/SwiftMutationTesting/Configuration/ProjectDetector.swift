@@ -69,12 +69,14 @@ struct ProjectDetector: Sendable {
     ) async -> (schemes: [String], projectName: String?, testTarget: String?) {
         guard
             let result = try? await launcher.launchCapturing(
-                executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-                arguments: [container.flag, container.path, "-list", "-json"],
-                environment: nil,
-                additionalEnvironment: [:],
-                workingDirectoryURL: workingDirectory,
-                timeout: 30
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+                    arguments: [container.flag, container.path, "-list", "-json"],
+                    environment: nil,
+                    additionalEnvironment: [:],
+                    workingDirectoryURL: workingDirectory,
+                    timeout: 30
+                )
             ),
             result.exitCode == 0
         else {
@@ -87,12 +89,14 @@ struct ProjectDetector: Sendable {
     private func listSPMTestTargets(in projectURL: URL) async -> [String] {
         guard
             let result = try? await launcher.launchCapturing(
-                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
-                arguments: ["package", "dump-package"],
-                environment: nil,
-                additionalEnvironment: [:],
-                workingDirectoryURL: projectURL,
-                timeout: 30
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+                    arguments: ["package", "dump-package"],
+                    environment: nil,
+                    additionalEnvironment: [:],
+                    workingDirectoryURL: projectURL,
+                    timeout: 30
+                )
             ),
             result.exitCode == 0,
             let data = result.output.data(using: .utf8),
@@ -197,12 +201,14 @@ struct ProjectDetector: Sendable {
     private func queryBestDevice(for platform: String, selecting: ([String]) -> String?) async -> String? {
         guard
             let result = try? await launcher.launchCapturing(
-                executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-                arguments: ["simctl", "list", "devices", "available", "--json"],
-                environment: nil,
-                additionalEnvironment: [:],
-                workingDirectoryURL: URL(fileURLWithPath: "."),
-                timeout: 10
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                    arguments: ["simctl", "list", "devices", "available", "--json"],
+                    environment: nil,
+                    additionalEnvironment: [:],
+                    workingDirectoryURL: URL(fileURLWithPath: "."),
+                    timeout: 10
+                )
             ),
             result.exitCode == 0,
             let data = result.output.data(using: .utf8),
@@ -235,11 +241,13 @@ struct ProjectDetector: Sendable {
             searchURL = projectURL
         }
 
-        guard let enumerator = FileManager.default.enumerator(
-            at: searchURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else {
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: searchURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+        else {
             return .swiftTesting
         }
 

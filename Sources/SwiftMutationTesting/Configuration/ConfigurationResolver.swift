@@ -32,23 +32,23 @@ struct ConfigurationResolver: Sendable {
             projectPath: projectPath,
             build: .init(
                 projectType: projectType,
-                testTarget: cliArguments.build.testTarget ?? fileValues["testTarget"],
+                testTarget: cliArguments.build.testTarget ?? fileValues["test-target"],
                 timeout: timeout,
                 concurrency: effectiveConcurrency,
-                noCache: cliArguments.build.noCache || fileValues["noCache"]?.lowercased() == "true",
+                noCache: cliArguments.build.noCache || fileValues["no-cache"]?.lowercased() == "true",
                 testingFramework: testingFramework
             ),
             reporting: .init(
                 output: cliArguments.reporting.output ?? fileValues["output"],
-                htmlOutput: cliArguments.reporting.htmlOutput ?? fileValues["htmlOutput"],
-                sonarOutput: cliArguments.reporting.sonarOutput ?? fileValues["sonarOutput"],
+                htmlOutput: cliArguments.reporting.htmlOutput ?? fileValues["html-output"],
+                sonarOutput: cliArguments.reporting.sonarOutput ?? fileValues["sonar-output"],
                 quiet: cliArguments.reporting.quiet || fileValues["quiet"]?.lowercased() == "true"
             ),
             filter: .init(
-                sourcesPath: cliArguments.filter.sourcesPath ?? fileValues["sourcesPath"],
+                sourcesPath: cliArguments.filter.sourcesPath ?? fileValues["sources-path"],
                 excludePatterns: resolveList(
                     cli: cliArguments.filter.excludePatterns,
-                    keys: ["exclude", "excludePatterns"],
+                    keys: ["exclude", "exclude-patterns"],
                     from: fileValues
                 ),
                 operators: resolveOperators(cli: cliArguments, fileValues: fileValues)
@@ -104,7 +104,7 @@ struct ConfigurationResolver: Sendable {
 
     private func resolvedTestingFramework(cli: ParsedArguments, fileValues: [String: String]) throws -> TestingFramework
     {
-        let raw = cli.build.testingFramework ?? fileValues["testingFramework"]
+        let raw = cli.build.testingFramework ?? fileValues["testing-framework"]
 
         guard let raw else {
             return .swiftTesting
@@ -127,7 +127,7 @@ struct ConfigurationResolver: Sendable {
             return DiscoveryPipeline.allOperatorNames.filter { !disabled.contains($0) }
         }
 
-        let fileDisabled = resolveList(cli: [], keys: ["disabledMutators"], from: fileValues)
+        let fileDisabled = resolveList(cli: [], keys: ["disabled-mutators"], from: fileValues)
         if !fileDisabled.isEmpty {
             let disabled = Set(fileDisabled)
             return DiscoveryPipeline.allOperatorNames.filter { !disabled.contains($0) }
