@@ -241,20 +241,16 @@ struct ProjectDetector: Sendable {
             searchURL = projectURL
         }
 
-        guard
-            let enumerator = FileManager.default.enumerator(
-                at: searchURL,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            )
-        else {
-            return .swiftTesting
-        }
+        let enumerator = FileManager.default.enumerator(
+            at: searchURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
 
         var hasXCTest = false
         var hasSwiftTesting = false
 
-        while let url = enumerator.nextObject() as? URL {
+        while let url = enumerator?.nextObject() as? URL {
             guard url.pathExtension == "swift" else { continue }
             guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
 
