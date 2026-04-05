@@ -110,14 +110,29 @@ struct ConfigurationResolverTests {
         #expect(result.build.timeout == 30)
     }
 
-    @Test("Given no timeout in CLI or file, when resolved, then default timeout is applied")
-    func appliesDefaultTimeout() throws {
+    @Test("Given no timeout in CLI or file for Xcode, when resolved, then default Xcode timeout is applied")
+    func appliesDefaultXcodeTimeout() throws {
         let result = try resolver.resolve(
             cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
             fileValues: [:]
         )
 
-        #expect(result.build.timeout == RunnerConfiguration.defaultTimeout)
+        #expect(result.build.timeout == RunnerConfiguration.defaultXcodeTimeout)
+    }
+
+    @Test("Given no timeout in CLI or file for SPM, when resolved, then default SPM timeout is applied")
+    func appliesDefaultSPMTimeout() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try FileHelpers.write("// Package.swift", named: "Package.swift", in: dir)
+
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(projectPath: dir.path),
+            fileValues: [:]
+        )
+
+        #expect(result.build.timeout == RunnerConfiguration.defaultSPMTimeout)
     }
 
     @Test("Given no concurrency in CLI or file, when resolved, then default concurrency is applied")
