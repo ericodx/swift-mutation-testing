@@ -1,6 +1,6 @@
 # Mutation Results
 
-This document explains every possible outcome for a mutant, what causes it, and what it means for your test suite. It also explains the distinction between **schematizable** and **incompatible** mutants — a concept that affects how the tool runs and how to interpret the progress output.
+This document explains every possible outcome for a mutant, what causes it, and what it means for your test suite. It also explains the distinction between **schematizable** and **incompatible** mutants — a concept that affects how the tool runs and how to interpret the progress output. All concepts apply equally to both Xcode and SPM projects.
 
 ---
 
@@ -146,9 +146,9 @@ This is the most important internal distinction in how the tool operates. It dir
 
 ### Why the distinction exists
 
-Running one full `xcodebuild build-for-testing` + `xcodebuild test-without-building` cycle per mutant would make mutation testing impractically slow for any real project. For a project with 200 mutants and a 20-second build, a naive approach would take over an hour just in build time.
+Running one full build + test cycle per mutant would make mutation testing impractically slow for any real project. For a project with 200 mutants and a 20-second build, a naive approach would take over an hour just in build time.
 
-The tool avoids this by **schematization**: rewriting source files to embed all mutations at once behind a runtime switch, building the project a single time, and then activating one mutant per test run by setting an environment variable. This reduces the total build cost to a single build regardless of the number of mutants.
+The tool avoids this by **schematization**: rewriting source files to embed all mutations at once behind a runtime switch, building the project a single time, and then activating one mutant per test run by setting an environment variable. This reduces the total build cost to a single build regardless of the number of mutants. This works for both Xcode projects (`xcodebuild build-for-testing` / `test-without-building`) and SPM packages (`swift build --build-tests` / `swift test --skip-build`).
 
 ```swift
 // Original source
@@ -169,7 +169,7 @@ func isAdult(age: Int) -> Bool {
 }
 ```
 
-The global `__swiftMutationTestingID` reads from `ProcessInfo.processInfo.environment["__SWIFT_MUTATION_TESTING_ACTIVE"]`. Each test run injects a different mutant ID into that environment variable via the `.xctestrun` plist.
+The global `__swiftMutationTestingID` reads from `ProcessInfo.processInfo.environment["__SWIFT_MUTATION_TESTING_ACTIVE"]`. Each test run injects a different mutant ID into that environment variable — via the `.xctestrun` plist for Xcode projects, or via the process environment for SPM packages.
 
 ### What makes a mutant incompatible
 
@@ -209,14 +209,14 @@ enum ExitCode: Int32 {
 }
 ```
 
-In all of these cases, the mutation site is not inside any executable scope that can host a `switch` statement. The tool falls back to applying the mutation directly to the source file, building the full project from scratch, and running `xcodebuild test` (not `test-without-building`).
+In all of these cases, the mutation site is not inside any executable scope that can host a `switch` statement. The tool falls back to applying the mutation directly to the source file and running a full build + test cycle per mutant. For SPM projects, incompatible mutants use a shared sandbox — the mutated file is written, `swift test` runs, and the original is restored.
 
 ### Performance implications
 
 | | Schematizable | Incompatible |
 |---|---|---|
-| Builds required | 1 (shared) | 1 per mutant |
-| Test command | `test-without-building` | `test` |
+| Builds required | 1 (shared) | 1 per mutant (Xcode) or shared sandbox (SPM) |
+| Test command | `test-without-building` (Xcode) / `swift test --skip-build` (SPM) | full build + test per mutant |
 | Parallel execution | yes, N workers | sequential |
 | Typical cost | seconds per mutant | full build + test per mutant |
 

@@ -21,16 +21,23 @@ This guide covers every way to run and configure `swift-mutation-testing`, from 
 ### Generate a configuration file
 
 ```bash
-# Auto-detects scheme, destination, and test target
+# Auto-detects project type, scheme, destination, test targets, and testing framework
 swift-mutation-testing init
 ```
 
-This writes `.swift-mutation-testing.yml` at the project root. Review and adjust the generated file before running.
+This writes `.swift-mutation-testing.yml` at the project root. Review and adjust the generated file before running. For SPM packages, `scheme` and `destination` are not required and will be omitted.
 
 ### Run mutation testing
 
 ```bash
 swift-mutation-testing
+```
+
+### Run an SPM package
+
+```bash
+# SPM packages are auto-detected — no scheme or destination needed
+swift-mutation-testing /path/to/my-package
 ```
 
 ### Run on macOS without a simulator
@@ -102,7 +109,7 @@ destination: platform=iOS Simulator,name=iPhone 16
 # Limit test execution to a specific target (recommended when the project has UI tests)
 # testTarget: MyAppTests
 
-# Per-mutant test timeout in seconds (default: 60)
+# Per-mutant test timeout in seconds (default: 120 Xcode, 30 SPM)
 timeout: 60
 
 # Number of parallel workers (default: max(1, CPU count - 1))
@@ -142,10 +149,10 @@ mutators:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `scheme` | String | — | Xcode scheme to build and test (required) |
-| `destination` | String | — | `xcodebuild` destination specifier (required) |
+| `scheme` | String | — | Xcode scheme to build and test (required for Xcode projects, omit for SPM) |
+| `destination` | String | — | `xcodebuild` destination specifier (required for Xcode projects, omit for SPM) |
 | `testTarget` | String | — | Limit test execution to this target (`-only-testing`) |
-| `timeout` | Number | `60` | Per-mutant test timeout in seconds |
+| `timeout` | Number | `120` (Xcode) / `30` (SPM) | Per-mutant test timeout in seconds |
 | `concurrency` | Number | `max(1, CPUs − 1)` | Number of parallel test workers |
 | `noCache` | Boolean | `false` | Disable result caching |
 | `output` | String | — | Path for Stryker-compatible JSON report |
@@ -212,10 +219,10 @@ swift-mutation-testing [project-path] [options]
 
 | Option | Description |
 |---|---|
-| `--scheme <scheme>` | Xcode scheme to build and test |
-| `--destination <destination>` | `xcodebuild` destination specifier |
+| `--scheme <scheme>` | Xcode scheme to build and test (required for Xcode, omit for SPM) |
+| `--destination <destination>` | `xcodebuild` destination specifier (required for Xcode, omit for SPM) |
 | `--target <test-target>` | Limit test execution to this target |
-| `--timeout <seconds>` | Per-mutant test timeout (default: 60) |
+| `--timeout <seconds>` | Per-mutant test timeout (default: 120 Xcode, 30 SPM) |
 | `--concurrency <n>` | Parallel workers (default: CPUs − 1) |
 | `--no-cache` | Disable result caching |
 | `--output <path>` | Write Stryker-compatible JSON report |
