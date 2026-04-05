@@ -49,9 +49,11 @@ Multiple scopes within the same file are processed in reverse order by `bodyStar
 
 For **incompatible** mutants, `MutationRewriter` applies the single mutation directly to the source file's raw text using UTF-8 byte offsets, producing a complete replacement source file stored in `MutantDescriptor.mutatedSourceContent`.
 
+Both `MutationRewriter` and `SchemataGenerator` use force-unwrapped UTF-8 conversions (`data(using: .utf8)!`, `String(data:encoding: .utf8)!`) because Swift source code is guaranteed to be valid UTF-8. This avoids unreachable error-handling paths.
+
 ## TypeScopeVisitor
 
-`TypeScopeVisitor` walks the SwiftSyntax AST and records every `FunctionBodyScope` — the UTF-8 byte range of each function body's `{`, its statements, and its closing `}`.
+`TypeScopeVisitor` walks the SwiftSyntax AST and records every `FunctionBodyScope` — the UTF-8 byte range of each function body's `{`, its statements, and its closing `}`. It visits function declarations, initializers, deinitializers, and property/subscript accessors.
 
 ```
 FunctionBodyScope

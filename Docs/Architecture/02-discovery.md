@@ -6,15 +6,18 @@
 
 ## Design
 
-The discovery pipeline is a **linear chain of pure stages**. Each stage receives an immutable input, produces an immutable output, and has no side effects. `DiscoveryPipeline` is the entry point and orchestrates the four stages sequentially.
+The discovery pipeline is a **linear chain of pure stages**. Each stage receives an immutable input, produces an immutable output, and has no side effects. `DiscoveryPipeline` is the entry point and orchestrates the six stages sequentially.
 
 ```mermaid
 flowchart TD
     IN[DiscoveryInput] --> FD[FileDiscoveryStage]
     FD --> PA[ParsingStage]
     PA --> MD[MutantDiscoveryStage]
-    MD --> SC[SchematizationStage]
+    MD --> MI[MutantIndexingStage]
+    MI --> SC[SchematizationStage]
+    MI --> IR[IncompatibleRewritingStage]
     SC --> OUT[RunnerInput]
+    IR --> OUT
 ```
 
 ## Stages
@@ -52,16 +55,38 @@ Applies mutation operators to each parsed source and collects mutation points. R
 
 Each operator walks the AST with its own visitor and emits a `MutationPoint` for every applicable node. Points are collected from all operators and all files, then returned as a flat list.
 
-### SchematizationStage
+### MutantIndexingStage
 
-Transforms mutation points into the final `RunnerInput` consumed by the execution pipeline.
+Assigns unique sequential IDs to each mutation point and classifies them as schematizable or incompatible.
 
 | | |
 |---|---|
 | Input | `[MutationPoint]`, `[ParsedSource]` |
-| Output | `RunnerInput` — schematized files, incompatible mutants, support file content |
+| Output | `[IndexedMutationPoint]` — mutation point + unique ID + schematizable flag |
 
-For each file, the stage separates schematizable mutations (inside function bodies) from incompatible ones (outside function bodies). Schematizable mutations are embedded into the source via `SchemataGenerator`. Incompatible mutations are stored as full file rewrites via `MutationRewriter`. See [Schematization](05-schematization.md) for a detailed breakdown.
+Each mutation point receives an ID in the format `swift-mutation-testing_<index>`, where `<index>` is a zero-based global counter. `TypeScopeVisitor` determines whether a mutation falls inside a function body (schematizable) or outside (incompatible). The indexed points are consumed by the next two stages.
+
+### SchematizationStage
+
+Embeds all schematizable mutations into the source files via `SchemataGenerator`, producing `SchematizedFile` values and `MutantDescriptor` values for the execution pipeline.
+
+| | |
+|---|---|
+| Input | `[IndexedMutationPoint]`, `[ParsedSource]` |
+| Output | `[SchematizedFile]`, `[MutantDescriptor]` — schematized files and schematizable mutant descriptors |
+
+For each file, the stage processes only the schematizable indexed points. Mutations are embedded into the source via `SchemataGenerator`, which rewrites function bodies to contain `switch __swiftMutationTestingID` blocks. See [Schematization](05-schematization.md) for a detailed breakdown.
+
+### IncompatibleRewritingStage
+
+Produces full-file rewrites for mutants that cannot be schematized (mutations outside function bodies, such as stored property initializers or global-scope expressions).
+
+| | |
+|---|---|
+| Input | `[IndexedMutationPoint]`, `[ParsedSource]` |
+| Output | `[MutantDescriptor]` — incompatible mutant descriptors with pre-computed `mutatedSourceContent` |
+
+Each incompatible mutation point is applied to the source via `MutationRewriter`, producing a complete replacement source file stored in `MutantDescriptor.mutatedSourceContent`. These mutants are executed later by `IncompatibleMutantExecutor`, each requiring a separate build + test cycle.
 
 ## Mutation Operators
 
@@ -87,11 +112,12 @@ Mutations can be suppressed on a per-scope basis using the inline annotation `//
 
 ```
 DiscoveryInput
-├── projectPath       — Xcode project root
+├── projectPath       — project root (Xcode or SPM)
+├── projectType       — ProjectType (.xcode or .spm)
 ├── sourcesPath       — root for Swift file discovery
 ├── excludePatterns   — glob patterns to skip
 ├── operators         — list of active operator identifiers
-└── scheme, destination, timeout, concurrency, noCache
+└── timeout, concurrency, noCache
 
 SourceFile
 ├── path              — absolute path to the .swift file
@@ -108,11 +134,30 @@ MutationPoint
 ├── originalText      — token(s) before mutation
 ├── mutatedText       — token(s) after mutation
 ├── operatorIdentifier
-└── replacement       — ReplacementKind enum
+└── replacementKind   — ReplacementKind enum
+
+IndexedMutationPoint
+├── point             — MutationPoint
+├── id                — unique ID (swift-mutation-testing_<index>)
+└── isSchematizable   — whether the mutation is inside a function body
+
+MutantDescriptor
+├── id                — unique ID
+├── filePath          — absolute source file path
+├── line, column      — 1-based position
+├── utf8Offset        — byte offset
+├── originalText      — token(s) before mutation
+├── mutatedText       — token(s) after mutation
+├── operatorIdentifier
+├── replacementKind   — ReplacementKind enum
+├── description       — human-readable mutation description
+├── isSchematizable   — schematizable or incompatible
+└── mutatedSourceContent — pre-computed full source (incompatible only)
 
 RunnerInput
 ├── projectPath
-├── scheme, destination, timeout, concurrency, noCache
+├── projectType       — ProjectType (.xcode or .spm)
+├── timeout, concurrency, noCache
 ├── schematizedFiles  — [SchematizedFile] (one per modified source file)
 ├── supportFileContent — __swiftMutationTestingID global declaration
 └── mutants           — [MutantDescriptor] (all mutants, schematizable and incompatible)

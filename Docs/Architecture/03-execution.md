@@ -6,15 +6,16 @@
 
 ## Design
 
-`MutantExecutor` is the entry point for the execution pipeline. It separates mutants into two populations — schematizable and incompatible — and routes each through the appropriate path.
+`MutantExecutor` is the entry point for the execution pipeline. It separates mutants into two populations — schematizable and incompatible — and routes each through the appropriate path. The executor supports both Xcode (`xcodebuild`) and SPM (`swift test`) project types via `ProjectType`.
 
 ```mermaid
 flowchart TD
     IN[RunnerInput] --> SF[SandboxFactory\ncreate sandbox]
     SF --> BS[BuildStage\nbuild-for-testing]
     BS -- success --> TES[TestExecutionStage\nparallel test-without-building]
-    BS -- compilationFailed --> FBP[Per-file fallback\none build per schematized file]
-    TES --> CACHE[CacheStore]
+    BS -- compilationFailed --> FBP[FallbackExecutor\none build per schematized file]
+    TES --> TR[TestResultResolver]
+    TR --> CACHE[CacheStore]
     FBP --> CACHE
     IN -- incompatible mutants --> IME[IncompatibleMutantExecutor\none full build+test per mutant]
     IME --> CACHE
@@ -24,7 +25,12 @@ flowchart TD
 
 ## SandboxFactory
 
-Creates an isolated copy of the Xcode project in `$TMPDIR/xmr-<UUID>/` before every build.
+Creates an isolated copy of the project in `$TMPDIR/xmr-<UUID>/` before every build. Supports both Xcode and SPM projects.
+
+**Factory methods:**
+- `create(projectPath:schematizedFiles:supportFileContent:)` — full sandbox with schematized files and support file injection (normal path)
+- `createClean(projectPath:)` — clean sandbox without mutations (used by `IncompatibleMutantExecutor` for SPM shared sandbox)
+- `create(projectPath:mutatedFilePath:mutatedContent:)` — sandbox with a single mutated file (incompatible mutants, Xcode path)
 
 **Copy strategy:**
 - Skips `.build`, `DerivedData`, and directories prefixed with `.xmr-`
@@ -39,23 +45,29 @@ The original project is never touched. Cleanup removes the entire `xmr-*` direct
 
 ## BuildStage
 
-Runs `xcodebuild build-for-testing` once for all schematizable mutants.
+Runs a single build for all schematizable mutants.
+
+**Xcode path:** `xcodebuild build-for-testing` → find `.xctestrun` → parse plist → `BuildArtifact`
+
+**SPM path:** `swift build --build-tests` → `BuildArtifact` (no `.xctestrun` needed)
 
 ```mermaid
 flowchart TD
-    A[build-for-testing\n-scheme -destination\n-derivedDataPath] --> B{Exit code?}
-    B -- 0 --> C[Find .xctestrun in\nBuild/Products]
-    C --> D[Parse XCTestRunPlist]
-    D --> E[BuildArtifact]
-    B -- non-zero --> F[throw BuildError.compilationFailed]
+    A{ProjectType?}
+    A -- .xcode --> B[xcodebuild build-for-testing\n-scheme -destination\n-derivedDataPath]
+    A -- .spm --> C[swift build --build-tests]
+    B --> D{Exit code?}
+    C --> D
+    D -- 0 --> E[BuildArtifact]
+    D -- non-zero --> F[throw BuildError.compilationFailed]
 ```
 
 | | |
 |---|---|
-| Input | `Sandbox`, scheme, destination, timeout |
-| Output | `BuildArtifact` — derived data path + `.xctestrun` URL + parsed plist |
+| Input | `Sandbox`, project type, timeout |
+| Output | `BuildArtifact` — derived data path + `.xctestrun` URL (Xcode) or sandbox path (SPM) |
 
-`MutantExecutor` catches `BuildError.compilationFailed` and falls back to the per-file build path rather than aborting. Any other thrown error propagates up.
+`BuildError` conforms to `LocalizedError`, providing structured error descriptions. `MutantExecutor` catches `BuildError.compilationFailed` and delegates to `FallbackExecutor` for per-file rebuilds rather than aborting. Any other thrown error propagates up.
 
 ## SimulatorPool
 
@@ -67,6 +79,8 @@ flowchart TD
 | iOS / tvOS / watchOS | Clones the base simulator N times (one per concurrency slot); boots each clone on `setUp`; shuts down and deletes on `tearDown` |
 
 `acquire()` returns an available `SimulatorSlot` or suspends the caller until one is released. A `withTaskCancellationHandler` wraps the suspension — if the owning task is cancelled, the slot is released immediately to avoid a permanent deadlock.
+
+`SimulatorError` conforms to `LocalizedError` and covers three failure modes: `deviceNotFound(destination:)`, `bootTimeout(udid:)`, and `cloneFailed(udid:)`. Each provides a structured `errorDescription` for diagnostics.
 
 ## TestExecutionStage
 
@@ -93,40 +107,72 @@ flowchart TD
 
 **Dynamic concurrency:** the task group seeds N tasks initially, then adds one new task for each completed task, maintaining exactly N active tasks at all times.
 
+## FallbackExecutor
+
+When the baseline build for all schematized files fails (`BuildError.compilationFailed`), `MutantExecutor` delegates to `FallbackExecutor`. This executor rebuilds one schematized file at a time — if one file causes a compilation error, the others can still be tested.
+
+```mermaid
+flowchart TD
+    FILES["[SchematizedFile]"] --> LOOP["For each file"]
+    LOOP --> SF[SandboxFactory\nsingle-file sandbox]
+    SF --> BS[BuildStage]
+    BS -- success --> TES[TestExecutionStage\ntest mutants in this file]
+    BS -- failed --> UNVIABLE[Mark all mutants in file as .unviable]
+```
+
+For each schematized file, `FallbackExecutor` creates a sandbox containing only that file's schematization, builds it, and runs the test suite against its mutants. Files whose builds fail have all their mutants marked as `.unviable`. Results are cached via `CacheStore`.
+
 ## IncompatibleMutantExecutor
 
 Handles mutants that cannot be schematized — mutations outside function bodies (e.g. in stored property initializers or global scope). Each incompatible mutant requires a full build + test cycle.
 
 ```mermaid
 flowchart TD
-    MUTANT[MutantDescriptor\nisSchematizable = false] --> SF2[SandboxFactory\ncreate mutant-only sandbox]
+    MUTANT[MutantDescriptor\nisSchematizable = false] --> PT{ProjectType?}
+    PT -- .xcode --> SF2[SandboxFactory\ncreate mutant-only sandbox]
     SF2 --> BS2[BuildStage\nbuild-for-testing]
     BS2 -- success --> TE2[xcodebuild test-without-building]
     BS2 -- compilationFailed --> UNVIABLE[.unviable]
-    TE2 --> RP2[ResultParser]
+    TE2 --> RP2[TestResultResolver]
+    PT -- .spm --> SHARED[Shared sandbox\nwrite mutated file → swift test]
+    SHARED --> SPM[SPMResultParser]
 ```
 
-Incompatible mutants run sequentially. Each creates its own sandbox via `SandboxFactory.create(projectPath:mutatedFilePath:mutatedContent:)`, which applies the single mutation directly without schematization.
+**Xcode path:** Each incompatible mutant creates its own sandbox via `SandboxFactory.create(projectPath:mutatedFilePath:mutatedContent:)`, which applies the single mutation directly without schematization. Runs sequentially, each with a full build + test cycle.
 
-## ResultParser
+**SPM path:** Uses a shared sandbox created via `SandboxFactory.createClean(projectPath:)`. For each mutant, writes the mutated source content directly to the sandbox, runs `swift test`, and restores the original file. This avoids creating a new sandbox per mutant.
 
-Determines the `ExecutionStatus` of a completed test run.
+## TestResultResolver
 
-| Condition | Status |
+`TestResultResolver` determines the `TestRunOutcome` of a completed test run. It delegates to the appropriate parser based on project type.
+
+```mermaid
+flowchart TD
+    TLR[TestLaunchResult] --> TR[TestResultResolver]
+    TR -- .xcode --> RP[ResultParser\nxcresulttool + output parsing]
+    TR -- .spm --> SP[SPMResultParser\noutput-only parsing]
+    RP --> OUT[TestRunOutcome]
+    SP --> OUT
+```
+
+**Xcode path (`ResultParser`):** Inspects stdout/stderr for XCTest and Swift Testing failure patterns, then parses the `.xcresult` bundle via `xcresulttool` for detailed failure information. The `.xcresult` bundle is deleted after parsing.
+
+**SPM path (`SPMResultParser`):** Parses exit code and stdout/stderr output only (no `.xcresult` bundles). Uses `TestOutputParser` to detect failure patterns.
+
+| Condition | Outcome |
 |---|---|
 | Exit code `-1` (killed by timeout) | `.timedOut` |
-| Exit code `0` + no test failures detected | `.survived` |
-| Exit code non-zero + test failure patterns in output | `.killed(let reason)` |
-| Exit code non-zero + no parseable failure | `.killed(.other)` |
-
-`ResultParser` first inspects stdout/stderr for XCTest and Swift Testing failure patterns, then parses the `.xcresult` bundle via `xcresulttool` for detailed failure information. The `.xcresult` bundle is deleted after parsing.
+| Exit code `0` | `.testsSucceeded` (survived) |
+| Exit code non-zero + test failure pattern | `.testsFailed(failingTest:)` (killed) |
+| Exit code non-zero + empty output | `.crashed` |
+| Exit code non-zero + no parseable failure | `.unviable` |
 
 **Failure patterns detected:**
 
 | Framework | Pattern |
 |---|---|
 | XCTest | `Test Case '-[…]' failed` |
-| Swift Testing | `Test "…" failed` |
+| Swift Testing | `Test "…" failed`, `Issue recorded` |
 
 ## CacheStore
 
@@ -176,7 +222,8 @@ score = killed / (killed + survived + timedOut + noCoverage) × 100
 | `MutationCounter` | `actor` — tracks the current progress index |
 | `ConsoleProgressReporter` | `actor` — serialises output to stdout |
 | `TestExecutionStage` | `withThrowingTaskGroup` — N tasks, dynamically refilled |
-| `ProcessLauncher` | `withTaskCancellationHandler` + `withCheckedThrowingContinuation` — kills process on cancel |
+| `ProcessRunner` | `withTaskCancellationHandler` + `withCheckedThrowingContinuation` — kills process on cancel |
+| `SPMProcessLauncher` | `ProcessLaunching` conformance backed by `ProcessRunner`; `killEscapedChildren` cleans up orphaned child processes via `sysctl` `KERN_PROCARGS2` inspection |
 | All data types | `Sendable` value types — safe to cross actor boundaries |
 
 ---
