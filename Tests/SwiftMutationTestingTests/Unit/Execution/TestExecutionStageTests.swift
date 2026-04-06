@@ -36,8 +36,7 @@ struct TestExecutionStageTests {
             artifact: makeBuildArtifact(in: dir),
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
-            configuration: makeConfiguration(),
-            testFilesHash: "hash"
+            configuration: makeConfiguration()
         )
 
         let successStage = TestExecutionStage(
@@ -45,7 +44,8 @@ struct TestExecutionStageTests {
                 launcher: MockProcessLauncher(exitCode: 0),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         _ = try await successStage.execute(mutants: [makeMutant(id: "m0")], in: context)
@@ -55,7 +55,8 @@ struct TestExecutionStageTests {
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         let results = try await failStage.execute(mutants: [makeMutant(id: "m0")], in: context)
@@ -100,8 +101,7 @@ struct TestExecutionStageTests {
             artifact: makeBuildArtifact(in: dir),
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
-            configuration: noCacheConfig,
-            testFilesHash: "hash"
+            configuration: noCacheConfig
         )
 
         let survivedStage = TestExecutionStage(
@@ -109,7 +109,8 @@ struct TestExecutionStageTests {
                 launcher: MockProcessLauncher(exitCode: 0),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         _ = try await survivedStage.execute(mutants: [makeMutant(id: "m0")], in: context)
@@ -122,7 +123,8 @@ struct TestExecutionStageTests {
                 ),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         let results = try await killedStage.execute(mutants: [makeMutant(id: "m0")], in: context)
@@ -154,15 +156,15 @@ struct TestExecutionStageTests {
                 launcher: launcher,
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         let context = TestExecutionContext(
             artifact: makeBuildArtifact(in: dir),
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
-            configuration: config,
-            testFilesHash: "hash"
+            configuration: config
         )
 
         let results = try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
@@ -200,15 +202,15 @@ struct TestExecutionStageTests {
                 launcher: launcher,
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         let context = TestExecutionContext(
             artifact: makeBuildArtifact(in: dir),
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
-            configuration: makeConfiguration(),
-            testFilesHash: "hash"
+            configuration: makeConfiguration()
         )
 
         await #expect(throws: (any Error).self) {
@@ -266,15 +268,15 @@ struct TestExecutionStageTests {
                 launcher: MockProcessLauncher(exitCode: 0),
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         let context = TestExecutionContext(
             artifact: BuildArtifact(derivedDataPath: dir.path, xctestrunURL: nil, plist: nil),
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
-            configuration: config,
-            testFilesHash: "hash"
+            configuration: config
         )
 
         let results = try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
@@ -302,7 +304,8 @@ struct TestExecutionStageTests {
                 launcher: launcher,
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         let config = RunnerConfiguration(
@@ -315,8 +318,7 @@ struct TestExecutionStageTests {
             artifact: BuildArtifact(derivedDataPath: dir.path, xctestrunURL: nil, plist: nil),
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
-            configuration: config,
-            testFilesHash: "hash"
+            configuration: config
         )
 
         await #expect(throws: (any Error).self) {
@@ -345,15 +347,15 @@ struct TestExecutionStageTests {
                 launcher: launcher,
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         let context = TestExecutionContext(
             artifact: BuildArtifact(derivedDataPath: dir.path, xctestrunURL: nil, plist: plist),
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
-            configuration: makeConfiguration(),
-            testFilesHash: "hash"
+            configuration: makeConfiguration()
         )
 
         let results = try await stage.execute(mutants: [makeMutant(id: "m0")], in: context)
@@ -376,15 +378,15 @@ struct TestExecutionStageTests {
                 launcher: launcher,
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 3)
+                counter: MutationCounter(total: 3),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         let context = TestExecutionContext(
             artifact: makeBuildArtifact(in: dir),
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
-            configuration: makeConfiguration(),
-            testFilesHash: "hash"
+            configuration: makeConfiguration()
         )
         return (stage, context)
     }
@@ -404,7 +406,8 @@ struct TestExecutionStageTests {
                 launcher: launcher,
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             )
         )
         let config = RunnerConfiguration(
@@ -417,8 +420,7 @@ struct TestExecutionStageTests {
             artifact: BuildArtifact(derivedDataPath: dir.path, xctestrunURL: nil, plist: nil),
             sandbox: Sandbox(rootURL: dir),
             pool: pool,
-            configuration: config,
-            testFilesHash: "hash"
+            configuration: config
         )
         return (stage, context)
     }
