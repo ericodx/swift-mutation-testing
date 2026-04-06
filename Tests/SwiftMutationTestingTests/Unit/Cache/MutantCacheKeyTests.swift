@@ -21,9 +21,8 @@ struct MutantCacheKeyTests {
             mutatedSourceContent: nil
         )
 
-        let key = MutantCacheKey.make(for: mutant, testFilesHash: "testhash")
+        let key = MutantCacheKey.make(for: mutant)
 
-        #expect(key.testFilesHash == "testhash")
         #expect(key.operatorIdentifier == "binaryOperator")
         #expect(key.utf8Offset == 42)
         #expect(key.originalText == "a + b")
@@ -56,8 +55,8 @@ struct MutantCacheKeyTests {
             mutatedSourceContent: nil
         )
 
-        let keyA = MutantCacheKey.make(for: mutant, testFilesHash: "h")
-        let keyB = MutantCacheKey.make(for: mutant, testFilesHash: "h")
+        let keyA = MutantCacheKey.make(for: mutant)
+        let keyB = MutantCacheKey.make(for: mutant)
 
         #expect(keyA == keyB)
     }
@@ -93,8 +92,31 @@ struct MutantCacheKeyTests {
             mutatedSourceContent: nil
         )
 
-        let keyBase = MutantCacheKey.make(for: base, testFilesHash: "h")
-        let keyShifted = MutantCacheKey.make(for: shifted, testFilesHash: "h")
+        let keyBase = MutantCacheKey.make(for: base)
+        let keyShifted = MutantCacheKey.make(for: shifted)
         #expect(keyBase != keyShifted)
+    }
+
+    @Test("Given same source unchanged, when make called across runs, then keys match")
+    func keysMatchAcrossRunsWhenSourceUnchanged() {
+        let mutant = MutantDescriptor(
+            id: "m0",
+            filePath: "/tmp/Foo.swift",
+            line: 1,
+            column: 1,
+            utf8Offset: 5,
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "op",
+            replacementKind: .binaryOperator,
+            description: "desc",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = a - b"
+        )
+
+        let key1 = MutantCacheKey.make(for: mutant)
+        let key2 = MutantCacheKey.make(for: mutant)
+
+        #expect(key1 == key2)
     }
 }
