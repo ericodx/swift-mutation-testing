@@ -11,10 +11,10 @@ struct MutantExecutorTests {
         defer { FileHelpers.cleanup(dir) }
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let input = makeInput(projectPath: dir.path)
+        let input = makeRunnerInput(projectPath: dir.path)
 
         let results = try await executor.execute(input)
 
@@ -30,11 +30,21 @@ struct MutantExecutorTests {
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
-        let input = makeInput(
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let input = makeRunnerInput(
             projectPath: dir.path,
             schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
             mutants: [mutant]
@@ -52,11 +62,20 @@ struct MutantExecutorTests {
         defer { FileHelpers.cleanup(dir) }
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let mutant = makeMutant(id: "m0", filePath: "/tmp/Foo.swift", isSchematizable: false, mutatedContent: nil)
-        let input = makeInput(projectPath: dir.path, mutants: [mutant])
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: false,
+            mutatedSourceContent: nil
+        )
+        let input = makeRunnerInput(projectPath: dir.path, mutants: [mutant])
 
         let results = try await executor.execute(input)
 
@@ -72,17 +91,26 @@ struct MutantExecutorTests {
         let cacheDir = URL(fileURLWithPath: dir.path).appendingPathComponent(CacheStore.directoryName)
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
-        let mutant = makeMutant(id: "m0", filePath: "/tmp/Foo.swift", isSchematizable: true)
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
         let cacheKey = MutantCacheKey.make(for: mutant)
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
         await cacheStore.store(status: .survived, for: cacheKey)
         try await cacheStore.persist()
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let input = makeInput(projectPath: dir.path, mutants: [mutant])
+        let input = makeRunnerInput(projectPath: dir.path, mutants: [mutant])
 
         let results = try await executor.execute(input)
 
@@ -96,10 +124,10 @@ struct MutantExecutorTests {
         defer { FileHelpers.cleanup(dir) }
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path, noCache: true),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, noCache: true),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let input = makeInput(projectPath: dir.path)
+        let input = makeRunnerInput(projectPath: dir.path)
 
         let results = try await executor.execute(input)
 
@@ -112,12 +140,12 @@ struct MutantExecutorTests {
         defer { FileHelpers.cleanup(dir) }
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path, quiet: false),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, quiet: false),
             launcher: MockProcessLauncher(exitCode: 1)
         )
 
         let output = await captureOutput {
-            _ = try? await executor.execute(makeInput(projectPath: dir.path))
+            _ = try? await executor.execute(makeRunnerInput(projectPath: dir.path))
         }
 
         #expect(output.contains("simulators ready"))
@@ -132,11 +160,21 @@ struct MutantExecutorTests {
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
             launcher: FallbackBuildSucceedingMock()
         )
-        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
-        let input = makeInput(
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let input = makeRunnerInput(
             projectPath: dir.path,
             schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
             mutants: [mutant]
@@ -159,9 +197,28 @@ struct MutantExecutorTests {
         let cacheDir = URL(fileURLWithPath: dir.path).appendingPathComponent(CacheStore.directoryName)
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
-        let schematizableMutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
-        let incompatibleMutant = makeMutant(
-            id: "m1", filePath: "/tmp/Other.swift", isSchematizable: false, mutatedContent: nil)
+        let schematizableMutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let incompatibleMutant = makeMutantDescriptor(
+            id: "m1",
+            filePath: "/tmp/Other.swift",
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: false,
+            mutatedSourceContent: nil
+        )
 
         let cacheKey = MutantCacheKey.make(for: schematizableMutant)
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
@@ -169,10 +226,10 @@ struct MutantExecutorTests {
         try await cacheStore.persist()
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let input = makeInput(
+        let input = makeRunnerInput(
             projectPath: dir.path,
             schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
             mutants: [schematizableMutant, incompatibleMutant]
@@ -196,12 +253,23 @@ struct MutantExecutorTests {
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: MockProcessLauncher(exitCode: 0)
         )
-        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
-        let input = makeInputSPM(
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
             mutants: [mutant]
         )
@@ -221,12 +289,23 @@ struct MutantExecutorTests {
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
-        let input = makeInputSPM(
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
             mutants: [mutant]
         )
@@ -248,16 +327,34 @@ struct MutantExecutorTests {
         try "let y = true".write(to: barFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: SPMRetryExcludingErrorsMock()
         )
-        let mutantFoo = makeMutant(id: "m0", filePath: fooFile.path, isSchematizable: true)
-        let mutantBar = makeMutant(
-            id: "m1", filePath: barFile.path,
-            isSchematizable: true, mutatedContent: "let y = false"
+        let mutantFoo = makeMutantDescriptor(
+            id: "m0",
+            filePath: fooFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
         )
-        let input = makeInputSPM(
+        let mutantBar = makeMutantDescriptor(
+            id: "m1",
+            filePath: barFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let y = false"
+        )
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [
                 SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false"),
                 SchematizedFile(originalPath: barFile.path, schematizedContent: "let y = false"),
@@ -282,7 +379,6 @@ struct MutantExecutorTests {
         let fooFile = dir.appendingPathComponent("Foo.swift")
         try "let original = true".write(to: fooFile, atomically: true, encoding: .utf8)
 
-        // Line 4 is the body of case "swift-mutation-testing_0"; line 6 is case "swift-mutation-testing_1"
         let schematized =
             "func foo() {\n"
             + "switch __swiftMutationTestingID {\n"
@@ -296,22 +392,34 @@ struct MutantExecutorTests {
             + "}"
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: SPMNarrowExclusionMock()
         )
-        let mutantFoo = makeMutant(
+        let mutantFoo = makeMutantDescriptor(
             id: "swift-mutation-testing_0",
             filePath: fooFile.path,
-            isSchematizable: true
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
         )
-        let mutantBar = makeMutant(
+        let mutantBar = makeMutantDescriptor(
             id: "swift-mutation-testing_1",
             filePath: fooFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
             isSchematizable: true,
-            mutatedContent: "let y = false"
+            mutatedSourceContent: "let y = false"
         )
-        let input = makeInputSPM(
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [
                 SchematizedFile(originalPath: fooFile.path, schematizedContent: schematized)
             ],
@@ -336,14 +444,13 @@ struct MutantExecutorTests {
         try "let x = true".write(to: fooFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: SPMRetryExcludingErrorsMock()
         )
 
-        let mutantA = MutantDescriptor(
+        let mutantA = makeMutantDescriptor(
             id: "swift-mutation-testing_0",
             filePath: fooFile.path,
-            line: 1,
             column: 9,
             utf8Offset: 8,
             originalText: "true",
@@ -355,10 +462,9 @@ struct MutantExecutorTests {
             mutatedSourceContent: nil
         )
 
-        let mutantB = MutantDescriptor(
+        let mutantB = makeMutantDescriptor(
             id: "swift-mutation-testing_1",
             filePath: fooFile.path,
-            line: 1,
             column: 9,
             utf8Offset: 8,
             originalText: "true",
@@ -370,8 +476,9 @@ struct MutantExecutorTests {
             mutatedSourceContent: nil
         )
 
-        let input = makeInputSPM(
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false")],
             mutants: [mutantA, mutantB]
         )
@@ -389,15 +496,13 @@ struct MutantExecutorTests {
         try "let x = true".write(to: fooFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: SPMRetryExcludingErrorsMock()
         )
 
-        let badMutant = MutantDescriptor(
+        let badMutant = makeMutantDescriptor(
             id: "swift-mutation-testing_0",
             filePath: fooFile.path,
-            line: 1,
-            column: 1,
             utf8Offset: 9999,
             originalText: "true",
             mutatedText: "false",
@@ -408,8 +513,9 @@ struct MutantExecutorTests {
             mutatedSourceContent: nil
         )
 
-        let input = makeInputSPM(
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false")],
             mutants: [badMutant]
         )
@@ -427,20 +533,30 @@ struct MutantExecutorTests {
         let sourceFile = dir.appendingPathComponent("Foo.swift")
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        let config = RunnerConfiguration(
+        let config = makeRunnerConfiguration(
             projectPath: dir.path,
-            build: .init(projectType: .spm, testTarget: "FooTests", timeout: 60, concurrency: 1, noCache: false),
-            reporting: .init(quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
+            projectType: .spm,
+            testTarget: "FooTests"
         )
 
         let executor = MutantExecutor(
             configuration: config,
             launcher: MockProcessLauncher(exitCode: 0)
         )
-        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
-        let input = makeInputSPM(
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
             mutants: [mutant]
         )
@@ -459,16 +575,34 @@ struct MutantExecutorTests {
         try "let y = true".write(to: barFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: SPMDoubleFailMock()
         )
-        let mutantFoo = makeMutant(id: "swift-mutation-testing_0", filePath: fooFile.path, isSchematizable: true)
-        let mutantBar = makeMutant(
-            id: "swift-mutation-testing_1", filePath: barFile.path,
-            isSchematizable: true, mutatedContent: "let y = false"
+        let mutantFoo = makeMutantDescriptor(
+            id: "swift-mutation-testing_0",
+            filePath: fooFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
         )
-        let input = makeInputSPM(
+        let mutantBar = makeMutantDescriptor(
+            id: "swift-mutation-testing_1",
+            filePath: barFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let y = false"
+        )
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [
                 SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false"),
                 SchematizedFile(originalPath: barFile.path, schematizedContent: "let y = false"),
@@ -491,7 +625,16 @@ struct MutantExecutorTests {
         let cacheDir = URL(fileURLWithPath: dir.path).appendingPathComponent(CacheStore.directoryName)
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
-        let mutant = makeMutant(id: "m0", filePath: "/tmp/Foo.swift", isSchematizable: true)
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
         let cacheKey = MutantCacheKey.make(for: mutant)
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
         await cacheStore.store(status: .killed(by: "SomeTest"), for: cacheKey, killerTestFile: "Tests/SomeTest.swift")
@@ -501,10 +644,10 @@ struct MutantExecutorTests {
         try await cacheStore.persistMetadata(metadata)
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let input = makeInput(projectPath: dir.path, mutants: [mutant])
+        let input = makeRunnerInput(projectPath: dir.path, mutants: [mutant])
 
         let results = try await executor.execute(input)
 
@@ -526,7 +669,17 @@ struct MutantExecutorTests {
         let cacheDir = URL(fileURLWithPath: dir.path).appendingPathComponent(CacheStore.directoryName)
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
-        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
         let cacheKey = MutantCacheKey.make(for: mutant)
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
         await cacheStore.store(status: .survived, for: cacheKey)
@@ -536,10 +689,10 @@ struct MutantExecutorTests {
         try await cacheStore.persistMetadata(metadata)
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let input = makeInput(
+        let input = makeRunnerInput(
             projectPath: dir.path,
             schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
             mutants: [mutant]
@@ -559,9 +712,26 @@ struct MutantExecutorTests {
         let cacheDir = URL(fileURLWithPath: dir.path).appendingPathComponent(CacheStore.directoryName)
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
-        let mutantA = makeMutant(id: "m0", filePath: "/tmp/Foo.swift", isSchematizable: true)
-        let mutantB = makeMutant(
-            id: "m1", filePath: "/tmp/Foo.swift", isSchematizable: true, mutatedContent: "let y = false")
+        let mutantA = makeMutantDescriptor(
+            id: "m0",
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let mutantB = makeMutantDescriptor(
+            id: "m1",
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let y = false"
+        )
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
         await cacheStore.store(status: .survived, for: MutantCacheKey.make(for: mutantA))
         await cacheStore.store(status: .killed(by: "T"), for: MutantCacheKey.make(for: mutantB))
@@ -571,10 +741,10 @@ struct MutantExecutorTests {
         try await cacheStore.persistMetadata(metadata)
 
         let executor = MutantExecutor(
-            configuration: makeConfiguration(projectPath: dir.path, quiet: false),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, quiet: false),
             launcher: MockProcessLauncher(exitCode: 1)
         )
-        let input = makeInput(projectPath: dir.path, mutants: [mutantA, mutantB])
+        let input = makeRunnerInput(projectPath: dir.path, mutants: [mutantA, mutantB])
 
         let output = await captureOutput {
             _ = try? await executor.execute(input)
@@ -591,20 +761,37 @@ struct MutantExecutorTests {
         let fooFile = dir.appendingPathComponent("Foo.swift")
         try "let x = true".write(to: fooFile, atomically: true, encoding: .utf8)
 
-        let config = makeConfigurationSPM(projectPath: dir.path)
+        let config = makeRunnerConfiguration(projectPath: dir.path, projectType: .spm)
         let executor = MutantExecutor(
             configuration: config,
             launcher: SPMRetryExcludingErrorsMock()
         )
 
-        let validMutant = makeMutant(id: "m0", filePath: fooFile.path, isSchematizable: true)
-        let missingMutant = makeMutant(
+        let validMutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: fooFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let missingMutant = makeMutantDescriptor(
             id: "m1",
             filePath: dir.appendingPathComponent("NonExistent.swift").path,
-            isSchematizable: true
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
         )
-        let input = makeInputSPM(
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [
                 SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false")
             ],
@@ -614,85 +801,5 @@ struct MutantExecutorTests {
         let results = try await executor.execute(input)
 
         #expect(results.count == 2)
-    }
-
-    private func makeConfiguration(
-        projectPath: String,
-        noCache: Bool = false,
-        quiet: Bool = true
-    ) -> RunnerConfiguration {
-        RunnerConfiguration(
-            projectPath: projectPath,
-            build: .init(
-                projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
-                timeout: 60, concurrency: 1, noCache: noCache),
-            reporting: .init(quiet: quiet),
-            filter: .init(excludePatterns: [], operators: [])
-        )
-    }
-
-    private func makeConfigurationSPM(projectPath: String) -> RunnerConfiguration {
-        RunnerConfiguration(
-            projectPath: projectPath,
-            build: .init(projectType: .spm, timeout: 60, concurrency: 1, noCache: false),
-            reporting: .init(quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
-        )
-    }
-
-    private func makeInput(
-        projectPath: String,
-        schematizedFiles: [SchematizedFile] = [],
-        mutants: [MutantDescriptor] = []
-    ) -> RunnerInput {
-        RunnerInput(
-            projectPath: projectPath,
-            projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
-            timeout: 60,
-            concurrency: 1,
-            noCache: false,
-            schematizedFiles: schematizedFiles,
-            supportFileContent: "",
-            mutants: mutants
-        )
-    }
-
-    private func makeInputSPM(
-        projectPath: String,
-        schematizedFiles: [SchematizedFile] = [],
-        mutants: [MutantDescriptor] = []
-    ) -> RunnerInput {
-        RunnerInput(
-            projectPath: projectPath,
-            projectType: .spm,
-            timeout: 60,
-            concurrency: 1,
-            noCache: false,
-            schematizedFiles: schematizedFiles,
-            supportFileContent: "",
-            mutants: mutants
-        )
-    }
-
-    private func makeMutant(
-        id: String,
-        filePath: String,
-        isSchematizable: Bool,
-        mutatedContent: String? = "let x = false"
-    ) -> MutantDescriptor {
-        MutantDescriptor(
-            id: id,
-            filePath: filePath,
-            line: 1,
-            column: 1,
-            utf8Offset: 0,
-            originalText: "true",
-            mutatedText: "false",
-            operatorIdentifier: "BooleanLiteralReplacement",
-            replacementKind: .booleanLiteral,
-            description: "true → false",
-            isSchematizable: isSchematizable,
-            mutatedSourceContent: mutatedContent
-        )
     }
 }

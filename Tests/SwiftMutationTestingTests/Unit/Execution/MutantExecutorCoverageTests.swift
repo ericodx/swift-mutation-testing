@@ -14,12 +14,23 @@ struct MutantExecutorCoverageTests {
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: ThrowingDuringTestMock()
         )
-        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
-        let input = makeInputSPM(
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
             mutants: [mutant]
         )
@@ -38,12 +49,23 @@ struct MutantExecutorCoverageTests {
         try "let x = true".write(to: fooFile, atomically: true, encoding: .utf8)
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: SPMErrorWithoutLineNumberMock()
         )
-        let mutant = makeMutant(id: "m0", filePath: fooFile.path, isSchematizable: true)
-        let input = makeInputSPM(
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: fooFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
+        )
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false")],
             mutants: [mutant]
         )
@@ -72,16 +94,23 @@ struct MutantExecutorCoverageTests {
             + "}"
 
         let executor = MutantExecutor(
-            configuration: makeConfigurationSPM(projectPath: dir.path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
             launcher: SPMSingleCaseExclusionMock()
         )
-        let mutant = makeMutant(
+        let mutant = makeMutantDescriptor(
             id: "swift-mutation-testing_0",
             filePath: fooFile.path,
-            isSchematizable: true
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false"
         )
-        let input = makeInputSPM(
+        let input = makeRunnerInput(
             projectPath: dir.path,
+            projectType: .spm,
             schematizedFiles: [
                 SchematizedFile(originalPath: fooFile.path, schematizedContent: schematized)
             ],
@@ -91,53 +120,5 @@ struct MutantExecutorCoverageTests {
         let results = try await executor.execute(input)
 
         #expect(results.count == 1)
-    }
-
-    private func makeConfigurationSPM(projectPath: String) -> RunnerConfiguration {
-        RunnerConfiguration(
-            projectPath: projectPath,
-            build: .init(projectType: .spm, timeout: 60, concurrency: 1, noCache: false),
-            reporting: .init(quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
-        )
-    }
-
-    private func makeInputSPM(
-        projectPath: String,
-        schematizedFiles: [SchematizedFile] = [],
-        mutants: [MutantDescriptor] = []
-    ) -> RunnerInput {
-        RunnerInput(
-            projectPath: projectPath,
-            projectType: .spm,
-            timeout: 60,
-            concurrency: 1,
-            noCache: false,
-            schematizedFiles: schematizedFiles,
-            supportFileContent: "",
-            mutants: mutants
-        )
-    }
-
-    private func makeMutant(
-        id: String,
-        filePath: String,
-        isSchematizable: Bool,
-        mutatedContent: String? = "let x = false"
-    ) -> MutantDescriptor {
-        MutantDescriptor(
-            id: id,
-            filePath: filePath,
-            line: 1,
-            column: 1,
-            utf8Offset: 0,
-            originalText: "true",
-            mutatedText: "false",
-            operatorIdentifier: "BooleanLiteralReplacement",
-            replacementKind: .booleanLiteral,
-            description: "true → false",
-            isSchematizable: isSchematizable,
-            mutatedSourceContent: mutatedContent
-        )
     }
 }
