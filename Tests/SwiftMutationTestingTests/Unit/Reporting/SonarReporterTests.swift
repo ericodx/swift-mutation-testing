@@ -16,10 +16,14 @@ struct SonarReporterTests {
 
         let summary = RunnerSummary(
             results: [
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived),
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .noCoverage),
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "t")),
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .unviable),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .survived),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .noCoverage),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .killed(by: "t")),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .unviable),
             ],
             totalDuration: 0
         )
@@ -41,7 +45,10 @@ struct SonarReporterTests {
         let outputPath = dir.appendingPathComponent("sonar.json").path
         let reporter = SonarReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .survived)
+            ],
             totalDuration: 0
         )
 
@@ -62,7 +69,10 @@ struct SonarReporterTests {
         let outputPath = dir.appendingPathComponent("sonar.json").path
         let reporter = SonarReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .noCoverage)],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .noCoverage)
+            ],
             totalDuration: 0
         )
 
@@ -84,7 +94,10 @@ struct SonarReporterTests {
         let projectRoot = "/abs/MyApp"
         let reporter = SonarReporter(outputPath: outputPath, projectRoot: projectRoot)
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .survived)
+            ],
             totalDuration: 0
         )
 
@@ -96,26 +109,5 @@ struct SonarReporterTests {
         let location = issues?.first?["primaryLocation"] as? [String: Any]
 
         #expect(location?["filePath"] as? String == "/Sources/Calc.swift")
-    }
-
-    private func makeResult(filePath: String, status: ExecutionStatus) -> ExecutionResult {
-        ExecutionResult(
-            descriptor: MutantDescriptor(
-                id: "1",
-                filePath: filePath,
-                line: 3,
-                column: 24,
-                utf8Offset: 0,
-                originalText: "+",
-                mutatedText: "-",
-                operatorIdentifier: "ArithmeticOperatorReplacement",
-                replacementKind: .binaryOperator,
-                description: "+ → -",
-                isSchematizable: false,
-                mutatedSourceContent: nil
-            ),
-            status: status,
-            testDuration: 0
-        )
     }
 }

@@ -6,7 +6,17 @@ import Testing
 struct RunnerSummaryTests {
     @Test("Given results with all statuses, when properties accessed, then killed includes crashes")
     func groupsPartitionResultsByStatus() {
-        let summary = RunnerSummary(results: makeResults(), totalDuration: 10)
+        let summary = RunnerSummary(
+            results: [
+                makeExecutionResult(status: .killed(by: "Suite.test")),
+                makeExecutionResult(status: .killedByCrash),
+                makeExecutionResult(status: .survived),
+                makeExecutionResult(status: .unviable),
+                makeExecutionResult(status: .timeout),
+                makeExecutionResult(status: .noCoverage),
+            ],
+            totalDuration: 10
+        )
 
         #expect(summary.killed.count == 2)
         #expect(summary.survived.count == 1)
@@ -18,11 +28,11 @@ struct RunnerSummaryTests {
     @Test("Given killed and survived mutants, when score computed, then unviable is excluded from denominator")
     func scoreExcludesUnviableFromDenominator() {
         let results = [
-            makeResult(status: .killed(by: "Suite.test")),
-            makeResult(status: .killed(by: "Suite.test")),
-            makeResult(status: .killed(by: "Suite.test")),
-            makeResult(status: .survived),
-            makeResult(status: .unviable),
+            makeExecutionResult(status: .killed(by: "Suite.test")),
+            makeExecutionResult(status: .killed(by: "Suite.test")),
+            makeExecutionResult(status: .killed(by: "Suite.test")),
+            makeExecutionResult(status: .survived),
+            makeExecutionResult(status: .unviable),
         ]
         let summary = RunnerSummary(results: results, totalDuration: 0)
 
@@ -31,7 +41,7 @@ struct RunnerSummaryTests {
 
     @Test("Given no scoreable mutants, when score computed, then score is 100")
     func scoreIsHundredWhenDenominatorIsZero() {
-        let summary = RunnerSummary(results: [makeResult(status: .unviable)], totalDuration: 0)
+        let summary = RunnerSummary(results: [makeExecutionResult(status: .unviable)], totalDuration: 0)
 
         #expect(summary.score == 100.0)
     }
@@ -39,9 +49,9 @@ struct RunnerSummaryTests {
     @Test("Given results from two files, when resultsByFile accessed, then results are grouped by file path")
     func resultsByFileGroupsByFilePath() {
         let results = [
-            makeResult(filePath: "/a/Foo.swift", status: .survived),
-            makeResult(filePath: "/a/Foo.swift", status: .killed(by: "t")),
-            makeResult(filePath: "/a/Bar.swift", status: .survived),
+            makeExecutionResult(filePath: "/a/Foo.swift", status: .survived),
+            makeExecutionResult(filePath: "/a/Foo.swift", status: .killed(by: "t")),
+            makeExecutionResult(filePath: "/a/Bar.swift", status: .survived),
         ]
         let summary = RunnerSummary(results: results, totalDuration: 0)
 
@@ -51,10 +61,10 @@ struct RunnerSummaryTests {
 
     @Test("Given mixed cached and fresh results, when score computed, then score reflects combined state")
     func scoreFromMixedCachedAndFreshResults() {
-        let cachedKilled = makeResult(status: .killed(by: "T1"))
-        let cachedSurvived = makeResult(status: .survived)
-        let freshKilled = makeResult(status: .killed(by: "T2"))
-        let freshSurvived = makeResult(status: .survived)
+        let cachedKilled = makeExecutionResult(status: .killed(by: "T1"))
+        let cachedSurvived = makeExecutionResult(status: .survived)
+        let freshKilled = makeExecutionResult(status: .killed(by: "T2"))
+        let freshSurvived = makeExecutionResult(status: .survived)
 
         let summary = RunnerSummary(
             results: [cachedKilled, cachedSurvived, freshKilled, freshSurvived],
@@ -64,37 +74,5 @@ struct RunnerSummaryTests {
         #expect(summary.killed.count == 2)
         #expect(summary.survived.count == 2)
         #expect(summary.score == 50.0)
-    }
-
-    private func makeResults() -> [ExecutionResult] {
-        [
-            makeResult(status: .killed(by: "Suite.test")),
-            makeResult(status: .killedByCrash),
-            makeResult(status: .survived),
-            makeResult(status: .unviable),
-            makeResult(status: .timeout),
-            makeResult(status: .noCoverage),
-        ]
-    }
-
-    private func makeResult(filePath: String = "/tmp/Foo.swift", status: ExecutionStatus) -> ExecutionResult {
-        ExecutionResult(descriptor: makeDescriptor(filePath: filePath), status: status, testDuration: 0)
-    }
-
-    private func makeDescriptor(filePath: String = "/tmp/Foo.swift") -> MutantDescriptor {
-        MutantDescriptor(
-            id: "m0",
-            filePath: filePath,
-            line: 1,
-            column: 1,
-            utf8Offset: 0,
-            originalText: "+",
-            mutatedText: "-",
-            operatorIdentifier: "ArithmeticOperatorReplacement",
-            replacementKind: .binaryOperator,
-            description: "+ → -",
-            isSchematizable: false,
-            mutatedSourceContent: nil
-        )
     }
 }
