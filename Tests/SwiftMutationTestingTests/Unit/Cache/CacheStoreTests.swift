@@ -11,7 +11,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 0)
+        let key = makeMutantCacheKey(utf8Offset: 0)
 
         await store.store(status: .survived, for: key)
 
@@ -25,7 +25,7 @@ struct CacheStoreTests {
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
 
-        #expect(await store.result(for: makeKey(utf8Offset: 0)) == nil)
+        #expect(await store.result(for: makeMutantCacheKey(utf8Offset: 0)) == nil)
     }
 
     @Test("Given entries stored and persisted, when new store loads same path, then same entries are returned")
@@ -34,7 +34,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let storePath = dir.appendingPathComponent("cache.json").path
-        let key = makeKey(utf8Offset: 5)
+        let key = makeMutantCacheKey(utf8Offset: 5)
 
         let first = CacheStore(storePath: storePath)
         await first.store(status: .killed(by: "Suite.test"), for: key)
@@ -52,7 +52,7 @@ struct CacheStoreTests {
 
         try await store.load()
 
-        #expect(await store.result(for: makeKey(utf8Offset: 0)) == nil)
+        #expect(await store.result(for: makeMutantCacheKey(utf8Offset: 0)) == nil)
     }
 
     @Test("Given entry with killerTestFile persisted, when loaded, then killerTestFile is preserved")
@@ -61,7 +61,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let storePath = dir.appendingPathComponent("cache.json").path
-        let key = makeKey(utf8Offset: 10)
+        let key = makeMutantCacheKey(utf8Offset: 10)
 
         let first = CacheStore(storePath: storePath)
         await first.store(status: .killed(by: "Suite.test"), for: key, killerTestFile: "Tests/SuiteTests.swift")
@@ -80,7 +80,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let storePath = dir.appendingPathComponent("cache.json").path
-        let key = makeKey(utf8Offset: 11)
+        let key = makeMutantCacheKey(utf8Offset: 11)
 
         let store = CacheStore(storePath: storePath)
         await store.store(status: .killed(by: "Suite.test"), for: key)
@@ -196,7 +196,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 20)
+        let key = makeMutantCacheKey(utf8Offset: 20)
         await store.store(status: .killed(by: "FooTests.test"), for: key, killerTestFile: "Tests/FooTests.swift")
 
         let diff = TestFileDiff(added: [], modified: ["Tests/BarTests.swift"], removed: [])
@@ -211,7 +211,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 21)
+        let key = makeMutantCacheKey(utf8Offset: 21)
         await store.store(status: .killed(by: "FooTests.test"), for: key, killerTestFile: "Tests/FooTests.swift")
 
         let diff = TestFileDiff(added: [], modified: ["Tests/FooTests.swift"], removed: [])
@@ -226,7 +226,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 22)
+        let key = makeMutantCacheKey(utf8Offset: 22)
         await store.store(status: .killed(by: "UnknownTest"), for: key)
 
         let diff = TestFileDiff(added: ["Tests/NewTests.swift"], modified: [], removed: [])
@@ -241,7 +241,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 23)
+        let key = makeMutantCacheKey(utf8Offset: 23)
         await store.store(status: .survived, for: key)
 
         let diff = TestFileDiff(added: ["Tests/NewTests.swift"], modified: [], removed: [])
@@ -256,7 +256,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 24)
+        let key = makeMutantCacheKey(utf8Offset: 24)
         await store.store(status: .survived, for: key)
 
         let diff = TestFileDiff(added: [], modified: [], removed: [])
@@ -271,7 +271,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 25)
+        let key = makeMutantCacheKey(utf8Offset: 25)
         await store.store(status: .unviable, for: key)
 
         let diff = TestFileDiff(
@@ -287,7 +287,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 26)
+        let key = makeMutantCacheKey(utf8Offset: 26)
         await store.store(status: .killedByCrash, for: key)
 
         let diff = TestFileDiff(
@@ -303,7 +303,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 27)
+        let key = makeMutantCacheKey(utf8Offset: 27)
         await store.store(status: .noCoverage, for: key)
 
         let diff = TestFileDiff(added: ["Tests/New.swift"], modified: [], removed: [])
@@ -318,7 +318,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 28)
+        let key = makeMutantCacheKey(utf8Offset: 28)
         await store.store(status: .timeout, for: key)
 
         let diff = TestFileDiff(added: [], modified: ["Tests/Changed.swift"], removed: [])
@@ -333,7 +333,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeKey(utf8Offset: 29)
+        let key = makeMutantCacheKey(utf8Offset: 29)
         await store.store(status: .killed(by: "OldTests.test"), for: key, killerTestFile: "Tests/OldTests.swift")
 
         let diff = TestFileDiff(added: [], modified: [], removed: ["Tests/OldTests.swift"])
@@ -348,9 +348,9 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let killedKey = makeKey(utf8Offset: 30)
-        let survivedKey = makeKey(utf8Offset: 31)
-        let unrelatedKilledKey = makeKey(utf8Offset: 32)
+        let killedKey = makeMutantCacheKey(utf8Offset: 30)
+        let survivedKey = makeMutantCacheKey(utf8Offset: 31)
+        let unrelatedKilledKey = makeMutantCacheKey(utf8Offset: 32)
         await store.store(
             status: .killed(by: "OldTests.test"), for: killedKey, killerTestFile: "Tests/OldTests.swift")
         await store.store(status: .survived, for: survivedKey)
@@ -377,7 +377,7 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let storePath = dir.appendingPathComponent("cache.json").path
-        let key = makeKey(utf8Offset: 33)
+        let key = makeMutantCacheKey(utf8Offset: 33)
 
         let store = CacheStore(storePath: storePath)
         await store.store(status: .killed(by: "SomeTest.test"), for: key)
@@ -400,9 +400,9 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let killedKey = makeKey(utf8Offset: 34)
-        let survivedKey = makeKey(utf8Offset: 35)
-        let noCoverageKey = makeKey(utf8Offset: 36)
+        let killedKey = makeMutantCacheKey(utf8Offset: 34)
+        let survivedKey = makeMutantCacheKey(utf8Offset: 35)
+        let noCoverageKey = makeMutantCacheKey(utf8Offset: 36)
         await store.store(
             status: .killed(by: "FooTests.test"), for: killedKey, killerTestFile: "Tests/FooTests.swift")
         await store.store(status: .survived, for: survivedKey)
@@ -422,9 +422,9 @@ struct CacheStoreTests {
         defer { FileHelpers.cleanup(dir) }
 
         let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let affectedKey = makeKey(utf8Offset: 37)
-        let unaffectedKey = makeKey(utf8Offset: 38)
-        let survivedKey = makeKey(utf8Offset: 39)
+        let affectedKey = makeMutantCacheKey(utf8Offset: 37)
+        let unaffectedKey = makeMutantCacheKey(utf8Offset: 38)
+        let survivedKey = makeMutantCacheKey(utf8Offset: 39)
         await store.store(
             status: .killed(by: "Gone.test"), for: affectedKey, killerTestFile: "Tests/GoneTests.swift")
         await store.store(
@@ -457,13 +457,4 @@ struct CacheStoreTests {
         #expect(!diff.hasChanges)
     }
 
-    private func makeKey(utf8Offset: Int) -> MutantCacheKey {
-        MutantCacheKey(
-            fileContentHash: "abc",
-            operatorIdentifier: "binaryOperator",
-            utf8Offset: utf8Offset,
-            originalText: "a + b",
-            mutatedText: "a - b"
-        )
-    }
 }
