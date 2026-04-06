@@ -15,7 +15,11 @@ struct JsonReporterTests {
         let reporter = JsonReporter(outputPath: outputPath, projectRoot: projectRoot)
 
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "Suite.test"))],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24,
+                    status: .killed(by: "Suite.test"))
+            ],
             totalDuration: 5
         )
 
@@ -38,7 +42,10 @@ struct JsonReporterTests {
         let outputPath = dir.appendingPathComponent("mutation.json").path
         let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "t"))],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .killed(by: "t"))
+            ],
             totalDuration: 0
         )
 
@@ -61,7 +68,10 @@ struct JsonReporterTests {
         let outputPath = dir.appendingPathComponent("mutation.json").path
         let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .survived)
+            ],
             totalDuration: 0
         )
 
@@ -83,7 +93,11 @@ struct JsonReporterTests {
         let outputPath = dir.appendingPathComponent("mutation.json").path
         let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "MySuite.myTest"))],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24,
+                    status: .killed(by: "MySuite.myTest"))
+            ],
             totalDuration: 0
         )
 
@@ -106,7 +120,10 @@ struct JsonReporterTests {
         let outputPath = dir.appendingPathComponent("mutation.json").path
         let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .survived)
+            ],
             totalDuration: 0
         )
 
@@ -130,7 +147,10 @@ struct JsonReporterTests {
         let outputPath = dir.appendingPathComponent("mutation.json").path
         let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .survived)
+            ],
             totalDuration: 0
         )
 
@@ -153,7 +173,10 @@ struct JsonReporterTests {
         let outputPath = dir.appendingPathComponent("mutation.json").path
         let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24, status: .survived)
+            ],
             totalDuration: 0
         )
 
@@ -172,26 +195,5 @@ struct JsonReporterTests {
         let endColumn = end?["column"] as? Int ?? 0
 
         #expect(endColumn == startColumn + "+".count)
-    }
-
-    private func makeResult(filePath: String, status: ExecutionStatus) -> ExecutionResult {
-        ExecutionResult(
-            descriptor: MutantDescriptor(
-                id: "1",
-                filePath: filePath,
-                line: 3,
-                column: 24,
-                utf8Offset: 0,
-                originalText: "+",
-                mutatedText: "-",
-                operatorIdentifier: "ArithmeticOperatorReplacement",
-                replacementKind: .binaryOperator,
-                description: "+ → -",
-                isSchematizable: false,
-                mutatedSourceContent: nil
-            ),
-            status: status,
-            testDuration: 0
-        )
     }
 }

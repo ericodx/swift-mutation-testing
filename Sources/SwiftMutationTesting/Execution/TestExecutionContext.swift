@@ -3,5 +3,4 @@ struct TestExecutionContext: Sendable {
     let sandbox: Sandbox
     let pool: SimulatorPool
     let configuration: RunnerConfiguration
-    let testFilesHash: String
 }

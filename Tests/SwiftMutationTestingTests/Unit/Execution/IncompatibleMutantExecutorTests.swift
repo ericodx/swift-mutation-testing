@@ -10,17 +10,25 @@ struct IncompatibleMutantExecutorTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let executor = makeExecutor(in: dir, exitCode: 1)
-        let pool = makePool()
+        let executor = makeIncompatibleMutantExecutor(in: dir, exitCode: 1)
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
-        let mutants = (0 ..< 3).map { makeMutant(id: "m\($0)", content: "let x = \($0)") }
+        let mutants = (0 ..< 3).map {
+            makeMutantDescriptor(
+                id: "m\($0)",
+                originalText: "a + b",
+                mutatedText: "a - b",
+                operatorIdentifier: "binaryOperator",
+                description: "Replace + with -",
+                mutatedSourceContent: "let x = \($0)"
+            )
+        }
 
         let results = try await executor.execute(
             mutants,
-            configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
+            pool: pool
         )
 
         #expect(results.count == 3)
@@ -32,17 +40,23 @@ struct IncompatibleMutantExecutorTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let executor = makeExecutor(in: dir, exitCode: 0)
-        let pool = makePool()
+        let executor = makeIncompatibleMutantExecutor(in: dir, exitCode: 0)
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
-        let mutant = makeMutant(id: "m0", content: nil)
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: nil
+        )
 
         let results = try await executor.execute(
             [mutant],
-            configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
+            pool: pool
         )
 
         #expect(results.first?.status == .unviable)
@@ -53,17 +67,23 @@ struct IncompatibleMutantExecutorTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let executor = makeExecutor(in: dir, exitCode: 1)
-        let pool = makePool()
+        let executor = makeIncompatibleMutantExecutor(in: dir, exitCode: 1)
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
-        let mutant = makeMutant(id: "m0", content: "let x = 1")
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: "let x = 1"
+        )
 
         let results = try await executor.execute(
             [mutant],
-            configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
+            pool: pool
         )
 
         #expect(results.first?.status == .unviable)
@@ -75,49 +95,49 @@ struct IncompatibleMutantExecutorTests {
         defer { FileHelpers.cleanup(dir) }
 
         let cacheStore = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let pool = makePool()
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
-        let mutant = makeMutant(id: "m0", content: "let x = 1")
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: "let x = 1"
+        )
 
         let firstExecutor = IncompatibleMutantExecutor(
             deps: ExecutionDeps(
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
         _ = try await firstExecutor.execute(
             [mutant],
-            configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
+            pool: pool
         )
 
-        let noCacheConfig = RunnerConfiguration(
-            projectPath: dir.path,
-            build: .init(
-                projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
-                timeout: 60, concurrency: 1, noCache: true),
-            reporting: .init(quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
-        )
+        let noCacheConfig = makeRunnerConfiguration(projectPath: dir.path, noCache: true)
         let secondExecutor = IncompatibleMutantExecutor(
             deps: ExecutionDeps(
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
         let results = try await secondExecutor.execute(
             [mutant],
             configuration: noCacheConfig,
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.first?.status == .unviable)
@@ -128,31 +148,30 @@ struct IncompatibleMutantExecutorTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let pool = makePool()
+        let pool = makeSimulatorPool()
         try await pool.setUp()
-        let config = RunnerConfiguration(
-            projectPath: dir.path,
-            build: .init(
-                projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
-                testTarget: "AppTests", timeout: 60, concurrency: 1, noCache: false),
-            reporting: .init(quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
-        )
+        let config = makeRunnerConfiguration(projectPath: dir.path, testTarget: "AppTests")
         let executor = IncompatibleMutantExecutor(
-            deps: ExecutionDeps(
+            deps: makeExecutionDeps(
                 launcher: MockProcessLauncher(exitCode: 1),
-                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-                reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                cacheStorePath: dir.appendingPathComponent("cache.json").path
             ),
             sandboxFactory: SandboxFactory()
         )
 
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: "let x = 1"
+        )
+
         let results = try await executor.execute(
-            [makeMutant(id: "m0", content: "let x = 1")],
+            [mutant],
             configuration: config,
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
         #expect(results.count == 1)
     }
@@ -163,25 +182,32 @@ struct IncompatibleMutantExecutorTests {
         defer { FileHelpers.cleanup(dir) }
 
         let cacheStore = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let pool = makePool()
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
-        let mutant = makeMutant(id: "m0", content: "let x = 1")
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: "let x = 1"
+        )
 
         let firstExecutor = IncompatibleMutantExecutor(
             deps: ExecutionDeps(
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
         _ = try await firstExecutor.execute(
             [mutant],
-            configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
+            pool: pool
         )
 
         let secondExecutor = IncompatibleMutantExecutor(
@@ -189,15 +215,15 @@ struct IncompatibleMutantExecutorTests {
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
         let results = try await secondExecutor.execute(
             [mutant],
-            configuration: makeConfiguration(projectPath: "/non/existent/path"),
-            pool: pool,
-            testFilesHash: "hash"
+            configuration: makeRunnerConfiguration(projectPath: "/non/existent/path"),
+            pool: pool
         )
 
         #expect(results.first?.status == .unviable)
@@ -209,23 +235,29 @@ struct IncompatibleMutantExecutorTests {
         defer { FileHelpers.cleanup(dir) }
 
         let executor = IncompatibleMutantExecutor(
-            deps: ExecutionDeps(
+            deps: makeExecutionDeps(
                 launcher: MockProcessLauncher(exitCode: 0, throwsOnCapture: true),
-                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-                reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                cacheStorePath: dir.appendingPathComponent("cache.json").path
             ),
             sandboxFactory: SandboxFactory()
         )
-        let pool = makePool()
+        let pool = makeSimulatorPool()
         try await pool.setUp()
+
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: "let x = 1"
+        )
 
         await #expect(throws: (any Error).self) {
             try await executor.execute(
-                [makeMutant(id: "m0", content: "let x = 1")],
-                configuration: makeConfiguration(projectPath: dir.path),
-                pool: pool,
-                testFilesHash: "hash"
+                [mutant],
+                configuration: makeRunnerConfiguration(projectPath: dir.path),
+                pool: pool
             )
         }
     }
@@ -238,15 +270,24 @@ struct IncompatibleMutantExecutorTests {
         let sourceFile = dir.appendingPathComponent("Foo.swift")
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        let executor = makeExecutorSPM(in: dir, launcher: MockProcessLauncher(exitCode: 0))
-        let pool = makePool()
+        let executor = makeIncompatibleMutantExecutorSPM(in: dir, launcher: MockProcessLauncher(exitCode: 0))
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: "let x = 1"
+        )
+
         let results = try await executor.execute(
-            [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = 1")],
-            configuration: makeConfigurationSPM(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            [mutant],
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            pool: pool
         )
 
         #expect(results.first?.status == .survived)
@@ -261,16 +302,25 @@ struct IncompatibleMutantExecutorTests {
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
         let output = #"Test "myTest" failed after 0.001 seconds."#
-        let executor = makeExecutorSPM(
+        let executor = makeIncompatibleMutantExecutorSPM(
             in: dir, launcher: SPMBuildSuccessTestFailureMock(failureOutput: output))
-        let pool = makePool()
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: "let x = 1"
+        )
+
         let results = try await executor.execute(
-            [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = 1")],
-            configuration: makeConfigurationSPM(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            [mutant],
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            pool: pool
         )
 
         #expect(results.first?.status == .killed(by: "myTest"))
@@ -284,20 +334,35 @@ struct IncompatibleMutantExecutorTests {
         let sourceFile = dir.appendingPathComponent("Foo.swift")
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        let executor = makeExecutorSPM(in: dir, launcher: MockProcessLauncher(exitCode: 1))
-        let pool = makePool()
+        let executor = makeIncompatibleMutantExecutorSPM(in: dir, launcher: MockProcessLauncher(exitCode: 1))
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
         let mutants = [
-            makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = false"),
-            makeMutant(id: "m1", filePath: sourceFile.path, content: "let x = 0"),
+            makeMutantDescriptor(
+                id: "m0",
+                filePath: sourceFile.path,
+                originalText: "a + b",
+                mutatedText: "a - b",
+                operatorIdentifier: "binaryOperator",
+                description: "Replace + with -",
+                mutatedSourceContent: "let x = false"
+            ),
+            makeMutantDescriptor(
+                id: "m1",
+                filePath: sourceFile.path,
+                originalText: "a + b",
+                mutatedText: "a - b",
+                operatorIdentifier: "binaryOperator",
+                description: "Replace + with -",
+                mutatedSourceContent: "let x = 0"
+            ),
         ]
 
         let results = try await executor.execute(
             mutants,
-            configuration: makeConfigurationSPM(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            pool: pool
         )
 
         #expect(results.count == 2)
@@ -313,23 +378,31 @@ struct IncompatibleMutantExecutorTests {
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
         let output = #"Test "myTest" failed after 0.001 seconds."#
-        let executor = makeExecutorSPM(
+        let executor = makeIncompatibleMutantExecutorSPM(
             in: dir, launcher: SPMBuildSuccessTestFailureMock(failureOutput: output))
-        let pool = makePool()
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
-        let config = RunnerConfiguration(
+        let config = makeRunnerConfiguration(
             projectPath: dir.path,
-            build: .init(projectType: .spm, testTarget: "FooTests", timeout: 60, concurrency: 1, noCache: false),
-            reporting: .init(quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
+            projectType: .spm,
+            testTarget: "FooTests"
+        )
+
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: "let x = 1"
         )
 
         let results = try await executor.execute(
-            [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = 1")],
+            [mutant],
             configuration: config,
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.count == 1)
@@ -343,89 +416,27 @@ struct IncompatibleMutantExecutorTests {
         let sourceFile = dir.appendingPathComponent("Foo.swift")
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        let executor = makeExecutorSPM(
+        let executor = makeIncompatibleMutantExecutorSPM(
             in: dir, launcher: SPMInitialBuildSuccessThenFailMock())
-        let pool = makePool()
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
-        let results = try await executor.execute(
-            [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = INVALID")],
-            configuration: makeConfigurationSPM(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
-        )
-
-        #expect(results.first?.status == .unviable)
-    }
-
-    private func makeExecutorSPM(
-        in dir: URL,
-        launcher: any ProcessLaunching
-    ) -> IncompatibleMutantExecutor {
-        IncompatibleMutantExecutor(
-            deps: ExecutionDeps(
-                launcher: launcher,
-                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-                reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
-            ),
-            sandboxFactory: SandboxFactory()
-        )
-    }
-
-    private func makeConfigurationSPM(projectPath: String) -> RunnerConfiguration {
-        RunnerConfiguration(
-            projectPath: projectPath,
-            build: .init(projectType: .spm, timeout: 60, concurrency: 1, noCache: false),
-            reporting: .init(quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
-        )
-    }
-
-    private func makeExecutor(in dir: URL, exitCode: Int32) -> IncompatibleMutantExecutor {
-        IncompatibleMutantExecutor(
-            deps: ExecutionDeps(
-                launcher: MockProcessLauncher(exitCode: exitCode),
-                cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
-                reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 3)
-            ),
-            sandboxFactory: SandboxFactory()
-        )
-    }
-
-    private func makePool() -> SimulatorPool {
-        SimulatorPool(
-            baseUDID: nil, size: 1,
-            destination: "platform=macOS", launcher: MockProcessLauncher(exitCode: 0)
-        )
-    }
-
-    private func makeConfiguration(projectPath: String) -> RunnerConfiguration {
-        RunnerConfiguration(
-            projectPath: projectPath,
-            build: .init(
-                projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
-                timeout: 60, concurrency: 1, noCache: false),
-            reporting: .init(quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
-        )
-    }
-
-    private func makeMutant(id: String, filePath: String = "/tmp/Foo.swift", content: String?) -> MutantDescriptor {
-        MutantDescriptor(
-            id: id,
-            filePath: filePath,
-            line: 1,
-            column: 1,
-            utf8Offset: 0,
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
             originalText: "a + b",
             mutatedText: "a - b",
             operatorIdentifier: "binaryOperator",
-            replacementKind: .binaryOperator,
             description: "Replace + with -",
-            isSchematizable: false,
-            mutatedSourceContent: content
+            mutatedSourceContent: "let x = INVALID"
         )
+
+        let results = try await executor.execute(
+            [mutant],
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            pool: pool
+        )
+
+        #expect(results.first?.status == .unviable)
     }
 }

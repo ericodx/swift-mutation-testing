@@ -3,4 +3,5 @@ struct ExecutionDeps: Sendable {
     let cacheStore: CacheStore
     let reporter: any ProgressReporter
     let counter: MutationCounter
+    let killerTestFileResolver: KillerTestFileResolver
 }

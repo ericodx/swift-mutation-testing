@@ -7,22 +7,6 @@ import Testing
 struct FileDiscoveryStageTests {
     private let stage = FileDiscoveryStage()
 
-    private func makeInput(
-        sourcesPath: String,
-        excludePatterns: [String] = []
-    ) -> DiscoveryInput {
-        DiscoveryInput(
-            projectPath: sourcesPath,
-            projectType: .xcode(scheme: "Scheme", destination: "platform=macOS"),
-            timeout: 60,
-            concurrency: 4,
-            noCache: false,
-            sourcesPath: sourcesPath,
-            excludePatterns: excludePatterns,
-            operators: []
-        )
-    }
-
     @Test("Given swift file in directory, when run, then returns it as SourceFile")
     func findsSwiftFile() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
@@ -30,7 +14,7 @@ struct FileDiscoveryStageTests {
 
         try FileHelpers.write("let x = 1", named: "Foo.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Foo.swift"))
@@ -44,7 +28,7 @@ struct FileDiscoveryStageTests {
 
         try FileHelpers.write("hello", named: "README.md", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.isEmpty)
     }
@@ -57,7 +41,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("class T {}", named: "FooTests.swift", in: dir)
         try FileHelpers.write("class S {}", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -73,7 +57,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("class T {}", named: "Foo.swift", in: testsDir)
         try FileHelpers.write("class S {}", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -89,7 +73,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("let x = 1", named: "Artifact.swift", in: buildDir)
         try FileHelpers.write("let y = 2", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -108,7 +92,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("let x = 1", named: "GeneratedAssetSymbols.swift", in: derivedDir)
         try FileHelpers.write("let y = 2", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -124,7 +108,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("let x = 1", named: "Cached.swift", in: cacheDir)
         try FileHelpers.write("let y = 2", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -140,7 +124,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("let x = 1", named: "Generated.swift", in: derivedData)
         try FileHelpers.write("let y = 2", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -154,7 +138,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("class M {}", named: "UserMock.swift", in: dir)
         try FileHelpers.write("class S {}", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -168,7 +152,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("class S {}", named: "UserSpec.swift", in: dir)
         try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -184,7 +168,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("class M {}", named: "UserMock.swift", in: mocksDir)
         try FileHelpers.write("class S {}", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -200,7 +184,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("class S {}", named: "NetworkStub.swift", in: stubsDir)
         try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -216,7 +200,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("class F {}", named: "ServiceFake.swift", in: fakesDir)
         try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -232,7 +216,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("class H {}", named: "Helper.swift", in: helpersDir)
         try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -248,7 +232,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("class H {}", named: "Support.swift", in: supportDir)
         try FileHelpers.write("class P {}", named: "Source.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Source.swift"))
@@ -264,7 +248,7 @@ struct FileDiscoveryStageTests {
         try FileHelpers.write("let x = 1", named: "Model.swift", in: generatedDir)
         try FileHelpers.write("let y = 2", named: "Source.swift", in: dir)
 
-        let input = makeInput(sourcesPath: dir.path, excludePatterns: ["/Generated/"])
+        let input = makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path, excludePatterns: ["/Generated/"])
         let result = try stage.run(input: input)
 
         #expect(result.count == 1)
@@ -281,7 +265,7 @@ struct FileDiscoveryStageTests {
         try Data(invalidBytes).write(to: invalidFile)
         try FileHelpers.write("let x = 1", named: "Valid.swift", in: dir)
 
-        let result = try stage.run(input: makeInput(sourcesPath: dir.path))
+        let result = try stage.run(input: makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path))
 
         #expect(result.count == 1)
         #expect(result[0].path.hasSuffix("Valid.swift"))
@@ -289,7 +273,8 @@ struct FileDiscoveryStageTests {
 
     @Test("Given non-existent sources path, when run, then throws sourcesPathNotFound")
     func throwsWhenPathNotFound() {
-        let input = makeInput(sourcesPath: "/nonexistent/path/that/does/not/exist")
+        let input = makeDiscoveryInput(
+            projectPath: "/nonexistent/path/that/does/not/exist", sourcesPath: "/nonexistent/path/that/does/not/exist")
         #expect(throws: FileDiscoveryError.sourcesPathNotFound("/nonexistent/path/that/does/not/exist")) {
             try stage.run(input: input)
         }

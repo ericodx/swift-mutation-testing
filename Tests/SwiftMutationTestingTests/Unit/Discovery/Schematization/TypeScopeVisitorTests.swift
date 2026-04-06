@@ -4,41 +4,34 @@ import Testing
 
 @Suite("TypeScopeVisitor")
 struct TypeScopeVisitorTests {
-    private func makeVisitor(_ code: String) -> TypeScopeVisitor {
-        let source = makeParsedSource(code)
-        let visitor = TypeScopeVisitor()
-        visitor.walk(source.syntax)
-        return visitor
-    }
-
     @Test("Given function with body, when walked, then records one scope")
     func functionWithBodyRecordsOneScope() {
-        let visitor = makeVisitor("func f() { let x = 1 }")
+        let visitor = makeTypeScopeVisitor("func f() { let x = 1 }")
         #expect(visitor.scopes.count == 1)
     }
 
     @Test("Given protocol function requirement without body, when walked, then records no scope")
     func functionWithoutBodyRecordsNoScope() {
-        let visitor = makeVisitor("protocol P { func f() }")
+        let visitor = makeTypeScopeVisitor("protocol P { func f() }")
         #expect(visitor.scopes.isEmpty)
     }
 
     @Test("Given two functions, when walked, then records two scopes")
     func twoFunctionsRecordTwoScopes() {
-        let visitor = makeVisitor("func f() { } func g() { }")
+        let visitor = makeTypeScopeVisitor("func f() { } func g() { }")
         #expect(visitor.scopes.count == 2)
     }
 
     @Test("Given nested function, when walked, then records two scopes")
     func nestedFunctionRecordsTwoScopes() {
         let code = "func outer() { func inner() { let x = 1 } }"
-        let visitor = makeVisitor(code)
+        let visitor = makeTypeScopeVisitor(code)
         #expect(visitor.scopes.count == 2)
     }
 
     @Test("Given initializer with body, when walked, then records one scope")
     func initializerRecordsScope() {
-        let visitor = makeVisitor("struct S { init() { let x = 1 } }")
+        let visitor = makeTypeScopeVisitor("struct S { init() { let x = 1 } }")
         #expect(visitor.scopes.count == 1)
     }
 
@@ -99,7 +92,7 @@ struct TypeScopeVisitorTests {
 
     @Test("Given deinitializer with body, when walked, then records one scope")
     func deinitializerRecordsScope() {
-        let visitor = makeVisitor("class C { deinit { let x = 1 } }")
+        let visitor = makeTypeScopeVisitor("class C { deinit { let x = 1 } }")
         #expect(visitor.scopes.count == 1)
     }
 
@@ -117,7 +110,7 @@ struct TypeScopeVisitorTests {
 
     @Test("Given offset outside all scopes, when innermostScope queried, then returns nil")
     func innermostScopeReturnsNilForOffsetOutsideAllScopes() {
-        let visitor = makeVisitor("func f() { let x = 1 }")
+        let visitor = makeTypeScopeVisitor("func f() { let x = 1 }")
         #expect(visitor.innermostScope(containing: 99999) == nil)
     }
 

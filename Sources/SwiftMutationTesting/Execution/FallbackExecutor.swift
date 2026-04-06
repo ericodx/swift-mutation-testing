@@ -2,11 +2,11 @@ struct FallbackExecutor: Sendable {
     let deps: ExecutionDeps
     let configuration: RunnerConfiguration
 
-    func execute(input: RunnerInput, pool: SimulatorPool, testFilesHash: String) async throws -> [ExecutionResult] {
+    func execute(input: RunnerInput, pool: SimulatorPool) async throws -> [ExecutionResult] {
         var results: [ExecutionResult] = []
 
         for file in input.schematizedFiles {
-            results += try await processFile(file: file, input: input, pool: pool, testFilesHash: testFilesHash)
+            results += try await processFile(file: file, input: input, pool: pool)
         }
 
         return results
@@ -15,14 +15,13 @@ struct FallbackExecutor: Sendable {
     private func processFile(
         file: SchematizedFile,
         input: RunnerInput,
-        pool: SimulatorPool,
-        testFilesHash: String
+        pool: SimulatorPool
     ) async throws -> [ExecutionResult] {
         let fileMutants = input.mutants.filter { $0.filePath == file.originalPath && $0.isSchematizable }
 
         guard !fileMutants.isEmpty else { return [] }
 
-        if let cached = await cachedResults(for: fileMutants, testFilesHash: testFilesHash) {
+        if let cached = await cachedResults(for: fileMutants) {
             return cached
         }
 
@@ -48,7 +47,7 @@ struct FallbackExecutor: Sendable {
             } catch {
                 await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
                 try? sandbox.cleanup()
-                return await markUnviable(mutants: fileMutants, testFilesHash: testFilesHash)
+                return await markUnviable(mutants: fileMutants)
             }
 
         case .spm:
@@ -61,13 +60,13 @@ struct FallbackExecutor: Sendable {
             } catch {
                 await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
                 try? sandbox.cleanup()
-                return await markUnviable(mutants: fileMutants, testFilesHash: testFilesHash)
+                return await markUnviable(mutants: fileMutants)
             }
         }
 
         let context = TestExecutionContext(
             artifact: artifact, sandbox: sandbox, pool: pool,
-            configuration: configuration, testFilesHash: testFilesHash
+            configuration: configuration
         )
 
         let stageResults = try await TestExecutionStage(deps: deps).execute(mutants: fileMutants, in: context)
@@ -75,14 +74,18 @@ struct FallbackExecutor: Sendable {
         return stageResults
     }
 
-    private func cachedResults(for mutants: [MutantDescriptor], testFilesHash: String) async -> [ExecutionResult]? {
+    private func cachedResults(for mutants: [MutantDescriptor]) async -> [ExecutionResult]? {
         guard !configuration.build.noCache else { return nil }
 
         var results: [ExecutionResult] = []
         for mutant in mutants {
-            let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+            let key = MutantCacheKey.make(for: mutant)
             guard let status = await deps.cacheStore.result(for: key) else { return nil }
-            results.append(ExecutionResult(descriptor: mutant, status: status, testDuration: 0))
+            let killerTestFile = await deps.cacheStore.killerTestFile(for: key)
+            results.append(
+                ExecutionResult(
+                    descriptor: mutant, status: status, testDuration: 0, killerTestFile: killerTestFile
+                ))
         }
 
         for result in results {
@@ -96,10 +99,10 @@ struct FallbackExecutor: Sendable {
         return results
     }
 
-    private func markUnviable(mutants: [MutantDescriptor], testFilesHash: String) async -> [ExecutionResult] {
+    private func markUnviable(mutants: [MutantDescriptor]) async -> [ExecutionResult] {
         var results: [ExecutionResult] = []
         for mutant in mutants {
-            let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+            let key = MutantCacheKey.make(for: mutant)
             await deps.cacheStore.store(status: .unviable, for: key)
             let index = await deps.counter.increment()
             await deps.reporter.report(

@@ -13,59 +13,39 @@ struct FallbackExecutorTests {
         let sourceFile = dir.appendingPathComponent("Foo.swift")
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
 
-        let config = RunnerConfiguration(
-            projectPath: dir.path,
-            build: .init(projectType: .spm, timeout: 60, concurrency: 1, noCache: false),
-            reporting: .init(quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
-        )
+        let config = makeRunnerConfiguration(projectPath: dir.path, projectType: .spm)
 
         let launcher = MockProcessLauncher(exitCode: 0)
-        let counter = MutationCounter(total: 1)
-        let cacheStore = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let deps = ExecutionDeps(
+        let deps = makeExecutionDeps(
             launcher: launcher,
-            cacheStore: cacheStore,
-            reporter: MockProgressReporter(),
-            counter: counter
+            cacheStorePath: dir.appendingPathComponent("cache.json").path
         )
 
-        let pool = SimulatorPool(
-            baseUDID: nil, size: 1,
-            destination: "platform=macOS", launcher: MockProcessLauncher(exitCode: 0)
-        )
+        let pool = makeSimulatorPool()
         try await pool.setUp()
 
-        let mutant = MutantDescriptor(
+        let mutant = makeMutantDescriptor(
             id: "m0",
             filePath: sourceFile.path,
-            line: 1,
-            column: 1,
-            utf8Offset: 0,
             originalText: "true",
             mutatedText: "false",
             operatorIdentifier: "BooleanLiteralReplacement",
             replacementKind: .booleanLiteral,
             description: "true → false",
-            isSchematizable: true,
-            mutatedSourceContent: nil
+            isSchematizable: true
         )
 
-        let input = RunnerInput(
+        let input = makeRunnerInput(
             projectPath: dir.path,
             projectType: .spm,
-            timeout: 60,
-            concurrency: 1,
-            noCache: false,
             schematizedFiles: [
                 SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")
             ],
-            supportFileContent: "",
             mutants: [mutant]
         )
 
         let executor = FallbackExecutor(deps: deps, configuration: config)
-        let results = try await executor.execute(input: input, pool: pool, testFilesHash: "hash")
+        let results = try await executor.execute(input: input, pool: pool)
 
         #expect(results.count == 1)
     }

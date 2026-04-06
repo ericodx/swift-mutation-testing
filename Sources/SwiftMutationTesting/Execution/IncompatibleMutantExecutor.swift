@@ -7,21 +7,24 @@ struct IncompatibleMutantExecutor: Sendable {
     func execute(
         _ mutants: [MutantDescriptor],
         configuration: RunnerConfiguration,
-        pool: SimulatorPool,
-        testFilesHash: String
+        pool: SimulatorPool
     ) async throws -> [ExecutionResult] {
         var results: [ExecutionResult] = []
         var pending: [MutantDescriptor] = []
 
         for mutant in mutants {
-            let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+            let key = MutantCacheKey.make(for: mutant)
 
             if !configuration.build.noCache, let cachedStatus = await deps.cacheStore.result(for: key) {
+                let killerTestFile = await deps.cacheStore.killerTestFile(for: key)
                 let total = deps.counter.total
                 let index = await deps.counter.increment()
                 await deps.reporter.report(
                     .mutantFinished(descriptor: mutant, status: cachedStatus, index: index, total: total))
-                results.append(ExecutionResult(descriptor: mutant, status: cachedStatus, testDuration: 0))
+                results.append(
+                    ExecutionResult(
+                        descriptor: mutant, status: cachedStatus, testDuration: 0, killerTestFile: killerTestFile
+                    ))
                 continue
             }
 
@@ -30,10 +33,10 @@ struct IncompatibleMutantExecutor: Sendable {
 
         if case .spm = configuration.build.projectType {
             results += try await runSPMShared(
-                mutants: pending, configuration: configuration, testFilesHash: testFilesHash)
+                mutants: pending, configuration: configuration)
         } else if case .xcode(let scheme, _) = configuration.build.projectType {
             for mutant in pending {
-                let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+                let key = MutantCacheKey.make(for: mutant)
                 results.append(
                     try await run(
                         mutant: mutant, key: key, scheme: scheme,
@@ -46,15 +49,14 @@ struct IncompatibleMutantExecutor: Sendable {
 
     private func runSPMShared(
         mutants: [MutantDescriptor],
-        configuration: RunnerConfiguration,
-        testFilesHash: String
+        configuration: RunnerConfiguration
     ) async throws -> [ExecutionResult] {
         var results: [ExecutionResult] = []
 
         let viable = mutants.filter { $0.mutatedSourceContent != nil }
 
         for mutant in mutants where mutant.mutatedSourceContent == nil {
-            let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+            let key = MutantCacheKey.make(for: mutant)
             results.append(await storeAndReport(mutant: mutant, key: key, sandbox: nil))
         }
 
@@ -75,7 +77,7 @@ struct IncompatibleMutantExecutor: Sendable {
 
         guard initialBuild.exitCode == 0 else {
             for mutant in viable {
-                let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+                let key = MutantCacheKey.make(for: mutant)
                 results.append(await storeAndReport(mutant: mutant, key: key, sandbox: nil))
             }
             try? sandbox.cleanup()
@@ -83,7 +85,7 @@ struct IncompatibleMutantExecutor: Sendable {
         }
 
         for mutant in viable {
-            let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+            let key = MutantCacheKey.make(for: mutant)
             let result = try await runInSharedSandbox(
                 mutant: mutant,
                 key: key,
@@ -173,13 +175,16 @@ struct IncompatibleMutantExecutor: Sendable {
 
         let outcome = SPMResultParser().parse(exitCode: test.exitCode, output: test.output)
         let status = outcome.asExecutionStatus
+        let killerTestFile = resolveKillerTestFile(status: status)
 
         let index = await deps.counter.increment()
         await deps.reporter.report(
             .mutantFinished(descriptor: mutant, status: status, index: index, total: deps.counter.total))
-        await deps.cacheStore.store(status: status, for: key)
+        await deps.cacheStore.store(status: status, for: key, killerTestFile: killerTestFile)
 
-        return ExecutionResult(descriptor: mutant, status: status, testDuration: duration)
+        return ExecutionResult(
+            descriptor: mutant, status: status, testDuration: duration, killerTestFile: killerTestFile
+        )
     }
 
     private func run(
@@ -221,11 +226,14 @@ struct IncompatibleMutantExecutor: Sendable {
         try? sandbox.cleanup()
 
         let status = outcome.asExecutionStatus
+        let killerTestFile = resolveKillerTestFile(status: status)
         let total = deps.counter.total
         let index = await deps.counter.increment()
         await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: total))
-        await deps.cacheStore.store(status: status, for: key)
-        return ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
+        await deps.cacheStore.store(status: status, for: key, killerTestFile: killerTestFile)
+        return ExecutionResult(
+            descriptor: mutant, status: status, testDuration: launched.duration, killerTestFile: killerTestFile
+        )
     }
 
     private func launchXcode(
@@ -269,6 +277,11 @@ struct IncompatibleMutantExecutor: Sendable {
             xcresultPath: xcresultPath,
             duration: Date().timeIntervalSince(start)
         )
+    }
+
+    private func resolveKillerTestFile(status: ExecutionStatus) -> String? {
+        guard case .killed(let testName) = status else { return nil }
+        return deps.killerTestFileResolver.resolve(testName: testName)
     }
 
     private func storeAndReport(

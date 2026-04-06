@@ -14,7 +14,10 @@ struct HtmlReporterTests {
         let reporter = HtmlReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
 
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "t"))],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .killed(by: "t"))
+            ],
             totalDuration: 1
         )
 
@@ -34,7 +37,10 @@ struct HtmlReporterTests {
         let reporter = HtmlReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
 
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived)],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .survived)
+            ],
             totalDuration: 0
         )
 
@@ -55,8 +61,10 @@ struct HtmlReporterTests {
 
         let summary = RunnerSummary(
             results: [
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "t")),
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .killed(by: "t")),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .survived),
             ],
             totalDuration: 0
         )
@@ -76,7 +84,10 @@ struct HtmlReporterTests {
         let outputPath = dir.appendingPathComponent("report.html").path
         let reporter = HtmlReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
-            results: [makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "t"))],
+            results: [
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .killed(by: "t"))
+            ],
             totalDuration: 0
         )
 
@@ -96,8 +107,10 @@ struct HtmlReporterTests {
         let reporter = HtmlReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
             results: [
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "t")),
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .killed(by: "t")),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .survived),
             ],
             totalDuration: 0
         )
@@ -117,9 +130,12 @@ struct HtmlReporterTests {
         let reporter = HtmlReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
         let summary = RunnerSummary(
             results: [
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived),
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .survived),
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .killed(by: "t")),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .survived),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .survived),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 10, status: .killed(by: "t")),
             ],
             totalDuration: 0
         )
@@ -140,8 +156,10 @@ struct HtmlReporterTests {
 
         let summary = RunnerSummary(
             results: [
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", line: 20, status: .survived),
-                makeResult(filePath: "/abs/MyApp/Sources/Calc.swift", line: 5, status: .survived),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 20, column: 10, status: .survived),
+                makeExecutionResult(
+                    id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", line: 5, column: 10, status: .survived),
             ],
             totalDuration: 0
         )
@@ -154,30 +172,5 @@ struct HtmlReporterTests {
         let line20Index = html.range(of: "<td>20</td>")?.lowerBound
         #expect(line5Index != nil && line20Index != nil)
         #expect(line5Index! < line20Index!)
-    }
-
-    private func makeResult(filePath: String, status: ExecutionStatus) -> ExecutionResult {
-        makeResult(filePath: filePath, line: 3, status: status)
-    }
-
-    private func makeResult(filePath: String, line: Int, status: ExecutionStatus) -> ExecutionResult {
-        ExecutionResult(
-            descriptor: MutantDescriptor(
-                id: "1",
-                filePath: filePath,
-                line: line,
-                column: 10,
-                utf8Offset: 0,
-                originalText: "+",
-                mutatedText: "-",
-                operatorIdentifier: "ArithmeticOperatorReplacement",
-                replacementKind: .binaryOperator,
-                description: "+ → -",
-                isSchematizable: false,
-                mutatedSourceContent: nil
-            ),
-            status: status,
-            testDuration: 0
-        )
     }
 }

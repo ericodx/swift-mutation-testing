@@ -10,7 +10,7 @@ struct WriteReportsTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let configuration = makeConfiguration(projectPath: dir.path)
+        let configuration = makeRunnerConfiguration(projectPath: dir.path)
 
         SwiftMutationTesting.writeReports(makeEmptySummary(), configuration: configuration)
 
@@ -24,7 +24,7 @@ struct WriteReportsTests {
         defer { FileHelpers.cleanup(dir) }
 
         let outputPath = dir.appendingPathComponent("report.json").path
-        let configuration = makeConfiguration(projectPath: dir.path, output: outputPath)
+        let configuration = makeRunnerConfiguration(projectPath: dir.path, output: outputPath)
 
         SwiftMutationTesting.writeReports(makeEmptySummary(), configuration: configuration)
 
@@ -37,7 +37,7 @@ struct WriteReportsTests {
         defer { FileHelpers.cleanup(dir) }
 
         let outputPath = dir.appendingPathComponent("report.html").path
-        let configuration = makeConfiguration(projectPath: dir.path, htmlOutput: outputPath)
+        let configuration = makeRunnerConfiguration(projectPath: dir.path, htmlOutput: outputPath)
 
         SwiftMutationTesting.writeReports(makeEmptySummary(), configuration: configuration)
 
@@ -50,7 +50,7 @@ struct WriteReportsTests {
         defer { FileHelpers.cleanup(dir) }
 
         let outputPath = dir.appendingPathComponent("sonar.json").path
-        let configuration = makeConfiguration(projectPath: dir.path, sonarOutput: outputPath)
+        let configuration = makeRunnerConfiguration(projectPath: dir.path, sonarOutput: outputPath)
 
         SwiftMutationTesting.writeReports(makeEmptySummary(), configuration: configuration)
 
@@ -59,7 +59,7 @@ struct WriteReportsTests {
 
     @Test("Given invalid json output path, when writeReports called, then does not crash")
     func invalidJsonOutputPathDoesNotCrash() {
-        let configuration = makeConfiguration(
+        let configuration = makeRunnerConfiguration(
             projectPath: "/tmp",
             output: "/nonexistent/dir/report.json"
         )
@@ -68,7 +68,7 @@ struct WriteReportsTests {
 
     @Test("Given invalid html output path, when writeReports called, then does not crash")
     func invalidHtmlOutputPathDoesNotCrash() {
-        let configuration = makeConfiguration(
+        let configuration = makeRunnerConfiguration(
             projectPath: "/tmp",
             htmlOutput: "/nonexistent/dir/report.html"
         )
@@ -77,7 +77,7 @@ struct WriteReportsTests {
 
     @Test("Given invalid sonar output path, when writeReports called, then does not crash")
     func invalidSonarOutputPathDoesNotCrash() {
-        let configuration = makeConfiguration(
+        let configuration = makeRunnerConfiguration(
             projectPath: "/tmp",
             sonarOutput: "/nonexistent/dir/sonar.json"
         )
@@ -92,7 +92,7 @@ struct WriteReportsTests {
         let jsonPath = dir.appendingPathComponent("report.json").path
         let htmlPath = dir.appendingPathComponent("report.html").path
         let sonarPath = dir.appendingPathComponent("sonar.json").path
-        let configuration = makeConfiguration(
+        let configuration = makeRunnerConfiguration(
             projectPath: dir.path,
             output: jsonPath,
             htmlOutput: htmlPath,
@@ -106,19 +106,4 @@ struct WriteReportsTests {
         #expect(FileManager.default.fileExists(atPath: sonarPath))
     }
 
-    private func makeConfiguration(
-        projectPath: String,
-        output: String? = nil,
-        htmlOutput: String? = nil,
-        sonarOutput: String? = nil
-    ) -> RunnerConfiguration {
-        RunnerConfiguration(
-            projectPath: projectPath,
-            build: .init(
-                projectType: .xcode(scheme: "MyScheme", destination: "platform=macOS"),
-                timeout: 60, concurrency: 1, noCache: false),
-            reporting: .init(output: output, htmlOutput: htmlOutput, sonarOutput: sonarOutput, quiet: true),
-            filter: .init(excludePatterns: [], operators: [])
-        )
-    }
 }

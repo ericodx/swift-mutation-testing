@@ -12,7 +12,7 @@ struct DiscoveryPipelineTests {
         defer { FileHelpers.cleanup(dir) }
         try FileHelpers.write("func f() { let x = true }", named: "Source.swift", in: dir)
 
-        let input = makeInput(projectPath: dir.path, sourcesPath: dir.path)
+        let input = makeDiscoveryInput(projectPath: dir.path, sourcesPath: dir.path)
         let result = try await pipeline.run(input: input)
 
         #expect(result.projectPath == dir.path)
@@ -21,7 +21,7 @@ struct DiscoveryPipelineTests {
 
     @Test("Given non-existent sources path, when run, then throws")
     func nonExistentSourcesPathThrows() async {
-        let input = makeInput(projectPath: "/nonexistent", sourcesPath: "/nonexistent/does/not/exist")
+        let input = makeDiscoveryInput(projectPath: "/nonexistent", sourcesPath: "/nonexistent/does/not/exist")
 
         await #expect(throws: (any Error).self) {
             _ = try await pipeline.run(input: input)
@@ -34,7 +34,7 @@ struct DiscoveryPipelineTests {
         defer { FileHelpers.cleanup(dir) }
         try FileHelpers.write("func f() { let x = true }", named: "Source.swift", in: dir)
 
-        let input = makeInput(sourcesPath: dir.path, operators: ["BooleanLiteralReplacement"])
+        let input = makeDiscoveryInput(sourcesPath: dir.path, operators: ["BooleanLiteralReplacement"])
         let result = try await pipeline.run(input: input)
 
         #expect(result.mutants.allSatisfy { $0.operatorIdentifier == "BooleanLiteralReplacement" })
@@ -46,7 +46,7 @@ struct DiscoveryPipelineTests {
         defer { FileHelpers.cleanup(dir) }
         try FileHelpers.write("func f() { let x = true }", named: "Source.swift", in: dir)
 
-        let input = makeInput(sourcesPath: dir.path, operators: ["BooleanLiteralReplacement"])
+        let input = makeDiscoveryInput(sourcesPath: dir.path, operators: ["BooleanLiteralReplacement"])
         let result = try await pipeline.run(input: input)
 
         #expect(!result.schematizedFiles.isEmpty)
@@ -89,7 +89,7 @@ struct DiscoveryPipelineTests {
             in: dir
         )
 
-        let input = makeInput(sourcesPath: dir.path, operators: [])
+        let input = makeDiscoveryInput(sourcesPath: dir.path, operators: [])
         let result = try await pipeline.run(input: input)
 
         let identifiers = Set(result.mutants.map { $0.operatorIdentifier })
@@ -102,30 +102,10 @@ struct DiscoveryPipelineTests {
         defer { FileHelpers.cleanup(dir) }
         try FileHelpers.write("func f() { let x = true }", named: "Generated.swift", in: dir)
 
-        let input = makeInput(sourcesPath: dir.path, excludePatterns: ["Generated.swift"])
+        let input = makeDiscoveryInput(sourcesPath: dir.path, excludePatterns: ["Generated.swift"])
         let result = try await pipeline.run(input: input)
 
         #expect(result.mutants.isEmpty)
         #expect(result.schematizedFiles.isEmpty)
-    }
-}
-
-extension DiscoveryPipelineTests {
-    private func makeInput(
-        projectPath: String = "/project",
-        sourcesPath: String,
-        excludePatterns: [String] = [],
-        operators: [String] = []
-    ) -> DiscoveryInput {
-        DiscoveryInput(
-            projectPath: projectPath,
-            projectType: .xcode(scheme: "Scheme", destination: "platform=macOS"),
-            timeout: 60,
-            concurrency: 4,
-            noCache: false,
-            sourcesPath: sourcesPath,
-            excludePatterns: excludePatterns,
-            operators: operators
-        )
     }
 }

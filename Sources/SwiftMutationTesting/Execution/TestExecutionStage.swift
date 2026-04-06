@@ -15,7 +15,7 @@ struct TestExecutionStage: Sendable {
             var iterator = mutants.makeIterator()
 
             while activeTasks < concurrency, let mutant = iterator.next() {
-                let key = MutantCacheKey.make(for: mutant, testFilesHash: context.testFilesHash)
+                let key = MutantCacheKey.make(for: mutant)
                 group.addTask { try await self.run(mutant: mutant, key: key, in: context) }
                 activeTasks += 1
             }
@@ -23,7 +23,7 @@ struct TestExecutionStage: Sendable {
             for try await result in group {
                 results.append(result)
                 if let next = iterator.next() {
-                    let key = MutantCacheKey.make(for: next, testFilesHash: context.testFilesHash)
+                    let key = MutantCacheKey.make(for: next)
                     group.addTask { try await self.run(mutant: next, key: key, in: context) }
                 }
             }
@@ -38,7 +38,10 @@ struct TestExecutionStage: Sendable {
         in context: TestExecutionContext
     ) async throws -> ExecutionResult {
         if !context.configuration.build.noCache, let cached = await deps.cacheStore.result(for: key) {
-            let result = ExecutionResult(descriptor: mutant, status: cached, testDuration: 0)
+            let killerTestFile = await deps.cacheStore.killerTestFile(for: key)
+            let result = ExecutionResult(
+                descriptor: mutant, status: cached, testDuration: 0, killerTestFile: killerTestFile
+            )
             let index = await deps.counter.increment()
             await deps.reporter.report(
                 .mutantFinished(descriptor: mutant, status: cached, index: index, total: deps.counter.total))
@@ -70,8 +73,12 @@ struct TestExecutionStage: Sendable {
         try? FileManager.default.removeItem(atPath: launched.xcresultPath)
 
         let status = outcome.asExecutionStatus
-        let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
-        await deps.cacheStore.store(status: status, for: key)
+        let killerTestFile = resolveKillerTestFile(status: status)
+        let result = ExecutionResult(
+            descriptor: mutant, status: status, testDuration: launched.duration,
+            killerTestFile: killerTestFile
+        )
+        await deps.cacheStore.store(status: status, for: key, killerTestFile: killerTestFile)
         let index = await deps.counter.increment()
         await deps.reporter.report(
             .mutantFinished(
@@ -99,8 +106,12 @@ struct TestExecutionStage: Sendable {
         let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
         await context.pool.release(slot)
         let status = outcome.asExecutionStatus
-        let result = ExecutionResult(descriptor: mutant, status: status, testDuration: launched.duration)
-        await deps.cacheStore.store(status: status, for: key)
+        let killerTestFile = resolveKillerTestFile(status: status)
+        let result = ExecutionResult(
+            descriptor: mutant, status: status, testDuration: launched.duration,
+            killerTestFile: killerTestFile
+        )
+        await deps.cacheStore.store(status: status, for: key, killerTestFile: killerTestFile)
         let index = await deps.counter.increment()
         await deps.reporter.report(
             .mutantFinished(
@@ -109,6 +120,11 @@ struct TestExecutionStage: Sendable {
             )
         )
         return result
+    }
+
+    private func resolveKillerTestFile(status: ExecutionStatus) -> String? {
+        guard case .killed(let testName) = status else { return nil }
+        return deps.killerTestFileResolver.resolve(testName: testName)
     }
 
     private func launchSPM(
