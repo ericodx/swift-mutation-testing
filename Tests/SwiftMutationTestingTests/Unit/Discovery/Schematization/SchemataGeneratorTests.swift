@@ -7,14 +7,6 @@ import Testing
 struct SchemataGeneratorTests {
     private let generator = SchemataGenerator()
 
-    private func mutationsWithIndices(
-        _ source: ParsedSource,
-        op: any MutationOperator = BooleanLiteralReplacement(),
-        startIndex: Int = 0
-    ) -> [(index: Int, point: MutationPoint)] {
-        op.mutations(in: source).enumerated().map { (index: startIndex + $0.offset, point: $0.element) }
-    }
-
     @Test("Given one mutation, when generated, then produces switch with one case and default")
     func oneMutationProducesSwitchWithOneCaseAndDefault() {
         let source = makeParsedSource("func f() { let x = true }")

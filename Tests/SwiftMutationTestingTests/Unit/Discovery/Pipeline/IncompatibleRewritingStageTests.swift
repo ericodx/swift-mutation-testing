@@ -9,7 +9,7 @@ struct IncompatibleRewritingStageTests {
     @Test("Given mutation at file scope, when run, then descriptor is marked as incompatible")
     func fileScopeMutationIsIncompatible() {
         let source = makeParsedSource("let x = true", path: "a.swift")
-        let indexed = makeIndexed(source: source, operators: [BooleanLiteralReplacement()])
+        let indexed = makeIndexedMutationPoints(source: source, operators: [BooleanLiteralReplacement()])
         let descriptors = stage.run(indexed: indexed, sources: [source])
         #expect(!descriptors.isEmpty)
         #expect(descriptors.allSatisfy { !$0.isSchematizable })
@@ -19,7 +19,7 @@ struct IncompatibleRewritingStageTests {
     @Test("Given incompatible mutation, when run, then mutatedSourceContent contains the mutation applied")
     func incompatibleMutationContentHasMutationApplied() throws {
         let source = makeParsedSource("let x = true", path: "a.swift")
-        let indexed = makeIndexed(source: source, operators: [BooleanLiteralReplacement()])
+        let indexed = makeIndexedMutationPoints(source: source, operators: [BooleanLiteralReplacement()])
         let descriptors = stage.run(indexed: indexed, sources: [source])
         let content = try #require(descriptors.first?.mutatedSourceContent)
         #expect(content.contains("false"))
@@ -28,7 +28,7 @@ struct IncompatibleRewritingStageTests {
     @Test("Given schematizable mutation, when run, then returns no descriptors")
     func schematizableMutationProducesNoDescriptors() {
         let source = makeParsedSource("func f() { let x = true }", path: "a.swift")
-        let indexed = makeIndexed(source: source, operators: [BooleanLiteralReplacement()])
+        let indexed = makeIndexedMutationPoints(source: source, operators: [BooleanLiteralReplacement()])
         let descriptors = stage.run(indexed: indexed, sources: [source])
         #expect(descriptors.isEmpty)
     }
@@ -36,7 +36,7 @@ struct IncompatibleRewritingStageTests {
     @Test("Given mutation point for unknown file path, when run, then skips it")
     func mutationForUnknownFilePathIsSkipped() {
         let source = makeParsedSource("let x = true", path: "a.swift")
-        let indexed = makeIndexed(source: source, operators: [BooleanLiteralReplacement()])
+        let indexed = makeIndexedMutationPoints(source: source, operators: [BooleanLiteralReplacement()])
         let descriptors = stage.run(indexed: indexed, sources: [])
         #expect(descriptors.isEmpty)
     }
@@ -48,8 +48,4 @@ struct IncompatibleRewritingStageTests {
         #expect(descriptors.isEmpty)
     }
 
-    private func makeIndexed(source: ParsedSource, operators: [any MutationOperator]) -> [IndexedMutationPoint] {
-        let points = operators.flatMap { $0.mutations(in: source) }
-        return MutantIndexingStage().run(mutationPoints: points, sources: [source])
-    }
 }
