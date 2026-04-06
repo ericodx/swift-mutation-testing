@@ -17,7 +17,6 @@ struct MutantExecutor: Sendable {
         let pool: SimulatorPool
         let artifact: BuildArtifact?
         let schemaBuildExcluded: [MutantDescriptor]
-        let testFilesHash: String
     }
 
     private struct RetryContext {
@@ -34,22 +33,23 @@ struct MutantExecutor: Sendable {
             ? SilentProgressReporter()
             : ConsoleProgressReporter()
 
-        let cachePath = URL(fileURLWithPath: configuration.projectPath)
-            .appendingPathComponent("\(CacheStore.directoryName)/results.json").path
-        let cacheStore = CacheStore(storePath: cachePath)
-        try await cacheStore.load()
+        let (cacheStore, metadata, hasher) = try await prepareCacheStore(input: input)
 
-        let testFilesHash = TestFilesHasher().hash(projectPath: input.projectPath)
-
-        if let cached = await allCached(mutants: input.mutants, cacheStore: cacheStore, testFilesHash: testFilesHash) {
+        if let cached = await allCached(mutants: input.mutants, cacheStore: cacheStore) {
             await reporter.report(.loadedFromCache(mutantCount: cached.count))
+            try await cacheStore.persist()
+            try await cacheStore.persistMetadata(metadata)
             return cached
         }
 
         let schematizable = input.mutants.filter { $0.isSchematizable }
         let incompatible = input.mutants.filter { !$0.isSchematizable }
         let counter = MutationCounter(total: schematizable.count + incompatible.count)
-        let deps = ExecutionDeps(launcher: launcher, cacheStore: cacheStore, reporter: reporter, counter: counter)
+        let resolver = KillerTestFileResolver(testFilePaths: hasher.testFilePaths(projectPath: input.projectPath))
+        let deps = ExecutionDeps(
+            launcher: launcher, cacheStore: cacheStore, reporter: reporter,
+            counter: counter, killerTestFileResolver: resolver
+        )
 
         let sandbox = try await SandboxFactory().create(
             projectPath: input.projectPath,
@@ -71,8 +71,7 @@ struct MutantExecutor: Sendable {
                     sandbox: sandbox,
                     pool: pool,
                     artifact: artifact,
-                    schemaBuildExcluded: schemaBuildExcluded,
-                    testFilesHash: testFilesHash
+                    schemaBuildExcluded: schemaBuildExcluded
                 )
             )
         } catch {
@@ -84,8 +83,26 @@ struct MutantExecutor: Sendable {
         await pool.tearDown()
         try? sandbox.cleanup()
         try await cacheStore.persist()
+        try await cacheStore.persistMetadata(metadata)
 
         return results
+    }
+
+    private func prepareCacheStore(
+        input: RunnerInput
+    ) async throws -> (CacheStore, CacheStore.CacheMetadata, TestFilesHasher) {
+        let cachePath = URL(fileURLWithPath: configuration.projectPath)
+            .appendingPathComponent("\(CacheStore.directoryName)/results.json").path
+        let cacheStore = CacheStore(storePath: cachePath)
+        try await cacheStore.load()
+
+        let hasher = TestFilesHasher()
+        let currentTestHashes = hasher.hashPerFile(projectPath: input.projectPath)
+        let diff = try await cacheStore.changedTestFiles(current: currentTestHashes)
+        await cacheStore.invalidate(diff: diff)
+
+        let metadata = CacheStore.CacheMetadata(testFileHashes: currentTestHashes)
+        return (cacheStore, metadata, hasher)
     }
 
     private func runAllMutants(
@@ -97,7 +114,6 @@ struct MutantExecutor: Sendable {
         let pool = context.pool
         let artifact = context.artifact
         let schemaBuildExcluded = context.schemaBuildExcluded
-        let testFilesHash = context.testFilesHash
         let schematizable = input.mutants.filter { $0.isSchematizable }
         let incompatible = input.mutants.filter { !$0.isSchematizable }
 
@@ -111,7 +127,7 @@ struct MutantExecutor: Sendable {
             if let rerouted = rewriteForIncompatible(mutant, rewriter: rewriter, sourceCache: &sourceCache) {
                 reroutedToIncompatible.append(rerouted)
             } else {
-                let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+                let key = MutantCacheKey.make(for: mutant)
                 await deps.cacheStore.store(status: .unviable, for: key)
                 let index = await deps.counter.increment()
                 await deps.reporter.report(
@@ -129,15 +145,15 @@ struct MutantExecutor: Sendable {
             }
             let context = TestExecutionContext(
                 artifact: artifact, sandbox: sandbox, pool: pool,
-                configuration: configuration, testFilesHash: testFilesHash
+                configuration: configuration
             )
             results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
         } else if !testableSchematizable.isEmpty {
-            results += try await runFallback(deps: deps, input: input, pool: pool, testFilesHash: testFilesHash)
+            results += try await runFallback(deps: deps, input: input, pool: pool)
         }
 
         results += try await runIncompatible(
-            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool, testFilesHash: testFilesHash
+            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool
         )
 
         return results
@@ -145,16 +161,19 @@ struct MutantExecutor: Sendable {
 
     private func allCached(
         mutants: [MutantDescriptor],
-        cacheStore: CacheStore,
-        testFilesHash: String
+        cacheStore: CacheStore
     ) async -> [ExecutionResult]? {
         guard !configuration.build.noCache, !mutants.isEmpty else { return nil }
 
         var results: [ExecutionResult] = []
         for mutant in mutants {
-            let key = MutantCacheKey.make(for: mutant, testFilesHash: testFilesHash)
+            let key = MutantCacheKey.make(for: mutant)
             guard let status = await cacheStore.result(for: key) else { return nil }
-            results.append(ExecutionResult(descriptor: mutant, status: status, testDuration: 0))
+            let killerTestFile = await cacheStore.killerTestFile(for: key)
+            results.append(
+                ExecutionResult(
+                    descriptor: mutant, status: status, testDuration: 0, killerTestFile: killerTestFile
+                ))
         }
 
         return results
@@ -288,21 +307,19 @@ struct MutantExecutor: Sendable {
     private func runFallback(
         deps: ExecutionDeps,
         input: RunnerInput,
-        pool: SimulatorPool,
-        testFilesHash: String
+        pool: SimulatorPool
     ) async throws -> [ExecutionResult] {
         try await FallbackExecutor(deps: deps, configuration: configuration)
-            .execute(input: input, pool: pool, testFilesHash: testFilesHash)
+            .execute(input: input, pool: pool)
     }
 
     private func runIncompatible(
         deps: ExecutionDeps,
         mutants: [MutantDescriptor],
-        pool: SimulatorPool,
-        testFilesHash: String
+        pool: SimulatorPool
     ) async throws -> [ExecutionResult] {
         try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
-            .execute(mutants, configuration: configuration, pool: pool, testFilesHash: testFilesHash)
+            .execute(mutants, configuration: configuration, pool: pool)
     }
 
     private func validateSPMBaseline(sandbox: Sandbox, deps: ExecutionDeps) async {
