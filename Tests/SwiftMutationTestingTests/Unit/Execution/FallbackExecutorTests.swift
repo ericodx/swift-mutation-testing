@@ -27,7 +27,8 @@ struct FallbackExecutorTests {
             launcher: launcher,
             cacheStore: cacheStore,
             reporter: MockProgressReporter(),
-            counter: counter
+            counter: counter,
+            killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
         )
 
         let pool = SimulatorPool(
@@ -65,7 +66,7 @@ struct FallbackExecutorTests {
         )
 
         let executor = FallbackExecutor(deps: deps, configuration: config)
-        let results = try await executor.execute(input: input, pool: pool, testFilesHash: "hash")
+        let results = try await executor.execute(input: input, pool: pool)
 
         #expect(results.count == 1)
     }
