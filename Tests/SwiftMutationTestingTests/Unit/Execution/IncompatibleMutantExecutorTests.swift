@@ -19,8 +19,7 @@ struct IncompatibleMutantExecutorTests {
         let results = try await executor.execute(
             mutants,
             configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.count == 3)
@@ -41,8 +40,7 @@ struct IncompatibleMutantExecutorTests {
         let results = try await executor.execute(
             [mutant],
             configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.first?.status == .unviable)
@@ -62,8 +60,7 @@ struct IncompatibleMutantExecutorTests {
         let results = try await executor.execute(
             [mutant],
             configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.first?.status == .unviable)
@@ -85,15 +82,15 @@ struct IncompatibleMutantExecutorTests {
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
         _ = try await firstExecutor.execute(
             [mutant],
             configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         let noCacheConfig = RunnerConfiguration(
@@ -109,15 +106,15 @@ struct IncompatibleMutantExecutorTests {
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
         let results = try await secondExecutor.execute(
             [mutant],
             configuration: noCacheConfig,
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.first?.status == .unviable)
@@ -143,7 +140,8 @@ struct IncompatibleMutantExecutorTests {
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
@@ -151,8 +149,7 @@ struct IncompatibleMutantExecutorTests {
         let results = try await executor.execute(
             [makeMutant(id: "m0", content: "let x = 1")],
             configuration: config,
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
         #expect(results.count == 1)
     }
@@ -173,15 +170,15 @@ struct IncompatibleMutantExecutorTests {
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
         _ = try await firstExecutor.execute(
             [mutant],
             configuration: makeConfiguration(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         let secondExecutor = IncompatibleMutantExecutor(
@@ -189,15 +186,15 @@ struct IncompatibleMutantExecutorTests {
                 launcher: MockProcessLauncher(exitCode: 1),
                 cacheStore: cacheStore,
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
         let results = try await secondExecutor.execute(
             [mutant],
             configuration: makeConfiguration(projectPath: "/non/existent/path"),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.first?.status == .unviable)
@@ -213,7 +210,8 @@ struct IncompatibleMutantExecutorTests {
                 launcher: MockProcessLauncher(exitCode: 0, throwsOnCapture: true),
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
@@ -224,8 +222,7 @@ struct IncompatibleMutantExecutorTests {
             try await executor.execute(
                 [makeMutant(id: "m0", content: "let x = 1")],
                 configuration: makeConfiguration(projectPath: dir.path),
-                pool: pool,
-                testFilesHash: "hash"
+                pool: pool
             )
         }
     }
@@ -245,8 +242,7 @@ struct IncompatibleMutantExecutorTests {
         let results = try await executor.execute(
             [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = 1")],
             configuration: makeConfigurationSPM(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.first?.status == .survived)
@@ -269,8 +265,7 @@ struct IncompatibleMutantExecutorTests {
         let results = try await executor.execute(
             [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = 1")],
             configuration: makeConfigurationSPM(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.first?.status == .killed(by: "myTest"))
@@ -296,8 +291,7 @@ struct IncompatibleMutantExecutorTests {
         let results = try await executor.execute(
             mutants,
             configuration: makeConfigurationSPM(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.count == 2)
@@ -328,8 +322,7 @@ struct IncompatibleMutantExecutorTests {
         let results = try await executor.execute(
             [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = 1")],
             configuration: config,
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.count == 1)
@@ -351,8 +344,7 @@ struct IncompatibleMutantExecutorTests {
         let results = try await executor.execute(
             [makeMutant(id: "m0", filePath: sourceFile.path, content: "let x = INVALID")],
             configuration: makeConfigurationSPM(projectPath: dir.path),
-            pool: pool,
-            testFilesHash: "hash"
+            pool: pool
         )
 
         #expect(results.first?.status == .unviable)
@@ -367,7 +359,8 @@ struct IncompatibleMutantExecutorTests {
                 launcher: launcher,
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1)
+                counter: MutationCounter(total: 1),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
@@ -388,7 +381,8 @@ struct IncompatibleMutantExecutorTests {
                 launcher: MockProcessLauncher(exitCode: exitCode),
                 cacheStore: CacheStore(storePath: dir.appendingPathComponent("cache.json").path),
                 reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 3)
+                counter: MutationCounter(total: 3),
+                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [])
             ),
             sandboxFactory: SandboxFactory()
         )
