@@ -49,6 +49,23 @@ struct RunnerSummaryTests {
         #expect(summary.resultsByFile["/a/Bar.swift"]?.count == 1)
     }
 
+    @Test("Given mixed cached and fresh results, when score computed, then score reflects combined state")
+    func scoreFromMixedCachedAndFreshResults() {
+        let cachedKilled = makeResult(status: .killed(by: "T1"))
+        let cachedSurvived = makeResult(status: .survived)
+        let freshKilled = makeResult(status: .killed(by: "T2"))
+        let freshSurvived = makeResult(status: .survived)
+
+        let summary = RunnerSummary(
+            results: [cachedKilled, cachedSurvived, freshKilled, freshSurvived],
+            totalDuration: 5
+        )
+
+        #expect(summary.killed.count == 2)
+        #expect(summary.survived.count == 2)
+        #expect(summary.score == 50.0)
+    }
+
     private func makeResults() -> [ExecutionResult] {
         [
             makeResult(status: .killed(by: "Suite.test")),
