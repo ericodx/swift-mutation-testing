@@ -1,11 +1,6 @@
 import Foundation
 
 struct TestFilesHasher: Sendable {
-    func hash(projectPath: String) -> String {
-        let perFile = hashPerFile(projectPath: projectPath)
-        let combined = perFile.keys.sorted().compactMap { perFile[$0] }.joined()
-        return MutantCacheKey.hash(of: combined)
-    }
 
     func hashPerFile(projectPath: String) -> [String: String] {
         let projectURL = URL(fileURLWithPath: projectPath)
