@@ -73,7 +73,7 @@ struct MutantExecutorTests {
         try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
 
         let mutant = makeMutant(id: "m0", filePath: "/tmp/Foo.swift", isSchematizable: true)
-        let cacheKey = MutantCacheKey.make(for: mutant, testFilesHash: TestFilesHasher().hash(projectPath: dir.path))
+        let cacheKey = MutantCacheKey.make(for: mutant)
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
         await cacheStore.store(status: .survived, for: cacheKey)
         try await cacheStore.persist()
@@ -163,8 +163,7 @@ struct MutantExecutorTests {
         let incompatibleMutant = makeMutant(
             id: "m1", filePath: "/tmp/Other.swift", isSchematizable: false, mutatedContent: nil)
 
-        let testFilesHash = TestFilesHasher().hash(projectPath: dir.path)
-        let cacheKey = MutantCacheKey.make(for: schematizableMutant, testFilesHash: testFilesHash)
+        let cacheKey = MutantCacheKey.make(for: schematizableMutant)
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
         await cacheStore.store(status: .survived, for: cacheKey)
         try await cacheStore.persist()
@@ -480,6 +479,108 @@ struct MutantExecutorTests {
         let results = try await executor.execute(input)
 
         #expect(results.count == 2)
+    }
+
+    @Test(
+        "Given all mutants cached and no test files changed, when execute called, then returns from cache without building"
+    )
+    func allCachedWithUnchangedTestFilesReturnsCachedResults() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let cacheDir = URL(fileURLWithPath: dir.path).appendingPathComponent(CacheStore.directoryName)
+        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+
+        let mutant = makeMutant(id: "m0", filePath: "/tmp/Foo.swift", isSchematizable: true)
+        let cacheKey = MutantCacheKey.make(for: mutant)
+        let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
+        await cacheStore.store(status: .killed(by: "SomeTest"), for: cacheKey, killerTestFile: "Tests/SomeTest.swift")
+        try await cacheStore.persist()
+
+        let metadata = CacheStore.CacheMetadata(testFileHashes: [:])
+        try await cacheStore.persistMetadata(metadata)
+
+        let executor = MutantExecutor(
+            configuration: makeConfiguration(projectPath: dir.path),
+            launcher: MockProcessLauncher(exitCode: 1)
+        )
+        let input = makeInput(projectPath: dir.path, mutants: [mutant])
+
+        let results = try await executor.execute(input)
+
+        #expect(results.count == 1)
+        #expect(results[0].status == .killed(by: "SomeTest"))
+        #expect(results[0].killerTestFile == "Tests/SomeTest.swift")
+    }
+
+    @Test(
+        "Given cached survived mutant and test file changed, when execute called, then invalidation removes entry and falls through"
+    )
+    func invalidationRemovesSurvivedEntryWhenTestFileChanged() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let cacheDir = URL(fileURLWithPath: dir.path).appendingPathComponent(CacheStore.directoryName)
+        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+
+        let mutant = makeMutant(id: "m0", filePath: sourceFile.path, isSchematizable: true)
+        let cacheKey = MutantCacheKey.make(for: mutant)
+        let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
+        await cacheStore.store(status: .survived, for: cacheKey)
+        try await cacheStore.persist()
+
+        let metadata = CacheStore.CacheMetadata(testFileHashes: ["Tests/FooTests.swift": "old-hash"])
+        try await cacheStore.persistMetadata(metadata)
+
+        let executor = MutantExecutor(
+            configuration: makeConfiguration(projectPath: dir.path),
+            launcher: MockProcessLauncher(exitCode: 1)
+        )
+        let input = makeInput(
+            projectPath: dir.path,
+            schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+            mutants: [mutant]
+        )
+
+        let results = try await executor.execute(input)
+
+        #expect(results.count == 1)
+        #expect(results[0].status == .unviable)
+    }
+
+    @Test("Given all mutants cached, when execute called with quiet false, then reporter shows loaded from cache count")
+    func allCachedReportsCorrectCount() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let cacheDir = URL(fileURLWithPath: dir.path).appendingPathComponent(CacheStore.directoryName)
+        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+
+        let mutantA = makeMutant(id: "m0", filePath: "/tmp/Foo.swift", isSchematizable: true)
+        let mutantB = makeMutant(
+            id: "m1", filePath: "/tmp/Foo.swift", isSchematizable: true, mutatedContent: "let y = false")
+        let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
+        await cacheStore.store(status: .survived, for: MutantCacheKey.make(for: mutantA))
+        await cacheStore.store(status: .killed(by: "T"), for: MutantCacheKey.make(for: mutantB))
+        try await cacheStore.persist()
+
+        let metadata = CacheStore.CacheMetadata(testFileHashes: [:])
+        try await cacheStore.persistMetadata(metadata)
+
+        let executor = MutantExecutor(
+            configuration: makeConfiguration(projectPath: dir.path, quiet: false),
+            launcher: MockProcessLauncher(exitCode: 1)
+        )
+        let input = makeInput(projectPath: dir.path, mutants: [mutantA, mutantB])
+
+        let output = await captureOutput {
+            _ = try? await executor.execute(input)
+        }
+
+        #expect(output.contains("Loaded 2 mutants from cache"))
     }
 
     @Test("Given excluded mutant with non-existent source file, when rewrite attempted, then marked unviable")
