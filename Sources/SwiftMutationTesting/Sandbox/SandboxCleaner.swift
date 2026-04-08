@@ -1,20 +1,25 @@
 import Foundation
 
 nonisolated(unsafe) private var activeSandboxPath: UnsafeMutablePointer<CChar>?
+nonisolated(unsafe) var sandboxCleanerExitHandler: @convention(c) (Int32) -> Void = { code in _exit(code) }
 
 private func handleSignal(_: Int32) {
-    if let path = activeSandboxPath {
-        let url = URL(fileURLWithPath: String(cString: path))
-        try? FileManager.default.removeItem(at: url)
-        path.deallocate()
-        activeSandboxPath = nil
-    }
-    _exit(1)
+    SandboxCleaner.cleanupActiveSandbox()
+    sandboxCleanerExitHandler(1)
 }
 
 enum SandboxCleaner {
 
     private static let prefix = "xmr-"
+
+    static func cleanupActiveSandbox() {
+        if let path = activeSandboxPath {
+            let url = URL(fileURLWithPath: String(cString: path))
+            try? FileManager.default.removeItem(at: url)
+            path.deallocate()
+            activeSandboxPath = nil
+        }
+    }
 
     static func removeOrphaned(in directory: URL = FileManager.default.temporaryDirectory) {
         guard
