@@ -38,7 +38,7 @@ jobs:
           set -e
 
           echo "Running tests with coverage..."
-          swift test --enable-code-coverage --quiet
+          swift test --enable-code-coverage --no-parallel --quiet
 
           BIN_PATH=$(swift build --show-bin-path)
 
