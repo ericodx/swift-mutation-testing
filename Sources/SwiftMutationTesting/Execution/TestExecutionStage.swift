@@ -72,21 +72,7 @@ struct TestExecutionStage: Sendable {
         )
         try? FileManager.default.removeItem(atPath: launched.xcresultPath)
 
-        let status = outcome.asExecutionStatus
-        let killerTestFile = resolveKillerTestFile(status: status)
-        let result = ExecutionResult(
-            descriptor: mutant, status: status, testDuration: launched.duration,
-            killerTestFile: killerTestFile
-        )
-        await deps.cacheStore.store(status: status, for: key, killerTestFile: killerTestFile)
-        let index = await deps.counter.increment()
-        await deps.reporter.report(
-            .mutantFinished(
-                descriptor: mutant, status: status,
-                index: index, total: deps.counter.total
-            )
-        )
-        return result
+        return await recordResult(mutant: mutant, key: key, outcome: outcome, duration: launched.duration)
     }
 
     private func runSPM(
@@ -105,10 +91,19 @@ struct TestExecutionStage: Sendable {
 
         let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
         await context.pool.release(slot)
+        return await recordResult(mutant: mutant, key: key, outcome: outcome, duration: launched.duration)
+    }
+
+    private func recordResult(
+        mutant: MutantDescriptor,
+        key: MutantCacheKey,
+        outcome: TestRunOutcome,
+        duration: Double
+    ) async -> ExecutionResult {
         let status = outcome.asExecutionStatus
         let killerTestFile = resolveKillerTestFile(status: status)
         let result = ExecutionResult(
-            descriptor: mutant, status: status, testDuration: launched.duration,
+            descriptor: mutant, status: status, testDuration: duration,
             killerTestFile: killerTestFile
         )
         await deps.cacheStore.store(status: status, for: key, killerTestFile: killerTestFile)
