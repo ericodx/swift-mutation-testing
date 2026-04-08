@@ -22,12 +22,16 @@ graph TD
     EXECUTION["Execution\n(MutantExecutor · FallbackExecutor · IncompatibleMutantExecutor\nBuildStage · TestExecutionStage · TestResultResolver)"]
     REPORTING["Reporting\n(TextReporter · JsonReporter · HtmlReporter · SonarReporter)"]
     INFRA["Infrastructure\n(ProcessRunner · ProcessRequest · SPMProcessLauncher\nXCTestRunPlist · TestFilesHasher)"]
+    CACHE["Cache\n(CacheStore · MutantCacheKey · TestFileDiff\nKillerTestFileResolver)"]
+    SANDBOX["Sandbox\n(SandboxFactory · SandboxCleaner)"]
 
     CLI --> CONFIG
     CLI --> DISCOVERY
     CLI --> EXECUTION
     CLI --> REPORTING
     EXECUTION --> INFRA
+    EXECUTION --> CACHE
+    EXECUTION --> SANDBOX
     DISCOVERY --> INFRA
     CONFIG --> INFRA
 ```
@@ -37,7 +41,9 @@ graph TD
 | **CLI** | Argument parsing, subcommand routing, exit codes |
 | **Configuration** | Config file parsing, CLI merge, auto-detection of scheme and destination |
 | **Discovery** | Source file collection, AST parsing, mutant identification, schematization |
-| **Execution** | Sandbox creation, build, simulator management, parallel test execution, result parsing (Xcode and SPM), fallback per-file builds, caching |
+| **Execution** | Build, simulator management, parallel test execution, result parsing (Xcode and SPM), fallback per-file builds |
+| **Sandbox** | Sandbox creation (`SandboxFactory`), orphaned sandbox cleanup and signal-based cleanup (`SandboxCleaner`) |
+| **Cache** | Granular per-file cache invalidation (`CacheStore`, `TestFileDiff`), killer test file resolution (`KillerTestFileResolver`), cache key computation (`MutantCacheKey`) |
 | **Reporting** | Progress output, mutation report generation (text, JSON, HTML, Sonar) |
 | **Infrastructure** | Process lifecycle management (`ProcessRunner`, `ProcessRequest`, `SPMProcessLauncher`), xctestrun plist manipulation, test file hashing |
 

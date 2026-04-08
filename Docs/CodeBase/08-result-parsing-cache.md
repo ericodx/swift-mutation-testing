@@ -147,51 +147,102 @@ actor CacheStore {
     static let directoryName: String
     init(storePath: String)
     func result(for key: MutantCacheKey) -> ExecutionStatus?
-    func store(status: ExecutionStatus, for key: MutantCacheKey)
+    func killerTestFile(for key: MutantCacheKey) -> String?
+    func store(status: ExecutionStatus, for key: MutantCacheKey, killerTestFile: String? = nil)
     func load() throws
     func persist() throws
+    func loadMetadata() throws -> CacheMetadata?
+    func persistMetadata(_ metadata: CacheMetadata) throws
+    func invalidate(diff: TestFileDiff)
+    func changedTestFiles(current: [String: String]) throws -> TestFileDiff
 }
 ```
 
-Persists execution results across runs. All reads and writes are serialised by the actor.
+Persists execution results across runs with granular per-file invalidation. All reads and writes are serialised by the actor.
 
 | Constant | Value |
 |---|---|
 | `directoryName` | `".swift-mutation-testing-cache"` |
 
-Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of `CacheEntry` values (key + status pairs).
+Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of `CacheEntry` values (key + status + killerTestFile).
 
 `load()` is a no-op if the cache file does not exist. `persist()` creates the directory if needed and writes atomically.
+
+**Granular invalidation methods:**
+
+| Method | Description |
+|---|---|
+| `killerTestFile(for:)` | Returns the stored killer test file path for a cached entry |
+| `store(status:for:killerTestFile:)` | Stores an execution result with optional killer test file metadata |
+| `changedTestFiles(current:)` | Compares current per-file test hashes against stored metadata to produce a `TestFileDiff` |
+| `invalidate(diff:)` | Removes cached entries based on status-aware rules (see Architecture docs) |
+| `persistMetadata(_:)` | Writes `CacheMetadata` (test file hashes) to disk alongside the results cache |
 
 ---
 
 ## Cache/MutantCacheKey.swift
 
 ```swift
-struct MutantCacheKey: Sendable, Codable, Hashable {
+struct MutantCacheKey: Hashable, Sendable, Codable {
     let fileContentHash: String
-    let testFilesHash: String
+    let operatorIdentifier: String
     let utf8Offset: Int
     let originalText: String
     let mutatedText: String
-    let operatorIdentifier: String
 
-    static func make(for descriptor: MutantDescriptor, testFilesHash: String) -> MutantCacheKey
+    static func hash(of content: String) -> String
+    static func make(for mutant: MutantDescriptor) -> MutantCacheKey
 }
 ```
 
-SHA256-derived cache key. Invalidates automatically when source or test files change.
+SHA256-derived cache key. Stable across test-only changes — invalidation is handled granularly by `CacheStore.invalidate(diff:)`.
 
 | Field | Source |
 |---|---|
 | `fileContentHash` | SHA256 of `mutatedSourceContent` for incompatible mutants; SHA256 of the source file at `filePath` for schematizable mutants |
-| `testFilesHash` | Precomputed SHA256 of all test files in the project |
+| `operatorIdentifier` | Operator name |
 | `utf8Offset` | Mutation position |
 | `originalText` | Token before mutation |
 | `mutatedText` | Token after mutation |
-| `operatorIdentifier` | Operator name |
 
-`make(for:testFilesHash:)` computes `fileContentHash` from `descriptor.mutatedSourceContent` (for incompatible mutants) or from the on-disk content at `descriptor.filePath` (for schematizable mutants).
+`make(for:)` computes `fileContentHash` from `descriptor.mutatedSourceContent` (for incompatible mutants) or from the on-disk content at `descriptor.filePath` (for schematizable mutants).
+
+---
+
+## Cache/TestFileDiff.swift
+
+```swift
+struct TestFileDiff: Sendable {
+    let added: Set<String>
+    let modified: Set<String>
+    let removed: Set<String>
+    var hasChanges: Bool
+}
+```
+
+Represents changes to test files between cache runs. Produced by `CacheStore.changedTestFiles(current:)` and consumed by `CacheStore.invalidate(diff:)`.
+
+| Field | Description |
+|---|---|
+| `added` | Test file paths present in current hashes but absent from stored metadata |
+| `modified` | Test file paths present in both but with different content hashes |
+| `removed` | Test file paths present in stored metadata but absent from current hashes |
+| `hasChanges` | `true` when any of the three sets is non-empty |
+
+---
+
+## Cache/KillerTestFileResolver.swift
+
+```swift
+struct KillerTestFileResolver: Sendable {
+    let testFilePaths: [String]
+    func resolve(testName: String) -> String?
+}
+```
+
+Maps killer test names back to their source file paths. Supports both XCTest class names (e.g. `CalculatorTests`) and Swift Testing function names (e.g. `addReturnsSum()`).
+
+Resolution strategy: extracts the class or function name from the test name, then searches `testFilePaths` for a file whose name contains the extracted identifier.
 
 ---
 
