@@ -753,7 +753,8 @@ struct MutantExecutorTests {
         #expect(output.contains("Loaded 2 mutants from cache"))
     }
 
-    @Test("Given excluded mutant with non-existent source file, when rewrite attempted, then marked unviable")
+    @Test(
+        "Given excluded mutant whose source file disappears before rewrite, when execute called, then marked unviable")
     func excludedMutantWithMissingSourceIsUnviable() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -764,23 +765,12 @@ struct MutantExecutorTests {
         let config = makeRunnerConfiguration(projectPath: dir.path, projectType: .spm)
         let executor = MutantExecutor(
             configuration: config,
-            launcher: SPMRetryExcludingErrorsMock()
+            launcher: SPMRetryWithFileDeletionMock(fileToDelete: fooFile.path)
         )
 
-        let validMutant = makeMutantDescriptor(
+        let mutant = makeMutantDescriptor(
             id: "m0",
             filePath: fooFile.path,
-            originalText: "true",
-            mutatedText: "false",
-            operatorIdentifier: "BooleanLiteralReplacement",
-            replacementKind: .booleanLiteral,
-            description: "true → false",
-            isSchematizable: true,
-            mutatedSourceContent: "let x = false"
-        )
-        let missingMutant = makeMutantDescriptor(
-            id: "m1",
-            filePath: dir.appendingPathComponent("NonExistent.swift").path,
             originalText: "true",
             mutatedText: "false",
             operatorIdentifier: "BooleanLiteralReplacement",
@@ -795,11 +785,12 @@ struct MutantExecutorTests {
             schematizedFiles: [
                 SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false")
             ],
-            mutants: [validMutant, missingMutant]
+            mutants: [mutant]
         )
 
         let results = try await executor.execute(input)
 
-        #expect(results.count == 2)
+        #expect(results.count == 1)
+        #expect(results[0].status == .unviable)
     }
 }
