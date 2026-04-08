@@ -474,13 +474,19 @@ Wraps the raw plist `Data` from the `.xctestrun` file.
 
 ```swift
 struct TestFilesHasher: Sendable {
-    func hash(projectPath: String) -> String
+    func hashPerFile(projectPath: String) -> [String: String]
+    func testFilePaths(projectPath: String) -> [String]
 }
 ```
 
-Computes a SHA256 digest of all test file contents in the project. The digest is used as part of `MutantCacheKey` to invalidate cached results when tests change.
+Provides per-file test hashing and test file path enumeration for granular cache invalidation.
 
-**Test file collection:** files whose containing directory name ends with `Tests` or `Specs`, or whose filename matches `*Tests.swift` or `*Specs.swift`. Content is sorted by path before hashing to produce a stable digest regardless of filesystem enumeration order.
+| Method | Description |
+|---|---|
+| `hashPerFile(projectPath:)` | Returns a dictionary mapping relative test file paths to their SHA256 content hashes. Symlinks pointing outside the project root use absolute paths as keys to avoid collisions |
+| `testFilePaths(projectPath:)` | Returns all test file paths in the project |
+
+**Test file collection:** files whose containing directory name ends with `Tests` or `Specs`, or whose filename matches `*Tests.swift` or `*Specs.swift`.
 
 ---
 

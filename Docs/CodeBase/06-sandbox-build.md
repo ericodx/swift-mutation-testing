@@ -81,6 +81,30 @@ A lightweight wrapper around the sandbox root URL.
 
 ---
 
+## Sandbox/SandboxCleaner.swift
+
+```swift
+enum SandboxCleaner {
+    static func removeOrphaned(in directory: URL = FileManager.default.temporaryDirectory)
+    static func register(_ sandbox: Sandbox)
+    static func deregister()
+    static func installSignalHandlers()
+}
+```
+
+Handles cleanup of orphaned and active sandbox directories.
+
+| Method | Description |
+|---|---|
+| `removeOrphaned(in:)` | Scans the directory for `xmr-*` entries and removes them. Called once at startup to clean up sandboxes from interrupted runs |
+| `register(_:)` | Stores the sandbox root path in a C pointer accessible to signal handlers |
+| `deregister()` | Clears the stored path and deallocates the pointer |
+| `installSignalHandlers()` | Installs `SIGINT` and `SIGTERM` handlers that remove the active sandbox and call `_exit(1)` |
+
+The active sandbox path is stored as a `nonisolated(unsafe)` `UnsafeMutablePointer<CChar>` at module scope — necessary because C signal handlers cannot capture Swift context. `register`/`deregister` are called sequentially from `MutantExecutor.execute`, so no concurrent access occurs during normal operation.
+
+---
+
 ## Build/BuildStage.swift
 
 ```swift

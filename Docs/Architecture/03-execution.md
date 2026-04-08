@@ -10,8 +10,13 @@
 
 ```mermaid
 flowchart TD
-    IN[RunnerInput] --> SF[SandboxFactory\ncreate sandbox]
-    SF --> BS[BuildStage\nbuild-for-testing]
+    IN[RunnerInput] --> PREP[prepareCacheStore\ngranular invalidation]
+    PREP --> ALLCACHED{all cached?}
+    ALLCACHED -- yes --> RETURN[return cached results]
+    ALLCACHED -- no --> CLEAN[SandboxCleaner.removeOrphaned]
+    CLEAN --> SF[SandboxFactory\ncreate sandbox]
+    SF --> REG[SandboxCleaner.register]
+    REG --> BS[BuildStage\nbuild-for-testing]
     BS -- success --> TES[TestExecutionStage\nparallel test-without-building]
     BS -- compilationFailed --> FBP[FallbackExecutor\none build per schematized file]
     TES --> TR[TestResultResolver]
@@ -19,7 +24,8 @@ flowchart TD
     FBP --> CACHE
     IN -- incompatible mutants --> IME[IncompatibleMutantExecutor\none full build+test per mutant]
     IME --> CACHE
-    CACHE --> SUM[RunnerSummary]
+    CACHE --> DEREG[SandboxCleaner.deregister\nsandbox.cleanup]
+    DEREG --> SUM[RunnerSummary]
     SUM --> REPORTERS[TextReporter · JsonReporter\nHtmlReporter · SonarReporter]
 ```
 
@@ -42,6 +48,16 @@ Creates an isolated copy of the project in `$TMPDIR/xmr-<UUID>/` before every bu
 - Inserts `break` statements into empty `switch case` bodies to prevent compiler errors in schematized code
 
 The original project is never touched. Cleanup removes the entire `xmr-*` directory when execution completes.
+
+## SandboxCleaner
+
+Handles cleanup of orphaned sandbox directories and signal-based cleanup of the active sandbox.
+
+**Orphaned cleanup (`removeOrphaned`):** Called once at startup via `main()`. Scans `$TMPDIR` (or a provided directory) for directories prefixed with `xmr-` and removes them. This cleans up sandboxes from previous interrupted runs that were never cleaned up normally.
+
+**Signal cleanup (`installSignalHandlers`):** Installs `SIGINT` and `SIGTERM` handlers at startup. When a signal is received, the handler removes the active sandbox directory (if registered) and calls `_exit(1)`. Uses a `nonisolated(unsafe)` C pointer for the active path — necessary because signal handlers are C function pointers that cannot capture Swift context.
+
+**Lifecycle:** `MutantExecutor` calls `register(sandbox)` after creating the sandbox and `deregister()` after cleanup (both on the success and error paths). This ensures the signal handler always has the correct path.
 
 ## BuildStage
 
@@ -176,19 +192,28 @@ flowchart TD
 
 ## CacheStore
 
-`CacheStore` is an `actor` that persists `ExecutionStatus` results across runs, keyed by a SHA256-derived `MutantCacheKey`.
+`CacheStore` is an `actor` that persists `ExecutionStatus` results across runs, keyed by a SHA256-derived `MutantCacheKey`. It supports granular per-file cache invalidation.
 
 ```
 MutantCacheKey
-├── fileContentHash   — SHA256 of the source file content
-├── testFilesHash     — SHA256 of all test file contents
-├── utf8Offset        — mutation position
-├── originalText      — token before mutation
-├── mutatedText       — token after mutation
-└── operatorIdentifier
+├── fileContentHash    — SHA256 of the source file content
+├── operatorIdentifier — mutation operator name
+├── utf8Offset         — mutation position
+├── originalText       — token before mutation
+└── mutatedText        — token after mutation
 ```
 
-Cache is stored at `<project>/.swift-mutation-testing-cache/results.json`. A cached result is used only if `noCache` is false. The cache is invalidated automatically when the source file or any test file changes.
+Cache is stored at `<project>/.swift-mutation-testing-cache/results.json`. A cached result is used only if `noCache` is false.
+
+**Granular invalidation:** Instead of invalidating the entire cache when any test file changes, `CacheStore` tracks which test file killed each mutant via `killerTestFile` metadata. On each run, `MutantExecutor.prepareCacheStore` computes per-file test hashes via `TestFilesHasher.hashPerFile`, compares them against stored hashes via `changedTestFiles(current:)` to produce a `TestFileDiff`, and calls `invalidate(diff:)` with status-aware rules:
+
+| Change | `.killed` | `.survived` | `.unviable` / `.killedByCrash` |
+|---|---|---|---|
+| Test file **added** | kept | invalidated | kept (permanent) |
+| Test file **modified** | invalidated if killer matches | invalidated if killer matches | kept (permanent) |
+| Test file **removed** | invalidated if killer matches | kept | kept (permanent) |
+
+`KillerTestFileResolver` maps test names back to source file paths by matching XCTest class names and Swift Testing function names against the project's test file list.
 
 ## Reporting
 
@@ -224,6 +249,7 @@ score = killed / (killed + survived + timedOut + noCoverage) × 100
 | `TestExecutionStage` | `withThrowingTaskGroup` — N tasks, dynamically refilled |
 | `ProcessRunner` | `withTaskCancellationHandler` + `withCheckedThrowingContinuation` — kills process on cancel |
 | `SPMProcessLauncher` | `ProcessLaunching` conformance backed by `ProcessRunner`; `killEscapedChildren` cleans up orphaned child processes via `sysctl` `KERN_PROCARGS2` inspection |
+| `SandboxCleaner` | `nonisolated(unsafe)` C pointer for signal handler access; `register`/`deregister` called sequentially from `MutantExecutor.execute` |
 | All data types | `Sendable` value types — safe to cross actor boundaries |
 
 ---

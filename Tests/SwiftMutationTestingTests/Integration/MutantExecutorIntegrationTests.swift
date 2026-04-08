@@ -63,7 +63,7 @@ private func makeConfiguration(fixtureURL: URL) -> RunnerConfiguration {
         projectPath: fixtureURL.path,
         build: .init(
             projectType: .xcode(scheme: "CalcApp", destination: "platform=macOS"),
-            timeout: 120.0, concurrency: 1, noCache: true),
+            timeout: 60.0, concurrency: 1, noCache: true),
         reporting: .init(quiet: true),
         filter: .init(excludePatterns: [], operators: [])
     )

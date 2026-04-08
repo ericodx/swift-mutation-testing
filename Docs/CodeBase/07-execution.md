@@ -17,16 +17,18 @@ Entry point for the execution pipeline. Orchestrates sandbox creation, build, si
 
 ```mermaid
 flowchart TD
-    IN[RunnerInput] --> CACHE{all results cached?}
+    IN[RunnerInput] --> PREP[prepareCacheStore\ngranular invalidation]
+    PREP --> CACHE{all results cached?}
     CACHE -- yes --> RETURN[return cached results]
     CACHE -- no --> SANDBOX[SandboxFactory.create\nschematized sandbox]
-    SANDBOX --> BUILD[BuildStage.build / buildSPM]
+    SANDBOX --> REG[SandboxCleaner.register]
+    REG --> BUILD[BuildStage.build / buildSPM]
     BUILD -- compilationFailed --> FALLBACK[FallbackExecutor\none build per schematized file]
     BUILD -- success --> POOL[SimulatorPool.setUp]
     FALLBACK --> POOL
     POOL --> NORMAL[TestExecutionStage\nschematizable mutants]
     NORMAL --> INCOMPAT[IncompatibleMutantExecutor\nincompatible mutants]
-    INCOMPAT --> TEARDOWN[pool.tearDown\nsandbox.cleanup\ncacheStore.persist]
+    INCOMPAT --> TEARDOWN[pool.tearDown\nsandbox.cleanup\nSandboxCleaner.deregister\ncacheStore.persist]
     TEARDOWN --> RESULTS[[ExecutionResult]]
 ```
 
@@ -46,6 +48,7 @@ struct ExecutionDeps: Sendable {
     let cacheStore: CacheStore
     let reporter: any ProgressReporter
     let counter: MutationCounter
+    let killerTestFileResolver: KillerTestFileResolver
 }
 ```
 
@@ -57,6 +60,7 @@ Bundle of shared collaborators passed between `MutantExecutor` and the stage typ
 | `cacheStore` | Shared actor for reading and writing result cache entries |
 | `reporter` | Progress events sink (console or silent) |
 | `counter` | Shared actor tracking the current mutant index |
+| `killerTestFileResolver` | Maps killer test names to source file paths for granular cache invalidation |
 
 ---
 
@@ -103,7 +107,6 @@ struct TestExecutionContext: Sendable {
     let sandbox: Sandbox
     let pool: SimulatorPool
     let configuration: RunnerConfiguration
-    let testFilesHash: String
 }
 ```
 
@@ -115,7 +118,6 @@ Bundles the execution-time dependencies required by `TestExecutionStage` and the
 | `sandbox` | The sandbox directory hosting derived data and temporary files |
 | `pool` | Simulator slot pool for acquiring/releasing parallel slots |
 | `configuration` | Full runner configuration (timeout, concurrency, testTarget, etc.) |
-| `testFilesHash` | SHA256 of all test files; component of cache keys |
 
 ---
 
@@ -150,8 +152,7 @@ struct FallbackExecutor: Sendable {
 
     func execute(
         input: RunnerInput,
-        pool: SimulatorPool,
-        testFilesHash: String
+        pool: SimulatorPool
     ) async throws -> [ExecutionResult]
 }
 ```
@@ -176,12 +177,12 @@ For each schematized file, creates a sandbox containing only that file's schemat
 ```swift
 struct IncompatibleMutantExecutor: Sendable {
     let deps: ExecutionDeps
+    let sandboxFactory: SandboxFactory
 
     func execute(
         _ mutants: [MutantDescriptor],
         configuration: RunnerConfiguration,
-        pool: SimulatorPool,
-        testFilesHash: String
+        pool: SimulatorPool
     ) async throws -> [ExecutionResult]
 }
 ```
@@ -342,6 +343,7 @@ struct ExecutionResult: Sendable, Codable {
     let descriptor: MutantDescriptor
     let status: ExecutionStatus
     let testDuration: Double
+    let killerTestFile: String?
 }
 ```
 
@@ -350,6 +352,7 @@ struct ExecutionResult: Sendable, Codable {
 | `descriptor` | The mutant that was tested |
 | `status` | Outcome of the test run |
 | `testDuration` | Wall-clock seconds for the test-without-building invocation; `0` for cache hits |
+| `killerTestFile` | Source file path of the test that killed this mutant; `nil` for non-killed statuses and cache hits without metadata |
 
 ---
 
