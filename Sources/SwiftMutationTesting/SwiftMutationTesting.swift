@@ -3,6 +3,8 @@ import Foundation
 public struct SwiftMutationTesting {
 
     public static func main() async {
+        SandboxCleaner.installSignalHandlers()
+        SandboxCleaner.removeOrphaned()
         exit(await run(args: Array(CommandLine.arguments.dropFirst())).rawValue)
     }
 

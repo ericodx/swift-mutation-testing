@@ -42,13 +42,8 @@ struct MutantExecutor: Sendable {
             return cached
         }
 
-        let schematizable = input.mutants.filter { $0.isSchematizable }
-        let incompatible = input.mutants.filter { !$0.isSchematizable }
-        let counter = MutationCounter(total: schematizable.count + incompatible.count)
-        let resolver = KillerTestFileResolver(testFilePaths: hasher.testFilePaths(projectPath: input.projectPath))
-        let deps = ExecutionDeps(
-            launcher: launcher, cacheStore: cacheStore, reporter: reporter,
-            counter: counter, killerTestFileResolver: resolver
+        let deps = makeExecutionDeps(
+            input: input, hasher: hasher, cacheStore: cacheStore, reporter: reporter
         )
 
         let sandbox = try await SandboxFactory().create(
@@ -56,6 +51,7 @@ struct MutantExecutor: Sendable {
             schematizedFiles: input.schematizedFiles,
             supportFileContent: input.supportFileContent
         )
+        SandboxCleaner.register(sandbox)
 
         let (artifact, schemaBuildExcluded) = try await buildArtifact(sandbox: sandbox, input: input, deps: deps)
         let pool = try await makePool(launcher: launcher)
@@ -77,11 +73,13 @@ struct MutantExecutor: Sendable {
         } catch {
             await pool.tearDown()
             try? sandbox.cleanup()
+            SandboxCleaner.deregister()
             throw error
         }
 
         await pool.tearDown()
         try? sandbox.cleanup()
+        SandboxCleaner.deregister()
         try await cacheStore.persist()
         try await cacheStore.persistMetadata(metadata)
 
@@ -103,6 +101,21 @@ struct MutantExecutor: Sendable {
 
         let metadata = CacheStore.CacheMetadata(testFileHashes: currentTestHashes)
         return (cacheStore, metadata, hasher)
+    }
+
+    private func makeExecutionDeps(
+        input: RunnerInput,
+        hasher: TestFilesHasher,
+        cacheStore: CacheStore,
+        reporter: any ProgressReporter
+    ) -> ExecutionDeps {
+        let mutantCount = input.mutants.count
+        let counter = MutationCounter(total: mutantCount)
+        let resolver = KillerTestFileResolver(testFilePaths: hasher.testFilePaths(projectPath: input.projectPath))
+        return ExecutionDeps(
+            launcher: launcher, cacheStore: cacheStore, reporter: reporter,
+            counter: counter, killerTestFileResolver: resolver
+        )
     }
 
     private func runAllMutants(
