@@ -62,6 +62,29 @@ struct TestFilesHasherTests {
         #expect(result.keys.contains("Tests/FooTests.swift"))
     }
 
+    @Test("Given test file symlinked outside project, when hashPerFile called, then absolute path is used as key")
+    func hashPerFileUsesAbsolutePathForExternalSymlink() throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let externalDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(externalDir) }
+
+        try FileHelpers.write("let t = 1", named: "ExternalTests.swift", in: externalDir)
+
+        let testsDir = projectDir.appendingPathComponent("Tests")
+        try FileManager.default.createDirectory(at: testsDir, withIntermediateDirectories: true)
+        let symlinkURL = testsDir.appendingPathComponent("ExternalTests.swift")
+        let targetURL = externalDir.appendingPathComponent("ExternalTests.swift")
+        try FileManager.default.createSymbolicLink(at: symlinkURL, withDestinationURL: targetURL)
+
+        let result = TestFilesHasher().hashPerFile(projectPath: projectDir.path)
+
+        #expect(result.count == 1)
+        let key = result.keys.first!
+        #expect(!key.hasPrefix("Tests/"))
+    }
+
     @Test("Given non-existent path, when hashPerFile called, then empty map is returned")
     func hashPerFileReturnsEmptyForNonExistentPath() {
         let result = TestFilesHasher().hashPerFile(projectPath: "/nonexistent/path/xyz")
