@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "swift_mutation_testing",
+  "project_id": "098472b8-26ec-4cef-bdde-abb4251f005d"
+}

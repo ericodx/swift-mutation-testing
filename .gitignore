@@ -8,3 +8,10 @@ Makefile
 .swift-mutation-testing-cache/
 Fixtures/CalcApp/.xmr-cache/
 Fixtures/CalcLibrary/.build/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+.beads/interactions.jsonl
