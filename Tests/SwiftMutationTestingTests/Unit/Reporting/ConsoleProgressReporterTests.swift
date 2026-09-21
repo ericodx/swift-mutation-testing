@@ -85,7 +85,8 @@ struct ConsoleProgressReporterTests {
             originalText: "true", mutatedText: "false",
             operatorIdentifier: "BooleanLiteralReplacement",
             replacementKind: .booleanLiteral, description: "",
-            isSchematizable: true, mutatedSourceContent: nil
+            isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
 
         let output = await captureOutput {
@@ -106,7 +107,8 @@ struct ConsoleProgressReporterTests {
             originalText: "a", mutatedText: "b",
             operatorIdentifier: "NegateConditional",
             replacementKind: .binaryOperator, description: "",
-            isSchematizable: true, mutatedSourceContent: nil
+            isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
 
         let output = await captureOutput {
@@ -128,7 +130,8 @@ struct ConsoleProgressReporterTests {
             originalText: "", mutatedText: "",
             operatorIdentifier: "NegateConditional",
             replacementKind: .binaryOperator, description: "",
-            isSchematizable: true, mutatedSourceContent: nil
+            isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
         let beta = MutantDescriptor(
             id: "2", filePath: "/project/Sources/Beta.swift",
@@ -136,7 +139,8 @@ struct ConsoleProgressReporterTests {
             originalText: "", mutatedText: "",
             operatorIdentifier: "RemoveSideEffects",
             replacementKind: .removeStatement, description: "",
-            isSchematizable: true, mutatedSourceContent: nil
+            isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
 
         let output = await captureOutput {
@@ -184,7 +188,8 @@ struct ConsoleProgressReporterTests {
             originalText: "a", mutatedText: "b",
             operatorIdentifier: "NegateConditional",
             replacementKind: .binaryOperator, description: "",
-            isSchematizable: true, mutatedSourceContent: nil
+            isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
 
         let output = await captureOutput {

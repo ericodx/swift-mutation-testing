@@ -132,21 +132,24 @@ private func calculatorMutants(path: String) -> [MutantDescriptor] {
             line: 2, column: 44, utf8Offset: 64,
             originalText: "+", mutatedText: "-",
             operatorIdentifier: "binaryOperator", replacementKind: .binaryOperator,
-            description: "Replace + with -", isSchematizable: true, mutatedSourceContent: nil
+            description: "Replace + with -", isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         ),
         MutantDescriptor(
             id: "m2", filePath: path,
             line: 3, column: 47, utf8Offset: 119,
             originalText: "-", mutatedText: "+",
             operatorIdentifier: "binaryOperator", replacementKind: .binaryOperator,
-            description: "Replace - with +", isSchematizable: true, mutatedSourceContent: nil
+            description: "Replace - with +", isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         ),
         MutantDescriptor(
             id: "m3", filePath: path,
             line: 4, column: 40, utf8Offset: 167,
             originalText: ">", mutatedText: ">=",
             operatorIdentifier: "binaryOperator", replacementKind: .binaryOperator,
-            description: "Replace > with >=", isSchematizable: true, mutatedSourceContent: nil
+            description: "Replace > with >=", isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         ),
     ]
 }
@@ -158,14 +161,16 @@ private func validatorMutants(path: String) -> [MutantDescriptor] {
             line: 2, column: 49, utf8Offset: 68,
             originalText: ">=", mutatedText: ">",
             operatorIdentifier: "binaryOperator", replacementKind: .binaryOperator,
-            description: "Replace >= with >", isSchematizable: true, mutatedSourceContent: nil
+            description: "Replace >= with >", isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         ),
         MutantDescriptor(
             id: "m5", filePath: path,
             line: 2, column: 62, utf8Offset: 81,
             originalText: "<=", mutatedText: "<",
             operatorIdentifier: "binaryOperator", replacementKind: .binaryOperator,
-            description: "Replace <= with <", isSchematizable: true, mutatedSourceContent: nil
+            description: "Replace <= with <", isSchematizable: true, mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         ),
     ]
 }
@@ -183,7 +188,8 @@ private func incompatibleMutants(path: String) -> [MutantDescriptor] {
                 struct Logic {
                     func isNonNegative(_ n: Int) -> Bool { n > 0 }
                 }
-                """
+                """,
+            sourceContentHash: "test-hash"
         )
     ]
 }
