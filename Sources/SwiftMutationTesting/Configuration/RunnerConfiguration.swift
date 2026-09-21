@@ -23,6 +23,7 @@ struct RunnerConfiguration: Sendable {
         var output: String?
         var htmlOutput: String?
         var sonarOutput: String?
+        var keepLogsPath: String?
         var quiet: Bool
     }
 
