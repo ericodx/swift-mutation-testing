@@ -233,8 +233,10 @@ Manages a fixed-size pool of simulator slots for parallel test execution.
 
 | Destination | `setUp` behaviour | `tearDown` behaviour |
 |---|---|---|
-| `platform=macOS` | Creates one no-op slot (no UDID) | No-op |
+| `platform=macOS` and SPM | Creates one no-op slot (no UDID) | No-op |
 | iOS / tvOS / watchOS | Clones the base simulator `size` times; boots each clone | Shuts down and deletes each clone |
+
+`usesSimulators` reports whether slots are simulator clones. One no-op slot means a run is effectively sequential regardless of `size`, which is why `ConfigurationResolver` resolves concurrency down to 1 for those destinations.
 
 `acquire()` returns an available slot immediately or suspends the caller until one is released. The suspension is wrapped with `withTaskCancellationHandler` — if the owning task is cancelled, the slot is released to prevent permanent deadlock.
 
