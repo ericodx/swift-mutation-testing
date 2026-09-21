@@ -7,7 +7,7 @@ struct IndexedMutationPoint: Sendable {
         "swift-mutation-testing_\(index)"
     }
 
-    func toDescriptor(mutatedContent: String?) -> MutantDescriptor {
+    func toDescriptor(mutatedContent: String?, sourceContentHash: String) -> MutantDescriptor {
         MutantDescriptor(
             id: mutantID,
             filePath: mutation.filePath,
@@ -20,7 +20,8 @@ struct IndexedMutationPoint: Sendable {
             replacementKind: mutation.replacement,
             description: mutation.description,
             isSchematizable: isSchematizable,
-            mutatedSourceContent: mutatedContent
+            mutatedSourceContent: mutatedContent,
+            sourceContentHash: sourceContentHash
         )
     }
 }
