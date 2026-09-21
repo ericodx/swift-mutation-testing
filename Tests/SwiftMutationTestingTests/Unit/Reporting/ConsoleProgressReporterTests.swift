@@ -57,14 +57,24 @@ struct ConsoleProgressReporterTests {
         #expect(output.contains("0 schematizable"))
     }
 
-    @Test("Given simulatorPoolReady, when reported, then Testing mutants header is printed")
-    func simulatorPoolReadyPrintsTestingMutantsHeader() async {
+    @Test("Given workersReady with simulators, when reported, then they are named as simulators")
+    func workersReadyNamesSimulators() async {
         let output = await captureOutput {
-            await reporter.report(.simulatorPoolReady(size: 4))
+            await reporter.report(.workersReady(count: 4, usesSimulators: true))
         }
 
         #expect(output.contains("Testing mutants..."))
         #expect(output.contains("4 simulators ready"))
+    }
+
+    @Test("Given workersReady without simulators, when reported, then they are not called simulators")
+    func workersReadyDoesNotClaimSimulators() async {
+        let output = await captureOutput {
+            await reporter.report(.workersReady(count: 1, usesSimulators: false))
+        }
+
+        #expect(output.contains("1 worker ready"))
+        #expect(!output.contains("simulator"))
     }
 
     @Test("Given mutantFinished, when reported, then line contains filename and line number inline")
