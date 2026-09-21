@@ -26,11 +26,15 @@ flowchart TD
     BUILD -- compilationFailed --> FALLBACK[FallbackExecutor\none build per schematized file]
     BUILD -- success --> POOL[SimulatorPool.setUp]
     FALLBACK --> POOL
-    POOL --> NORMAL[TestExecutionStage\nschematizable mutants]
+    POOL --> BASELINE{SPM: baseline\nsuite passes?}
+    BASELINE -- no --> ABORT[throw BaselineError\nrun ends]
+    BASELINE -- yes --> NORMAL[TestExecutionStage\nschematizable mutants]
     NORMAL --> INCOMPAT[IncompatibleMutantExecutor\nincompatible mutants]
     INCOMPAT --> TEARDOWN[pool.tearDown\nsandbox.cleanup\nSandboxCleaner.deregister\ncacheStore.persist]
     TEARDOWN --> RESULTS[[ExecutionResult]]
 ```
+
+**Baseline validation (SPM only):** before any mutant runs, `validateSPMBaseline` runs the suite once with no mutant selected — the schema falls through to its `default` branch, so this is the original code. A kill verdict only means something if the same tests pass unmutated: a suite that already fails kills every mutant it reaches and produces a flattering score with nothing in the report to show it. Anything other than a passing suite throws `BaselineError` and ends the run. The Xcode path has no equivalent yet.
 
 **Normal path:** builds once, runs `TestExecutionStage` for all schematizable mutants in parallel.
 

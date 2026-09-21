@@ -98,6 +98,14 @@ flowchart TD
 
 `SimulatorError` conforms to `LocalizedError` and covers three failure modes: `deviceNotFound(destination:)`, `bootTimeout(udid:)`, and `cloneFailed(udid:)`. Each provides a structured `errorDescription` for diagnostics.
 
+## Baseline Validation (SPM)
+
+Before the first mutant runs, the suite is run once with no mutant selected. `__swiftMutationTestingID` is empty, so every schema falls through to its `default` branch and the original code executes.
+
+The run continues only if that suite passes. A suite that already fails without a mutation kills every mutant it reaches, so every verdict it produces is worthless — and nothing in the report would reveal it. `MutantExecutor` throws `BaselineError` instead, naming the failing tests, the timeout that stopped the suite, or the output it failed with.
+
+The Xcode path does not validate a baseline yet and has the same exposure.
+
 ## TestExecutionStage
 
 Runs `xcodebuild test-without-building` for each mutant in parallel via `withThrowingTaskGroup`.
