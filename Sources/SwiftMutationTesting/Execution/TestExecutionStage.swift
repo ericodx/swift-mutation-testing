@@ -37,7 +37,7 @@ struct TestExecutionStage: Sendable {
         key: MutantCacheKey,
         in context: TestExecutionContext
     ) async throws -> ExecutionResult {
-        if !context.configuration.build.noCache, let cached = await deps.cacheStore.result(for: key) {
+        if let cached = await deps.cacheStore.result(for: key) {
             let killerTestFile = await deps.cacheStore.killerTestFile(for: key)
             let result = ExecutionResult(
                 descriptor: mutant, status: cached, testDuration: 0, killerTestFile: killerTestFile

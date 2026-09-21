@@ -91,7 +91,7 @@ struct MutantExecutor: Sendable {
     ) async throws -> (CacheStore, CacheStore.CacheMetadata, TestFilesHasher) {
         let cachePath = URL(fileURLWithPath: configuration.projectPath)
             .appendingPathComponent("\(CacheStore.directoryName)/results.json").path
-        let cacheStore = CacheStore(storePath: cachePath)
+        let cacheStore = CacheStore(storePath: cachePath, noCache: configuration.build.noCache)
         try await cacheStore.load()
 
         let hasher = TestFilesHasher()
@@ -179,7 +179,7 @@ struct MutantExecutor: Sendable {
         mutants: [MutantDescriptor],
         cacheStore: CacheStore
     ) async -> [ExecutionResult]? {
-        guard !configuration.build.noCache, !mutants.isEmpty else { return nil }
+        guard !mutants.isEmpty else { return nil }
 
         var results: [ExecutionResult] = []
         for mutant in mutants {
