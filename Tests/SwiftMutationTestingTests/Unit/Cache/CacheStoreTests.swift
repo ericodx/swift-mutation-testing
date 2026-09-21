@@ -220,6 +220,41 @@ struct CacheStoreTests {
         #expect(await store.result(for: key) == nil)
     }
 
+    @Test("Given a killed entry whose killer file is edited, when the run repeats, then the verdict is dropped")
+    func invalidateDropsKilledVerdictWhenItsKillerTestIsEdited() async throws {
+        let project = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(project) }
+
+        let testsDir = project.appendingPathComponent("Tests")
+        try FileManager.default.createDirectory(at: testsDir, withIntermediateDirectories: true)
+        let testFile = testsDir.appendingPathComponent("FooTests.swift")
+        try "final class FooTests { func testBar() {} }".write(to: testFile, atomically: true, encoding: .utf8)
+
+        let hasher = TestFilesHasher()
+        let resolver = KillerTestFileResolver(
+            testFilePaths: hasher.testFilePaths(projectPath: project.path),
+            projectPath: project.path
+        )
+        let store = CacheStore(storePath: project.appendingPathComponent("cache.json").path)
+        let key = makeMutantCacheKey(utf8Offset: 42)
+
+        await store.store(
+            status: .killed(by: "FooTests.testBar"),
+            for: key,
+            killerTestFile: resolver.resolve(testName: "FooTests.testBar")
+        )
+        try await store.persistMetadata(
+            CacheStore.CacheMetadata(testFileHashes: hasher.hashPerFile(projectPath: project.path))
+        )
+
+        try "final class FooTests {}".write(to: testFile, atomically: true, encoding: .utf8)
+
+        let diff = try await store.changedTestFiles(current: hasher.hashPerFile(projectPath: project.path))
+        await store.invalidate(diff: diff)
+
+        #expect(await store.result(for: key) == nil)
+    }
+
     @Test("Given killed entry with nil killer file, when invalidated, then entry is removed conservatively")
     func invalidateRemovesKilledWithNilKillerFile() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
