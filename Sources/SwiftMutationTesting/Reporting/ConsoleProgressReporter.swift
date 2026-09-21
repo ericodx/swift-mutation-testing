@@ -19,8 +19,9 @@ actor ConsoleProgressReporter: ProgressReporter {
         case .buildFinished(let duration):
             print("  ✓ Built in \(String(format: "%.1f", duration))s")
 
-        case .simulatorPoolReady(let size):
-            print("  ✓ \(size) simulators ready")
+        case .workersReady(let count, let usesSimulators):
+            let unit = usesSimulators ? "simulator" : "worker"
+            print("  ✓ \(count) \(unit)\(count == 1 ? "" : "s") ready")
             print("\nTesting mutants...")
 
         case .mutantStarted:

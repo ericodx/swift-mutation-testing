@@ -56,7 +56,7 @@ struct MutantExecutor: Sendable {
         let (artifact, schemaBuildExcluded) = try await buildArtifact(sandbox: sandbox, input: input, deps: deps)
         let pool = try await makePool(launcher: launcher)
         try await pool.setUp()
-        await reporter.report(.simulatorPoolReady(size: pool.size))
+        await reporter.report(.workersReady(count: pool.size, usesSimulators: pool.usesSimulators))
 
         let results: [ExecutionResult]
         do {

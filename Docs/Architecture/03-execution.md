@@ -91,8 +91,10 @@ flowchart TD
 
 | Destination | Behaviour |
 |---|---|
-| `platform=macOS` | Single slot, no simulator needed; `setUp` and `tearDown` are no-ops |
+| `platform=macOS` and SPM | Single slot, no simulator needed; `setUp` and `tearDown` are no-ops |
 | iOS / tvOS / watchOS | Clones the base simulator N times (one per concurrency slot); boots each clone on `setUp`; shuts down and deletes on `tearDown` |
+
+**The pool is what bounds parallelism.** A run with no simulators to clone gets one slot, so every worker beyond the first waits in `acquire()` — `--concurrency` buys nothing there. `ConfigurationResolver.effectiveConcurrency` resolves the figure down to 1 for those runs rather than reporting a number the pool will not honour, and `usesSimulators` lets the reporter say "worker" instead of claiming simulators that do not exist.
 
 `acquire()` returns an available `SimulatorSlot` or suspends the caller until one is released. A `withTaskCancellationHandler` wraps the suspension — if the owning task is cancelled, the slot is released immediately to avoid a permanent deadlock.
 

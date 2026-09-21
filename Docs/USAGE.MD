@@ -9,10 +9,11 @@ This guide covers every way to run and configure `swift-mutation-testing`, from 
 1. [Quick Start](#quick-start)
 2. [Configuration File](#configuration-file)
 3. [CLI Reference](#cli-reference)
-4. [Output Formats](#output-formats)
-5. [Suppressing Mutations](#suppressing-mutations)
-6. [CI/CD Integration](#cicd-integration)
-7. [Exit Codes](#exit-codes)
+4. [Parallelism](#parallelism)
+5. [Output Formats](#output-formats)
+6. [Suppressing Mutations](#suppressing-mutations)
+7. [CI/CD Integration](#cicd-integration)
+8. [Exit Codes](#exit-codes)
 
 ---
 
@@ -153,7 +154,7 @@ mutators:
 | `destination` | String | — | `xcodebuild` destination specifier (required for Xcode projects, omit for SPM) |
 | `testTarget` | String | — | Limit test execution to this target (`-only-testing`) |
 | `timeout` | Number | `120` (Xcode) / `30` (SPM) | Per-mutant test timeout in seconds |
-| `concurrency` | Number | `max(1, CPUs − 1)` | Number of parallel test workers |
+| `concurrency` | Number | `max(1, CPUs − 1)` | Parallel test workers. Only simulator destinations run more than one — see [Parallelism](#parallelism) |
 | `noCache` | Boolean | `false` | Disable result caching |
 | `output` | String | — | Path for Stryker-compatible JSON report |
 | `htmlOutput` | String | — | Path for interactive HTML report |
@@ -223,7 +224,7 @@ swift-mutation-testing [project-path] [options]
 | `--destination <destination>` | `xcodebuild` destination specifier (required for Xcode, omit for SPM) |
 | `--target <test-target>` | Limit test execution to this target |
 | `--timeout <seconds>` | Per-mutant test timeout (default: 120 Xcode, 30 SPM) |
-| `--concurrency <n>` | Parallel workers (default: CPUs − 1) |
+| `--concurrency <n>` | Parallel workers (default: CPUs − 1). Simulator destinations only |
 | `--no-cache` | Disable result caching — no verdict is read from the cache, and none is written back |
 | `--output <path>` | Write Stryker-compatible JSON report |
 | `--html-output <path>` | Write interactive HTML report |
@@ -269,6 +270,23 @@ swift-mutation-testing --quiet
 # Invalidate cache and run fresh
 swift-mutation-testing --no-cache
 ```
+
+---
+
+## Parallelism
+
+Mutants are tested in parallel only when each worker can be given a simulator of its own. Workers come from a pool of simulator clones, and a run with no simulators to clone gets a single worker however high `--concurrency` is set.
+
+| Run | Workers |
+|---|---|
+| Xcode scheme on a simulator destination, Swift Testing | `--concurrency` |
+| Xcode scheme on a simulator destination, XCTest | 1 |
+| Xcode scheme on `platform=macOS` | 1 |
+| SPM package | 1 |
+
+`--concurrency` is resolved down to 1 for those runs rather than accepted and quietly ignored, so the number the configuration reports is the number of mutants actually tested at once.
+
+Raising it for SPM would not help as things stand: every worker runs `swift test` against the same `.build` directory, SwiftPM takes a lock on it, and the workers would queue anyway — with the wait counted against each mutant's timeout, turning slow mutants into false timeouts. Parallel SPM execution needs a build directory per worker, or the compiled test bundle invoked directly rather than through `swift test`.
 
 ---
 

@@ -11,6 +11,10 @@ actor SimulatorPool {
 
     nonisolated let size: Int
 
+    /// Whether slots are cloned simulators. A pool without them hands out a single slot, since
+    /// there is nothing to isolate one worker from another.
+    nonisolated var usesSimulators: Bool { baseUDID != nil }
+
     private let baseUDID: String?
     private let destination: String
     private let launcher: any ProcessLaunching

@@ -148,7 +148,7 @@ struct MutantExecutorTests {
             _ = try? await executor.execute(makeRunnerInput(projectPath: dir.path))
         }
 
-        #expect(output.contains("simulators ready"))
+        #expect(output.contains("worker ready"))
     }
 
     @Test("Given main build fails and fallback build succeeds, when execute called, then mutant is not marked unviable")
