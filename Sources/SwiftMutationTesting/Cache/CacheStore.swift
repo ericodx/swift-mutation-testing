@@ -111,7 +111,8 @@ actor CacheStore {
 
         for (key, status) in entries {
             switch status {
-            case .unviable, .killedByCrash:
+            case .unviable:
+                // A mutant that does not compile stays uncompilable however the tests change.
                 continue
 
             case .killed:
@@ -126,7 +127,11 @@ actor CacheStore {
                     killerTestFiles.removeValue(forKey: key)
                 }
 
-            case .survived, .noCoverage, .timeout:
+            case .survived, .noCoverage, .timeout, .killedByCrash:
+                // All statements about what happened when the tests ran, so all re-measured.
+                // A crash used to be kept forever alongside .unviable, which meant a spurious one
+                // — the kind #69 produced — could never be cleared (issue #80).
+
                 entries.removeValue(forKey: key)
                 killerTestFiles.removeValue(forKey: key)
             }
