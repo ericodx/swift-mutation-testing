@@ -21,12 +21,11 @@ struct ConfigurationResolver: Sendable {
         let testingFramework = try resolvedTestingFramework(cli: cliArguments, fileValues: fileValues)
         let timeout = resolvedTimeout(cli: cliArguments, fileValues: fileValues, projectType: projectType)
 
-        let effectiveConcurrency: Int
-        if case .xcode = projectType, testingFramework == .xctest {
-            effectiveConcurrency = 1
-        } else {
-            effectiveConcurrency = concurrency
-        }
+        let effectiveConcurrency = Self.effectiveConcurrency(
+            requested: concurrency,
+            projectType: projectType,
+            testingFramework: testingFramework
+        )
 
         return RunnerConfiguration(
             projectPath: projectPath,
@@ -54,6 +53,29 @@ struct ConfigurationResolver: Sendable {
                 operators: resolveOperators(cli: cliArguments, fileValues: fileValues)
             )
         )
+    }
+
+    /// How many mutants can genuinely be tested at once.
+    ///
+    /// Workers are handed out by `SimulatorPool`, which only has more than one slot when it has
+    /// cloned simulators to hand out. A run with no simulators — every SPM package, and any Xcode
+    /// scheme targeting macOS — gets a single slot however high `--concurrency` is set, so the
+    /// figure is resolved down to what the run can actually do rather than left to mislead (issue
+    /// #70).
+    ///
+    /// Raising it without giving each worker its own build directory would not help anyway: they
+    /// would share one `.build`, serialise on SwiftPM's lock, and count the wait against each
+    /// mutant's timeout.
+    static func effectiveConcurrency(
+        requested: Int,
+        projectType: ProjectType,
+        testingFramework: TestingFramework
+    ) -> Int {
+        guard case .xcode(_, let destination) = projectType else { return 1 }
+        guard SimulatorManager.requiresSimulatorPool(for: destination) else { return 1 }
+        guard testingFramework != .xctest else { return 1 }
+
+        return requested
     }
 
     private func resolveProjectType(
