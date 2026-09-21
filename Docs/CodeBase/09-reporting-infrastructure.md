@@ -448,10 +448,12 @@ struct SPMProcessLauncher: Sendable, ProcessLaunching {
 ```
 
 SPM-specific implementation of `ProcessLaunching`. Creates a `ProcessRunner` with:
-- `onTimeout`: snapshots the process's descendants via `ProcessTree`, sends `SIGTERM` to the group, then five seconds later sends `SIGKILL` to the group and to each snapshotted descendant
-- `postTerminationCleanup`: kills the process group via `kill(-pid, SIGKILL)`
+- `onTimeout`: snapshots the process's descendants via `ProcessTree`, arms a `TimeoutEscalation`, and sends `SIGTERM` to the group
+- `postTerminationCleanup`: kills the process group via `kill(-pid, SIGKILL)` and tells the escalation the process is gone
 
-The descendants are collected **before** the first signal, while the process that owns them is still alive to be traced back to. Five seconds later the timed-out run may be finished and the next mutant already testing in the same sandbox — cleanup that instead matched processes by sandbox name killed that mutant's test binary, and the truncated output was read as a crash.
+The descendants are collected **before** the first signal, while the process that owns them is still alive to be traced back to. Cleanup that instead matched processes by sandbox name could not tell one mutant's run from another's when both ran in the same sandbox: it killed the next mutant's test binary, and the truncated output was read as a crash.
+
+**`TimeoutEscalation`** — owns the SIGKILL that follows SIGTERM, and ties it to the run's lifetime. A process that stops when asked has its descendants cleaned up at once and the pending kill cancelled, rather than a timer firing seconds later when the pid may belong to something else.
 
 ---
 
