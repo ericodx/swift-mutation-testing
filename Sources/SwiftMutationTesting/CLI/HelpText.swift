@@ -16,7 +16,7 @@ enum HelpText {
           --target <test-target>        Test target name
           --timeout <seconds>           Per-mutant test timeout in seconds (default: 120 Xcode, 30 SPM)
           --concurrency <n>             Number of parallel test workers (default: CPUs - 1)
-          --no-cache                    Disable the result cache
+          --no-cache                    Disable the result cache — nothing is read or written
           --output <json-path>          Write mutation report JSON to path
           --html-output <html-path>     Write HTML report to path
           --sonar-output <json-path>    Write Sonar Generic Coverage report to path

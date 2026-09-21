@@ -224,7 +224,7 @@ swift-mutation-testing [project-path] [options]
 | `--target <test-target>` | Limit test execution to this target |
 | `--timeout <seconds>` | Per-mutant test timeout (default: 120 Xcode, 30 SPM) |
 | `--concurrency <n>` | Parallel workers (default: CPUs − 1) |
-| `--no-cache` | Disable result caching |
+| `--no-cache` | Disable result caching — no verdict is read from the cache, and none is written back |
 | `--output <path>` | Write Stryker-compatible JSON report |
 | `--html-output <path>` | Write interactive HTML report |
 | `--sonar-output <path>` | Write SonarQube generic coverage report |

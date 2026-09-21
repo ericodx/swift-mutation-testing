@@ -145,7 +145,7 @@ Invokes `xcresulttool get test-results tests` on the `.xcresult` bundle and pars
 ```swift
 actor CacheStore {
     static let directoryName: String
-    init(storePath: String)
+    init(storePath: String, noCache: Bool = false)
     func result(for key: MutantCacheKey) -> ExecutionStatus?
     func killerTestFile(for key: MutantCacheKey) -> String?
     func store(status: ExecutionStatus, for key: MutantCacheKey, killerTestFile: String? = nil)
@@ -167,6 +167,8 @@ Persists execution results across runs with granular per-file invalidation. All 
 Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of `CacheEntry` values (key + status + killerTestFile).
 
 `load()` is a no-op if the cache file does not exist. `persist()` creates the directory if needed and writes atomically.
+
+**`noCache`:** constructed with `noCache: true` — from `--no-cache` or `no-cache: true` in the YAML — the store is inert. It reads nothing from disk, holds no verdict, and writes nothing back. The flag is honoured here rather than at each call site, so a run can neither replay a verdict nor leave one behind for the next run to replay.
 
 **Granular invalidation methods:**
 
