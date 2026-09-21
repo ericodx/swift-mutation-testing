@@ -418,6 +418,35 @@ struct SandboxFactoryTests {
         #expect(content.contains("case \"abc-123\":"))
     }
 
+    @Test("Given build output directories, when sandbox created, then they are not replicated")
+    func skipsBuildOutputDirectories() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        try FileHelpers.write("let kept = true", named: "File.swift", in: projectDir)
+
+        for skipped in [".build", "DerivedData", ".xmr-cache"] {
+            let directory = projectDir.appendingPathComponent(skipped)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try FileHelpers.write("stale", named: "artifact.o", in: directory)
+        }
+
+        let sandbox = try await factory.create(
+            projectPath: projectDir.path,
+            schematizedFiles: [],
+            supportFileContent: ""
+        )
+        defer { try? sandbox.cleanup() }
+
+        for skipped in [".build", "DerivedData", ".xmr-cache"] {
+            #expect(
+                !FileManager.default.fileExists(atPath: sandbox.rootURL.appendingPathComponent(skipped).path),
+                "\(skipped) should not be replicated into the sandbox"
+            )
+        }
+        #expect(FileManager.default.fileExists(atPath: sandbox.rootURL.appendingPathComponent("File.swift").path))
+    }
+
     @Test("Given created sandbox, when cleanup called, then sandbox directory no longer exists")
     func cleanupRemovesSandboxDirectory() async throws {
         let projectDir = try FileHelpers.makeTemporaryDirectory()
