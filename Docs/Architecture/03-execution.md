@@ -256,7 +256,7 @@ score = killed / (killed + survived + timedOut + noCoverage) × 100
 | `ConsoleProgressReporter` | `actor` — serialises output to stdout |
 | `TestExecutionStage` | `withThrowingTaskGroup` — N tasks, dynamically refilled |
 | `ProcessRunner` | `withTaskCancellationHandler` + `withCheckedThrowingContinuation` — kills process on cancel |
-| `SPMProcessLauncher` | `ProcessLaunching` conformance backed by `ProcessRunner`; `killEscapedChildren` cleans up orphaned child processes via `sysctl` `KERN_PROCARGS2` inspection |
+| `SPMProcessLauncher` | `ProcessLaunching` conformance backed by `ProcessRunner`; on timeout it kills the process group and the descendants `ProcessTree` snapshotted before the first signal |
 | `SandboxCleaner` | `nonisolated(unsafe)` C pointer for signal handler access; `register`/`deregister` called sequentially from `MutantExecutor.execute` |
 | All data types | `Sendable` value types — safe to cross actor boundaries |
 

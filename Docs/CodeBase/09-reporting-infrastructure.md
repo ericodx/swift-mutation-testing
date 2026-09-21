@@ -432,7 +432,7 @@ Low-level process execution engine. Uses `withTaskCancellationHandler` + `withCh
 
 **Cancellation handling:** `onCancel` marks the flag and calls `onTimeout(pid)` immediately, ensuring the continuation is always resumed via the `terminationHandler`.
 
-**Post-termination cleanup:** `postTerminationCleanup` is called after every process termination (success or failure), used by `SPMProcessLauncher` to clean up escaped child processes.
+**Post-termination cleanup:** `postTerminationCleanup` is called after every process termination (success or failure), used by `SPMProcessLauncher` to kill the process group.
 
 `launchCapturing` writes output to a temporary file (UUID-named) and reads it in the `terminationHandler` to avoid pipe buffer limits. Sets process group via `setpgid(pid, pid)` to enable group signaling.
 
@@ -448,10 +448,10 @@ struct SPMProcessLauncher: Sendable, ProcessLaunching {
 ```
 
 SPM-specific implementation of `ProcessLaunching`. Creates a `ProcessRunner` with:
-- `onTimeout`: kills the process group via `kill(-pid, SIGKILL)` + `kill(pid, SIGKILL)`
-- `postTerminationCleanup`: calls `killEscapedChildren(sandboxPath:)` to clean up orphaned child processes
+- `onTimeout`: snapshots the process's descendants via `ProcessTree`, sends `SIGTERM` to the group, then five seconds later sends `SIGKILL` to the group and to each snapshotted descendant
+- `postTerminationCleanup`: kills the process group via `kill(-pid, SIGKILL)`
 
-**`killEscapedChildren(sandboxPath:)`** — inspects running processes via `sysctl` `KERN_PROCARGS2` to find any whose arguments contain the sandbox path prefix `xmr-`. Sends `SIGKILL` to matching processes to prevent resource leaks from spawned child processes that outlive the parent.
+The descendants are collected **before** the first signal, while the process that owns them is still alive to be traced back to. Five seconds later the timed-out run may be finished and the next mutant already testing in the same sandbox — cleanup that instead matched processes by sandbox name killed that mutant's test binary, and the truncated output was read as a crash.
 
 ---
 
