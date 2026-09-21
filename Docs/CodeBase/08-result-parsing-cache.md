@@ -235,7 +235,7 @@ Represents changes to test files between cache runs. Produced by `CacheStore.cha
 
 ```swift
 struct KillerTestFileResolver: Sendable {
-    let testFilePaths: [String]
+    init(testFilePaths: [String], projectPath: String)
     func resolve(testName: String) -> String?
 }
 ```
@@ -243,6 +243,8 @@ struct KillerTestFileResolver: Sendable {
 Maps killer test names back to their source file paths. Supports both XCTest class names (e.g. `CalculatorTests`) and Swift Testing function names (e.g. `addReturnsSum()`).
 
 Resolution strategy: extracts the class or function name from the test name, then searches `testFilePaths` for a file whose name contains the extracted identifier.
+
+Candidates are absolute, since matching a suffix and reading a file both need a real path, but the result is returned **project-relative** via `ProjectRelativePath`. That is the form `TestFilesHasher.hashPerFile` keys its hashes by, and `CacheStore.invalidate` compares the two directly — when they disagreed, no killed verdict was ever invalidated by an edit to the test that killed it.
 
 ---
 
