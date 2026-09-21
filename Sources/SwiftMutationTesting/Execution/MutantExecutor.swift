@@ -511,7 +511,8 @@ struct MutantExecutor: Sendable {
             replacementKind: mutant.replacementKind,
             description: mutant.description,
             isSchematizable: mutant.isSchematizable,
-            mutatedSourceContent: content
+            mutatedSourceContent: content,
+            sourceContentHash: mutant.sourceContentHash
         )
     }
 
