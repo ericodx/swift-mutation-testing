@@ -64,8 +64,9 @@ struct SPMTimeoutCleanupTests {
                 (try String(contentsOf: marker, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines)
             ))
 
-        // The escalation runs five seconds after the timeout.
-        try await Task.sleep(for: .seconds(6))
+        // Cleanup is tied to the process ending, not to the five-second grace period, so this does
+        // not have to wait the period out.
+        try await Task.sleep(for: .milliseconds(500))
 
         #expect(kill(childPID, 0) != 0, "the spawned child outlived the run that started it")
     }

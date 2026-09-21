@@ -21,32 +21,31 @@ struct SPMProcessLauncher: Sendable, ProcessLaunching {
         try await makeRunner().launchCapturing(request)
     }
 
-    /// A timed-out `swift test` is given SIGTERM, then SIGKILL five seconds later, and anything it
-    /// spawned that outlived the process group is killed with it.
+    /// A timed-out `swift test` is asked to stop, and anything it spawned that outlived the process
+    /// group is killed with it.
     ///
     /// Those descendants are collected *before* the first signal, while the process that owns them
-    /// is still alive to be traced back to. Five seconds later the run that timed out may be long
-    /// finished and the next mutant already testing in the same sandbox, so cleanup has to know
-    /// which processes were its own — it used to kill whichever ones mentioned the sandbox, which
-    /// meant killing the next mutant's test binary and reporting that mutant as a crash (issue #69).
+    /// is still alive to be traced back to — once it dies they are reparented and nothing connects
+    /// them to it. Cleanup used to find them by searching every process on the machine for one
+    /// whose arguments mentioned the sandbox, which cannot tell one mutant's run from another's
+    /// when both run in the same sandbox: it killed the next mutant's test binary, and the
+    /// truncated output was read as a crash (issue #69).
+    ///
+    /// `TimeoutEscalation` ties the SIGKILL that follows to this run's lifetime, so a process that
+    /// stops when asked is cleaned up at once rather than on a timer that outlives it.
     private func makeRunner() -> ProcessRunner {
-        ProcessRunner(
+        let escalation = TimeoutEscalation()
+
+        return ProcessRunner(
             postTerminationCleanup: { pid in
                 kill(-pid, SIGKILL)
+                escalation.processTerminated()
             },
             onTimeout: { pid in
                 guard pid > 0 else { return }
 
-                let descendants = ProcessTree.descendants(of: pid)
+                escalation.arm(pid: pid, descendants: ProcessTree.descendants(of: pid))
                 kill(-pid, SIGTERM)
-
-                Task {
-                    try? await Task.sleep(for: .seconds(5))
-                    kill(-pid, SIGKILL)
-                    for descendant in descendants {
-                        kill(descendant, SIGKILL)
-                    }
-                }
             }
         )
     }
