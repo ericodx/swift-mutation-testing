@@ -75,8 +75,6 @@ struct FallbackExecutor: Sendable {
     }
 
     private func cachedResults(for mutants: [MutantDescriptor]) async -> [ExecutionResult]? {
-        guard !configuration.build.noCache else { return nil }
-
         var results: [ExecutionResult] = []
         for mutant in mutants {
             let key = MutantCacheKey.make(for: mutant)

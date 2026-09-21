@@ -2,8 +2,12 @@ import Foundation
 
 actor CacheStore {
 
-    init(storePath: String) {
+    /// - Parameter noCache: when `true` the store is inert — it reads nothing from disk, keeps no
+    ///   verdict, and writes nothing back. A run cannot replay a verdict, nor leave one behind for
+    ///   the next run to replay (issue #68).
+    init(storePath: String, noCache: Bool = false) {
         self.storePath = storePath
+        self.noCache = noCache
         self.entries = [:]
         self.killerTestFiles = [:]
     }
@@ -11,6 +15,7 @@ actor CacheStore {
     static let directoryName = ".swift-mutation-testing-cache"
 
     private let storePath: String
+    private let noCache: Bool
     private var entries: [MutantCacheKey: ExecutionStatus]
     private var killerTestFiles: [MutantCacheKey: String]
 
@@ -30,14 +35,16 @@ actor CacheStore {
     }
 
     func result(for key: MutantCacheKey) -> ExecutionStatus? {
-        entries[key]
+        noCache ? nil : entries[key]
     }
 
     func killerTestFile(for key: MutantCacheKey) -> String? {
-        killerTestFiles[key]
+        noCache ? nil : killerTestFiles[key]
     }
 
     func store(status: ExecutionStatus, for key: MutantCacheKey, killerTestFile: String? = nil) {
+        guard !noCache else { return }
+
         entries[key] = status
         if let killerTestFile {
             killerTestFiles[key] = killerTestFile
@@ -45,6 +52,7 @@ actor CacheStore {
     }
 
     func load() throws {
+        guard !noCache else { return }
         guard FileManager.default.fileExists(atPath: storePath) else { return }
         let data = try Data(contentsOf: URL(fileURLWithPath: storePath))
         let loaded = try JSONDecoder().decode([CacheEntry].self, from: data)
@@ -61,6 +69,8 @@ actor CacheStore {
     }
 
     func persist() throws {
+        guard !noCache else { return }
+
         let cacheEntries = entries.map {
             CacheEntry(key: $0.key, status: $0.value, killerTestFile: killerTestFiles[$0.key])
         }
@@ -74,6 +84,8 @@ actor CacheStore {
     }
 
     func loadMetadata() throws -> CacheMetadata? {
+        guard !noCache else { return nil }
+
         let url = URL(fileURLWithPath: metadataPath)
         guard FileManager.default.fileExists(atPath: metadataPath) else { return nil }
         let data = try Data(contentsOf: url)
@@ -81,6 +93,8 @@ actor CacheStore {
     }
 
     func persistMetadata(_ metadata: CacheMetadata) throws {
+        guard !noCache else { return }
+
         let data = try JSONEncoder().encode(metadata)
         let url = URL(fileURLWithPath: metadataPath)
         try FileManager.default.createDirectory(

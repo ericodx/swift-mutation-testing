@@ -89,12 +89,12 @@ struct IncompatibleMutantExecutorTests {
         #expect(results.first?.status == .unviable)
     }
 
-    @Test("Given noCache is true, when mutant already cached, then cache is bypassed")
-    func noCacheConfigurationBypassesCache() async throws {
+    @Test("Given noCache, when a mutant is already cached, then it is retested rather than replayed")
+    func noCacheStoreRetestsCachedMutant() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        let cacheStore = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
+        let storePath = dir.appendingPathComponent("cache.json").path
         let pool = makeSimulatorPool()
         try await pool.setUp()
 
@@ -106,41 +106,49 @@ struct IncompatibleMutantExecutorTests {
             description: "Replace + with -",
             mutatedSourceContent: "let x = 1"
         )
+        let configuration = makeRunnerConfiguration(projectPath: dir.path)
 
-        let firstExecutor = IncompatibleMutantExecutor(
+        let cached = try await execute(
+            mutant, in: dir, storePath: storePath, noCache: false,
+            launcher: MockProcessLauncher(exitCode: 1), configuration: configuration, pool: pool
+        )
+        #expect(cached.first?.status == .unviable)
+
+        // The launcher now succeeds, so a replayed verdict and a fresh one differ.
+        let fresh = try await execute(
+            mutant, in: dir, storePath: storePath, noCache: true,
+            launcher: MockProcessLauncher(exitCode: 0), configuration: configuration, pool: pool
+        )
+
+        #expect(fresh.first?.status == .survived)
+    }
+
+    private func execute(
+        _ mutant: MutantDescriptor,
+        in dir: URL,
+        storePath: String,
+        noCache: Bool,
+        launcher: any ProcessLaunching,
+        configuration: RunnerConfiguration,
+        pool: SimulatorPool
+    ) async throws -> [ExecutionResult] {
+        let store = CacheStore(storePath: storePath, noCache: noCache)
+        try await store.load()
+
+        let executor = IncompatibleMutantExecutor(
             deps: ExecutionDeps(
-                launcher: MockProcessLauncher(exitCode: 1),
-                cacheStore: cacheStore,
+                launcher: launcher,
+                cacheStore: store,
                 reporter: MockProgressReporter(),
                 counter: MutationCounter(total: 1),
                 killerTestFileResolver: KillerTestFileResolver(testFilePaths: [], projectPath: "/tmp")
             ),
             sandboxFactory: SandboxFactory()
         )
-        _ = try await firstExecutor.execute(
-            [mutant],
-            configuration: makeRunnerConfiguration(projectPath: dir.path),
-            pool: pool
-        )
 
-        let noCacheConfig = makeRunnerConfiguration(projectPath: dir.path, noCache: true)
-        let secondExecutor = IncompatibleMutantExecutor(
-            deps: ExecutionDeps(
-                launcher: MockProcessLauncher(exitCode: 1),
-                cacheStore: cacheStore,
-                reporter: MockProgressReporter(),
-                counter: MutationCounter(total: 1),
-                killerTestFileResolver: KillerTestFileResolver(testFilePaths: [], projectPath: "/tmp")
-            ),
-            sandboxFactory: SandboxFactory()
-        )
-        let results = try await secondExecutor.execute(
-            [mutant],
-            configuration: noCacheConfig,
-            pool: pool
-        )
-
-        #expect(results.first?.status == .unviable)
+        let results = try await executor.execute([mutant], configuration: configuration, pool: pool)
+        try await store.persist()
+        return results
     }
 
     @Test("Given configuration with testTarget, when execute called, then testTarget is applied")

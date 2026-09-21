@@ -15,7 +15,7 @@ struct IncompatibleMutantExecutor: Sendable {
         for mutant in mutants {
             let key = MutantCacheKey.make(for: mutant)
 
-            if !configuration.build.noCache, let cachedStatus = await deps.cacheStore.result(for: key) {
+            if let cachedStatus = await deps.cacheStore.result(for: key) {
                 let killerTestFile = await deps.cacheStore.killerTestFile(for: key)
                 let total = deps.counter.total
                 let index = await deps.counter.increment()
