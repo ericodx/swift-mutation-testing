@@ -177,6 +177,9 @@ struct IncompatibleMutantExecutor: Sendable {
         let status = outcome.asExecutionStatus
         let killerTestFile = resolveKillerTestFile(status: status)
 
+        MutantLogWriter(directory: configuration.reporting.keepLogsPath)?
+            .write(mutant: mutant, status: status, duration: duration, output: test.output)
+
         let index = await deps.counter.increment()
         await deps.reporter.report(
             .mutantFinished(descriptor: mutant, status: status, index: index, total: deps.counter.total))
@@ -227,6 +230,10 @@ struct IncompatibleMutantExecutor: Sendable {
 
         let status = outcome.asExecutionStatus
         let killerTestFile = resolveKillerTestFile(status: status)
+
+        MutantLogWriter(directory: configuration.reporting.keepLogsPath)?
+            .write(mutant: mutant, status: status, duration: launched.duration, output: launched.output)
+
         let total = deps.counter.total
         let index = await deps.counter.increment()
         await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: total))

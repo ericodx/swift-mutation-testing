@@ -72,7 +72,7 @@ struct TestExecutionStage: Sendable {
         )
         try? FileManager.default.removeItem(atPath: launched.xcresultPath)
 
-        return await recordResult(mutant: mutant, key: key, outcome: outcome, duration: launched.duration)
+        return await recordResult(mutant: mutant, key: key, outcome: outcome, launched: launched, in: context)
     }
 
     private func runSPM(
@@ -91,16 +91,21 @@ struct TestExecutionStage: Sendable {
 
         let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
         await context.pool.release(slot)
-        return await recordResult(mutant: mutant, key: key, outcome: outcome, duration: launched.duration)
+        return await recordResult(mutant: mutant, key: key, outcome: outcome, launched: launched, in: context)
     }
 
     private func recordResult(
         mutant: MutantDescriptor,
         key: MutantCacheKey,
         outcome: TestRunOutcome,
-        duration: Double
+        launched: TestLaunchResult,
+        in context: TestExecutionContext
     ) async -> ExecutionResult {
         let status = outcome.asExecutionStatus
+        let duration = launched.duration
+
+        MutantLogWriter(directory: context.configuration.reporting.keepLogsPath)?
+            .write(mutant: mutant, status: status, duration: duration, output: launched.output)
         let killerTestFile = resolveKillerTestFile(status: status)
         let result = ExecutionResult(
             descriptor: mutant, status: status, testDuration: duration,
