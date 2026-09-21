@@ -293,6 +293,80 @@ struct IncompatibleMutantExecutorTests {
         #expect(results.first?.status == .survived)
     }
 
+    @Test("Given SPM project type and mutant without content, when execute called, then it is unviable")
+    func spmNilContentMutantIsUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let executor = makeIncompatibleMutantExecutorSPM(in: dir, launcher: MockProcessLauncher(exitCode: 0))
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: nil
+        )
+
+        let results = try await executor.execute(
+            [mutant],
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            pool: pool
+        )
+
+        #expect(results.count == 1)
+        #expect(results.first?.status == .unviable)
+    }
+
+    @Test("Given SPM project type and both a content-less and a viable mutant, when execute called, then both report")
+    func spmNilContentMutantDoesNotBlockViableOne() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let executor = makeIncompatibleMutantExecutorSPM(in: dir, launcher: MockProcessLauncher(exitCode: 0))
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let withoutContent = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "a + b",
+            mutatedText: "a - b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with -",
+            mutatedSourceContent: nil
+        )
+        let withContent = makeMutantDescriptor(
+            id: "m1",
+            filePath: sourceFile.path,
+            originalText: "a + b",
+            mutatedText: "a * b",
+            operatorIdentifier: "binaryOperator",
+            description: "Replace + with *",
+            mutatedSourceContent: "let x = 1"
+        )
+
+        let results = try await executor.execute(
+            [withoutContent, withContent],
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            pool: pool
+        )
+
+        #expect(results.count == 2)
+        #expect(results.first(where: { $0.descriptor.id == "m0" })?.status == .unviable)
+        #expect(results.first(where: { $0.descriptor.id == "m1" })?.status == .survived)
+    }
+
     @Test("Given SPM project type and exit code 1 with failure output, when execute called, then mutant is killed")
     func spmExitCodeOneWithFailureOutputProducesKilledStatus() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

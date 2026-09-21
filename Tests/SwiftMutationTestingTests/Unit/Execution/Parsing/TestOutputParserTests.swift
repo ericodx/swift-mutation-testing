@@ -107,4 +107,42 @@ struct TestOutputParserTests {
 
         #expect(result == .crashed)
     }
+
+    @Test("Given several XCTest failures, when failingTests called, then returns all of them in order")
+    func failingTestsReturnsEveryXCTestFailure() {
+        let output = """
+            Test Case '-[MySuite firstTest]' failed (0.001 seconds).
+            Test Case '-[MySuite secondTest]' passed (0.001 seconds).
+            Test Case '-[OtherSuite thirdTest]' failed (0.002 seconds).
+            """
+
+        #expect(TestOutputParser().failingTests(in: output) == ["MySuite.firstTest", "OtherSuite.thirdTest"])
+    }
+
+    @Test("Given the same failure reported twice, when failingTests called, then it appears once")
+    func failingTestsDeduplicates() {
+        let output = """
+            Test Case '-[MySuite myTest]' failed (0.001 seconds).
+            Test Case '-[MySuite myTest]' failed (0.001 seconds).
+            """
+
+        #expect(TestOutputParser().failingTests(in: output) == ["MySuite.myTest"])
+    }
+
+    @Test("Given Swift Testing failures, when failingTests called, then returns the test names")
+    func failingTestsReturnsSwiftTestingFailures() {
+        let output = """
+            ✘ Test "a first check" failed after 0.001 seconds.
+            ✘ Test "a second check" failed after 0.002 seconds.
+            """
+
+        #expect(TestOutputParser().failingTests(in: output) == ["a first check", "a second check"])
+    }
+
+    @Test("Given output with no failures, when failingTests called, then returns empty")
+    func failingTestsReturnsEmptyWithoutFailures() {
+        let output = "Test Suite 'All tests' started\nExecuted 3 tests, with 0 failures"
+
+        #expect(TestOutputParser().failingTests(in: output).isEmpty)
+    }
 }

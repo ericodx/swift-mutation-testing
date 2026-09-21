@@ -1,5 +1,3 @@
-import Foundation
-
 @testable import SwiftMutationTesting
 
 func makeExecutionDeps(

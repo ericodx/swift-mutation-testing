@@ -32,6 +32,21 @@ struct TestOutputParser: Sendable {
         return hasTestOutput ? .crashed : .unviable
     }
 
+    /// Every test the output reports as failed, in the order they first appear.
+    ///
+    /// `parse` stops at the first one, which is all a mutant's verdict needs. A baseline failure is
+    /// read by someone who has to go and fix them, and wants the whole list.
+    func failingTests(in output: String) -> [String] {
+        var seen: Set<String> = []
+
+        return output.components(separatedBy: "\n").compactMap { line in
+            guard let name = extractFailingTest(from: line), seen.insert(name).inserted else {
+                return nil
+            }
+            return name
+        }
+    }
+
     private func extractFailingTest(from line: String) -> String? {
         if let name = extractXCTestFailure(from: line) {
             return name
