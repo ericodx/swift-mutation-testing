@@ -7,8 +7,7 @@ struct SPMProcessLauncher: Sendable, ProcessLaunching {
         workingDirectoryURL: URL,
         timeout: Double
     ) async throws -> Int32 {
-        let sandboxPath = workingDirectoryURL.path
-        return try await makeRunner(sandboxPath: sandboxPath).launch(
+        try await makeRunner().launch(
             executableURL: executableURL,
             arguments: arguments,
             workingDirectoryURL: workingDirectoryURL,
@@ -19,56 +18,36 @@ struct SPMProcessLauncher: Sendable, ProcessLaunching {
     func launchCapturing(
         _ request: ProcessRequest
     ) async throws -> (exitCode: Int32, output: String) {
-        let sandboxPath = request.workingDirectoryURL.path
-        return try await makeRunner(sandboxPath: sandboxPath).launchCapturing(request)
+        try await makeRunner().launchCapturing(request)
     }
 
-    private func makeRunner(sandboxPath: String) -> ProcessRunner {
+    /// A timed-out `swift test` is given SIGTERM, then SIGKILL five seconds later, and anything it
+    /// spawned that outlived the process group is killed with it.
+    ///
+    /// Those descendants are collected *before* the first signal, while the process that owns them
+    /// is still alive to be traced back to. Five seconds later the run that timed out may be long
+    /// finished and the next mutant already testing in the same sandbox, so cleanup has to know
+    /// which processes were its own — it used to kill whichever ones mentioned the sandbox, which
+    /// meant killing the next mutant's test binary and reporting that mutant as a crash (issue #69).
+    private func makeRunner() -> ProcessRunner {
         ProcessRunner(
             postTerminationCleanup: { pid in
                 kill(-pid, SIGKILL)
-                killEscapedChildren(sandboxPath: sandboxPath)
             },
             onTimeout: { pid in
                 guard pid > 0 else { return }
+
+                let descendants = ProcessTree.descendants(of: pid)
                 kill(-pid, SIGTERM)
+
                 Task {
                     try? await Task.sleep(for: .seconds(5))
                     kill(-pid, SIGKILL)
-                    killEscapedChildren(sandboxPath: sandboxPath)
+                    for descendant in descendants {
+                        kill(descendant, SIGKILL)
+                    }
                 }
             }
         )
-    }
-}
-
-func killEscapedChildren(sandboxPath: String) {
-    let sandboxName = URL(fileURLWithPath: sandboxPath).lastPathComponent
-    guard sandboxName.hasPrefix("xmr-") else { return }
-    guard let pathData = sandboxName.data(using: .utf8) else { return }
-
-    var size = 0
-    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
-    guard sysctl(&mib, 4, nil, &size, nil, 0) == 0, size > 0 else { return }
-
-    let procSize = MemoryLayout<kinfo_proc>.stride
-    var procs = [kinfo_proc](repeating: kinfo_proc(), count: size / procSize)
-    guard sysctl(&mib, 4, &procs, &size, nil, 0) == 0 else { return }
-
-    for index in 0 ..< (size / procSize) {
-        let pid = procs[index].kp_proc.p_pid
-        guard pid > 1 else { continue }
-
-        var argSize = 0
-        var argMib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
-        guard sysctl(&argMib, 3, nil, &argSize, nil, 0) == 0, argSize > 0 else { continue }
-
-        var argBuf = [UInt8](repeating: 0, count: argSize)
-        guard sysctl(&argMib, 3, &argBuf, &argSize, nil, 0) == 0 else { continue }
-
-        if Data(argBuf[..<argSize]).range(of: pathData) != nil {
-            kill(-pid, SIGKILL)
-            kill(pid, SIGKILL)
-        }
     }
 }
