@@ -186,6 +186,7 @@ Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a J
 
 ```swift
 struct MutantCacheKey: Hashable, Sendable, Codable {
+    let filePath: String
     let fileContentHash: String
     let operatorIdentifier: String
     let utf8Offset: Int
@@ -197,7 +198,11 @@ struct MutantCacheKey: Hashable, Sendable, Codable {
 }
 ```
 
-SHA256-derived cache key. Stable across test-only changes — invalidation is handled granularly by `CacheStore.invalidate(diff:)`.
+SHA256-derived cache key. `fileContentHash` is the hash of the **unmutated file** the mutant was found in, carried on `MutantDescriptor.sourceContentHash` from discovery — so editing the code under test changes the key and the stale verdict is not replayed. It used to fall back to the file *path* for any mutant with no mutated source, which is every schematizable one.
+
+`filePath` sits beside it because content alone would collide for two byte-identical files, whose mutants are not interchangeable — they compile into different places. Renaming a file therefore re-measures its mutants, which is the conservative direction to be wrong in.
+
+Stable across test-only changes; those are handled granularly by `CacheStore.invalidate(diff:)`.
 
 | Field | Source |
 |---|---|
