@@ -1,18 +1,28 @@
 import Foundation
 
 struct KillerTestFileResolver: Sendable {
+
+    init(testFilePaths: [String], projectPath: String) {
+        self.testFilePaths = testFilePaths
+        self.projectPath = projectPath
+    }
+
     let testFilePaths: [String]
 
+    private let projectPath: String
+
+    /// The file declaring `testName`, project-relative.
+    ///
+    /// The candidates are absolute, since matching a class name against a suffix and reading a file
+    /// both need a real path. What comes back is relativized, because the caller stores it in the
+    /// cache next to `TestFilesHasher`'s project-relative keys, and `CacheStore.invalidate`
+    /// compares the two (issue #67).
     func resolve(testName: String) -> String? {
-        if let path = resolveXCTestClassName(testName) {
-            return path
+        guard let path = resolveXCTestClassName(testName) ?? resolveSwiftTestingFunctionName(testName) else {
+            return nil
         }
 
-        if let path = resolveSwiftTestingFunctionName(testName) {
-            return path
-        }
-
-        return nil
+        return ProjectRelativePath.make(for: path, in: projectPath)
     }
 
     private func resolveXCTestClassName(_ testName: String) -> String? {

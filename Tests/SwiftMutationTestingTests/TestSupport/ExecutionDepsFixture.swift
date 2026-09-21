@@ -5,13 +5,14 @@ func makeExecutionDeps(
     cacheStorePath: String = "/tmp/cache.json",
     reporter: any ProgressReporter = MockProgressReporter(),
     total: Int = 1,
-    testFilePaths: [String] = []
+    testFilePaths: [String] = [],
+    projectPath: String = "/tmp"
 ) -> ExecutionDeps {
     ExecutionDeps(
         launcher: launcher,
         cacheStore: CacheStore(storePath: cacheStorePath),
         reporter: reporter,
         counter: MutationCounter(total: total),
-        killerTestFileResolver: KillerTestFileResolver(testFilePaths: testFilePaths)
+        killerTestFileResolver: KillerTestFileResolver(testFilePaths: testFilePaths, projectPath: projectPath)
     )
 }

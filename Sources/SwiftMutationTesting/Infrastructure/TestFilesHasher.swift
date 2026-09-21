@@ -3,23 +3,13 @@ import Foundation
 struct TestFilesHasher: Sendable {
 
     func hashPerFile(projectPath: String) -> [String: String] {
-        let projectURL = URL(fileURLWithPath: projectPath)
-        let resolvedPrefix = projectURL.resolvingSymlinksInPath().path
-        let paths = collectTestFilePaths(under: projectURL)
+        let paths = collectTestFilePaths(under: URL(fileURLWithPath: projectPath))
         var result: [String: String] = [:]
 
         for path in paths.sorted() {
             guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
 
-            let resolvedPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-
-            let relativePath: String
-            if resolvedPath.hasPrefix(resolvedPrefix) {
-                relativePath = String(resolvedPath.dropFirst(resolvedPrefix.count).drop(while: { $0 == "/" }))
-            } else {
-                relativePath = path
-            }
-
+            let relativePath = ProjectRelativePath.make(for: path, in: projectPath)
             result[relativePath] = MutantCacheKey.hash(of: content)
         }
 

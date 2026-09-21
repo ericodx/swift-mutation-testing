@@ -111,7 +111,10 @@ struct MutantExecutor: Sendable {
     ) -> ExecutionDeps {
         let mutantCount = input.mutants.count
         let counter = MutationCounter(total: mutantCount)
-        let resolver = KillerTestFileResolver(testFilePaths: hasher.testFilePaths(projectPath: input.projectPath))
+        let resolver = KillerTestFileResolver(
+            testFilePaths: hasher.testFilePaths(projectPath: input.projectPath),
+            projectPath: input.projectPath
+        )
         return ExecutionDeps(
             launcher: launcher, cacheStore: cacheStore, reporter: reporter,
             counter: counter, killerTestFileResolver: resolver
