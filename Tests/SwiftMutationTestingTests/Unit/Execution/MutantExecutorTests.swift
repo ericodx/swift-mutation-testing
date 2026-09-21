@@ -137,6 +137,77 @@ struct MutantExecutorTests {
         #expect(results.isEmpty)
     }
 
+    @Test("Given keep-logs, when a mutant is tested, then its captured output is written")
+    func keepLogsWritesPerMutantOutput() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+        let logs = dir.appendingPathComponent("logs")
+
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(
+                projectPath: dir.path, projectType: .spm, keepLogsPath: logs.path
+            ),
+            launcher: MockProcessLauncher(exitCode: 0, output: "Test Suite 'All tests' passed")
+        )
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
+        )
+        let input = makeRunnerInput(
+            projectPath: dir.path,
+            projectType: .spm,
+            schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+            mutants: [mutant]
+        )
+
+        _ = try await executor.execute(input)
+
+        let log = try String(contentsOf: logs.appendingPathComponent("m0.log"), encoding: .utf8)
+        #expect(log.contains("BooleanLiteralReplacement"))
+        #expect(log.contains("Test Suite 'All tests' passed"))
+    }
+
+    @Test("Given no keep-logs, when a mutant is tested, then no log directory is created")
+    func withoutKeepLogsNothingIsWritten() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            launcher: MockProcessLauncher(exitCode: 0)
+        )
+        let input = makeRunnerInput(
+            projectPath: dir.path,
+            projectType: .spm,
+            schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+            mutants: [
+                makeMutantDescriptor(
+                    id: "m0", filePath: sourceFile.path, isSchematizable: true,
+                    mutatedSourceContent: "let x = false", sourceContentHash: "test-hash"
+                )
+            ]
+        )
+
+        _ = try await executor.execute(input)
+
+        let entries = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        #expect(!entries.contains("logs"))
+    }
+
     @Test("Given quiet is false, when execute called, then reporter produces output")
     func nonQuietConfigurationProducesOutput() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
