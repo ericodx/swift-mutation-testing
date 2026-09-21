@@ -154,7 +154,7 @@ struct MutantExecutor: Sendable {
 
         if let artifact {
             if case .spm = configuration.build.projectType {
-                await validateSPMBaseline(sandbox: sandbox, deps: deps)
+                try await validateSPMBaseline(sandbox: sandbox, deps: deps)
             }
             let context = TestExecutionContext(
                 artifact: artifact, sandbox: sandbox, pool: pool,
@@ -335,22 +335,46 @@ struct MutantExecutor: Sendable {
             .execute(mutants, configuration: configuration, pool: pool)
     }
 
-    private func validateSPMBaseline(sandbox: Sandbox, deps: ExecutionDeps) async {
+    /// Runs the unmutated suite once, before any mutant does, and ends the run unless it passes.
+    ///
+    /// The schema falls through to its `default` branch when no mutant is selected, so this is the
+    /// original code under test. An empty selection is passed explicitly rather than left out, so
+    /// that a stray `__SWIFT_MUTATION_TESTING_ACTIVE` in the environment cannot select a mutant for
+    /// the very run that is meant to have none.
+    ///
+    /// The suite gets the same timeout a mutant gets, because it is the same suite run the same
+    /// way: one that cannot finish in time here would not finish in time for any mutant either,
+    /// and saying so once is better than reporting every mutant as a timeout.
+    private func validateSPMBaseline(sandbox: Sandbox, deps: ExecutionDeps) async throws {
         var arguments = ["test", "--skip-build"]
         if let testTarget = configuration.build.testTarget {
             arguments += ["--filter", testTarget]
         }
 
-        _ = try? await deps.launcher.launchCapturing(
+        let captured = try await deps.launcher.launchCapturing(
             ProcessRequest(
                 executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
                 arguments: arguments,
                 environment: nil,
-                additionalEnvironment: [:],
+                additionalEnvironment: ["__SWIFT_MUTATION_TESTING_ACTIVE": ""],
                 workingDirectoryURL: sandbox.rootURL,
                 timeout: configuration.build.timeout
             )
         )
+
+        switch SPMResultParser().parse(exitCode: captured.exitCode, output: captured.output) {
+        case .testsSucceeded:
+            return
+
+        case .timedOut:
+            throw BaselineError.didNotFinish(seconds: configuration.build.timeout)
+
+        case .testsFailed, .crashed, .unviable, .buildFailed:
+            let failing = TestOutputParser().failingTests(in: captured.output)
+            throw failing.isEmpty
+                ? BaselineError.runFailed(output: captured.output)
+                : BaselineError.testsFailed(tests: failing)
+        }
     }
 
     private func excludeProblematicMutants(
