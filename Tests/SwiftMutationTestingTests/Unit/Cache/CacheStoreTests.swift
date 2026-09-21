@@ -270,6 +270,34 @@ struct CacheStoreTests {
         #expect(await store.result(for: key) == nil)
     }
 
+    @Test("Given a crash verdict, when test files change, then it is re-measured")
+    func invalidateRemovesCrashVerdicts() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
+        let key = makeMutantCacheKey(utf8Offset: 90)
+        await store.store(status: .killedByCrash, for: key)
+
+        await store.invalidate(diff: TestFileDiff(added: [], modified: ["Tests/FooTests.swift"], removed: []))
+
+        #expect(await store.result(for: key) == nil)
+    }
+
+    @Test("Given an unviable entry, when test files change, then it is kept")
+    func invalidateKeepsUnviableVerdicts() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
+        let key = makeMutantCacheKey(utf8Offset: 91)
+        await store.store(status: .unviable, for: key)
+
+        await store.invalidate(diff: TestFileDiff(added: [], modified: ["Tests/FooTests.swift"], removed: []))
+
+        #expect(await store.result(for: key) == .unviable)
+    }
+
     @Test("Given survived entry, when diff has changes, then entry is removed")
     func invalidateRemovesSurvivedWhenDiffHasChanges() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
@@ -314,22 +342,6 @@ struct CacheStoreTests {
         await store.invalidate(diff: diff)
 
         #expect(await store.result(for: key) == .unviable)
-    }
-
-    @Test("Given killedByCrash entry, when invalidated, then entry is always kept")
-    func invalidateAlwaysKeepsKilledByCrash() async throws {
-        let dir = try FileHelpers.makeTemporaryDirectory()
-        defer { FileHelpers.cleanup(dir) }
-
-        let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
-        let key = makeMutantCacheKey(utf8Offset: 26)
-        await store.store(status: .killedByCrash, for: key)
-
-        let diff = TestFileDiff(
-            added: ["Tests/New.swift"], modified: ["Tests/Old.swift"], removed: ["Tests/Gone.swift"])
-        await store.invalidate(diff: diff)
-
-        #expect(await store.result(for: key) == .killedByCrash)
     }
 
     @Test("Given noCoverage entry, when diff has changes, then entry is removed")
