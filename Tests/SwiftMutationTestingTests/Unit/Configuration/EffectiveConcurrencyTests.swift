@@ -6,15 +6,16 @@ import Testing
 @Suite("Effective concurrency")
 struct EffectiveConcurrencyTests {
 
-    @Test("Given an SPM package, when concurrency is resolved, then it is one")
-    func spmRunsOneWorker() {
+    @Test("Given an SPM package, when concurrency is resolved, then the request is kept")
+    func spmKeepsRequestedConcurrency() {
+        // SPM runs its test bundle directly, so workers do not share a `.build` to queue on.
         let resolved = ConfigurationResolver.effectiveConcurrency(
             requested: 9,
             projectType: .spm,
             testingFramework: .swiftTesting
         )
 
-        #expect(resolved == 1)
+        #expect(resolved == 9)
     }
 
     @Test("Given an Xcode scheme targeting macOS, when concurrency is resolved, then it is one")
@@ -61,8 +62,8 @@ struct EffectiveConcurrencyTests {
         #expect(resolved == 1)
     }
 
-    @Test("Given an SPM package, when a configuration is resolved end to end, then concurrency is one")
-    func resolvedConfigurationReportsOneWorkerForSPM() throws {
+    @Test("Given an SPM package, when a configuration is resolved end to end, then the request is kept")
+    func resolvedConfigurationKeepsConcurrencyForSPM() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
         try FileHelpers.write("// swift-tools-version: 6.0", named: "Package.swift", in: dir)
@@ -72,6 +73,6 @@ struct EffectiveConcurrencyTests {
             fileValues: [:]
         )
 
-        #expect(configuration.build.concurrency == 1)
+        #expect(configuration.build.concurrency == 9)
     }
 }

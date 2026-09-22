@@ -443,8 +443,8 @@ struct ConfigurationResolverTests {
         #expect(result.build.concurrency == 8)
     }
 
-    @Test("Given an spm project, when resolved, then concurrency is one whatever the framework")
-    func spmResolvesToASingleWorker() throws {
+    @Test("Given an spm project, when resolved, then concurrency is kept whatever the framework")
+    func spmKeepsConcurrency() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -458,9 +458,9 @@ struct ConfigurationResolverTests {
             fileValues: [:]
         )
 
-        // Not the xctest rule: an SPM run has no simulators to clone, so the pool hands out one
-        // slot however high --concurrency is set (issue #70).
-        #expect(result.build.concurrency == 1)
+        // The xctest rule is about Xcode: an SPM run drives its test bundle directly, so its
+        // workers are independent whichever framework the tests use (issue #77).
+        #expect(result.build.concurrency == 4)
     }
 
     @Test("Given testTarget via CLI, when resolved, then testTarget is set")
