@@ -42,7 +42,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -73,7 +74,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: false,
-            mutatedSourceContent: nil
+            mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(projectPath: dir.path, mutants: [mutant])
 
@@ -99,7 +101,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let cacheKey = MutantCacheKey.make(for: mutant)
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
@@ -132,6 +135,77 @@ struct MutantExecutorTests {
         let results = try await executor.execute(input)
 
         #expect(results.isEmpty)
+    }
+
+    @Test("Given keep-logs, when a mutant is tested, then its captured output is written")
+    func keepLogsWritesPerMutantOutput() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+        let logs = dir.appendingPathComponent("logs")
+
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(
+                projectPath: dir.path, projectType: .spm, keepLogsPath: logs.path
+            ),
+            launcher: MockProcessLauncher(exitCode: 0, output: "Test Suite 'All tests' passed")
+        )
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true,
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
+        )
+        let input = makeRunnerInput(
+            projectPath: dir.path,
+            projectType: .spm,
+            schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+            mutants: [mutant]
+        )
+
+        _ = try await executor.execute(input)
+
+        let log = try String(contentsOf: logs.appendingPathComponent("m0.log"), encoding: .utf8)
+        #expect(log.contains("BooleanLiteralReplacement"))
+        #expect(log.contains("Test Suite 'All tests' passed"))
+    }
+
+    @Test("Given no keep-logs, when a mutant is tested, then no log directory is created")
+    func withoutKeepLogsNothingIsWritten() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            launcher: MockProcessLauncher(exitCode: 0)
+        )
+        let input = makeRunnerInput(
+            projectPath: dir.path,
+            projectType: .spm,
+            schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+            mutants: [
+                makeMutantDescriptor(
+                    id: "m0", filePath: sourceFile.path, isSchematizable: true,
+                    mutatedSourceContent: "let x = false", sourceContentHash: "test-hash"
+                )
+            ]
+        )
+
+        _ = try await executor.execute(input)
+
+        let entries = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        #expect(!entries.contains("logs"))
     }
 
     @Test("Given quiet is false, when execute called, then reporter produces output")
@@ -172,7 +246,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -206,7 +281,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let incompatibleMutant = makeMutantDescriptor(
             id: "m1",
@@ -217,7 +293,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: false,
-            mutatedSourceContent: nil
+            mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
 
         let cacheKey = MutantCacheKey.make(for: schematizableMutant)
@@ -265,7 +342,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -301,7 +379,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -339,7 +418,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let mutantBar = makeMutantDescriptor(
             id: "m1",
@@ -350,7 +430,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let y = false"
+            mutatedSourceContent: "let y = false",
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -404,7 +485,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let mutantBar = makeMutantDescriptor(
             id: "swift-mutation-testing_1",
@@ -415,7 +497,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let y = false"
+            mutatedSourceContent: "let y = false",
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -459,7 +542,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: nil
+            mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
 
         let mutantB = makeMutantDescriptor(
@@ -473,7 +557,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: nil
+            mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
 
         let input = makeRunnerInput(
@@ -510,7 +595,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: nil
+            mutatedSourceContent: nil,
+            sourceContentHash: "test-hash"
         )
 
         let input = makeRunnerInput(
@@ -552,7 +638,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -587,7 +674,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let mutantBar = makeMutantDescriptor(
             id: "swift-mutation-testing_1",
@@ -598,7 +686,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let y = false"
+            mutatedSourceContent: "let y = false",
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -633,7 +722,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let cacheKey = MutantCacheKey.make(for: mutant)
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
@@ -678,7 +768,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let cacheKey = MutantCacheKey.make(for: mutant)
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
@@ -720,7 +811,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let mutantB = makeMutantDescriptor(
             id: "m1",
@@ -730,7 +822,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let y = false"
+            mutatedSourceContent: "let y = false",
+            sourceContentHash: "test-hash"
         )
         let cacheStore = CacheStore(storePath: cacheDir.appendingPathComponent("results.json").path)
         await cacheStore.store(status: .survived, for: MutantCacheKey.make(for: mutantA))
@@ -777,7 +870,8 @@ struct MutantExecutorTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
         let input = makeRunnerInput(
             projectPath: dir.path,

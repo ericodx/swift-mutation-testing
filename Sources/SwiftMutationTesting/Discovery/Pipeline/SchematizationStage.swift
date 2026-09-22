@@ -22,8 +22,11 @@ struct SchematizationStage: Sendable {
             let content = generator.generate(source: source, mutations: mutations)
             schematizedFiles.append(SchematizedFile(originalPath: filePath, schematizedContent: content))
 
+            let sourceHash = MutantCacheKey.hash(of: source.file.content)
             for entry in entries {
-                descriptors.append(entry.toDescriptor(mutatedContent: nil))
+                descriptors.append(
+                    entry.toDescriptor(mutatedContent: nil, sourceContentHash: sourceHash)
+                )
             }
         }
 

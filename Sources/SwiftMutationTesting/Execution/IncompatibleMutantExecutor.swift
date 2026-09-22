@@ -57,7 +57,13 @@ struct IncompatibleMutantExecutor: Sendable {
 
         for mutant in mutants where mutant.mutatedSourceContent == nil {
             let key = MutantCacheKey.make(for: mutant)
-            results.append(await storeAndReport(mutant: mutant, key: key, sandbox: nil))
+            results.append(
+                await storeAndReport(
+                    mutant: mutant, key: key, sandbox: nil,
+                    keepLogsPath: configuration.reporting.keepLogsPath,
+                    buildOutput: "The mutation could not be applied to the source file."
+                )
+            )
         }
 
         guard !viable.isEmpty else { return results }
@@ -78,7 +84,13 @@ struct IncompatibleMutantExecutor: Sendable {
         guard initialBuild.exitCode == 0 else {
             for mutant in viable {
                 let key = MutantCacheKey.make(for: mutant)
-                results.append(await storeAndReport(mutant: mutant, key: key, sandbox: nil))
+                results.append(
+                    await storeAndReport(
+                        mutant: mutant, key: key, sandbox: nil,
+                        keepLogsPath: configuration.reporting.keepLogsPath,
+                        buildOutput: initialBuild.output
+                    )
+                )
             }
             try? sandbox.cleanup()
             return results
@@ -141,7 +153,11 @@ struct IncompatibleMutantExecutor: Sendable {
         )
 
         guard build.exitCode == 0 else {
-            return await storeAndReport(mutant: mutant, key: key, sandbox: nil)
+            return await storeAndReport(
+                mutant: mutant, key: key, sandbox: nil,
+                keepLogsPath: configuration.reporting.keepLogsPath,
+                buildOutput: build.output
+            )
         }
 
         return try await runSPMTest(
@@ -177,6 +193,9 @@ struct IncompatibleMutantExecutor: Sendable {
         let status = outcome.asExecutionStatus
         let killerTestFile = resolveKillerTestFile(status: status)
 
+        MutantLogWriter(directory: configuration.reporting.keepLogsPath)?
+            .write(mutant: mutant, status: status, duration: duration, output: test.output)
+
         let index = await deps.counter.increment()
         await deps.reporter.report(
             .mutantFinished(descriptor: mutant, status: status, index: index, total: deps.counter.total))
@@ -195,7 +214,11 @@ struct IncompatibleMutantExecutor: Sendable {
         pool: SimulatorPool
     ) async throws -> ExecutionResult {
         guard let content = mutant.mutatedSourceContent else {
-            return await storeAndReport(mutant: mutant, key: key, sandbox: nil)
+            return await storeAndReport(
+                mutant: mutant, key: key, sandbox: nil,
+                keepLogsPath: configuration.reporting.keepLogsPath,
+                buildOutput: "The mutation could not be applied to the source file."
+            )
         }
 
         let sandbox = try await sandboxFactory.create(
@@ -227,6 +250,10 @@ struct IncompatibleMutantExecutor: Sendable {
 
         let status = outcome.asExecutionStatus
         let killerTestFile = resolveKillerTestFile(status: status)
+
+        MutantLogWriter(directory: configuration.reporting.keepLogsPath)?
+            .write(mutant: mutant, status: status, duration: launched.duration, output: launched.output)
+
         let total = deps.counter.total
         let index = await deps.counter.increment()
         await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: total))
@@ -284,12 +311,24 @@ struct IncompatibleMutantExecutor: Sendable {
         return deps.killerTestFileResolver.resolve(testName: testName)
     }
 
+    /// Records a mutant as unviable — it could not be rewritten, or the build that would have
+    /// tested it failed.
+    ///
+    /// `buildOutput` is what that build printed, and is written to the log when `--keep-logs` is
+    /// on. Unviable is the verdict that explains itself least: it says a mutant was not testable
+    /// without saying why, and on some packages it is the majority of a run (issue #75).
     private func storeAndReport(
         mutant: MutantDescriptor,
         key: MutantCacheKey,
-        sandbox: Sandbox?
+        sandbox: Sandbox?,
+        keepLogsPath: String?,
+        buildOutput: String = ""
     ) async -> ExecutionResult {
         try? sandbox?.cleanup()
+
+        MutantLogWriter(directory: keepLogsPath)?
+            .write(mutant: mutant, status: .unviable, duration: 0, output: buildOutput)
+
         await deps.cacheStore.store(status: .unviable, for: key)
         let total = deps.counter.total
         let index = await deps.counter.increment()

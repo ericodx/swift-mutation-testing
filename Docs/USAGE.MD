@@ -226,6 +226,7 @@ swift-mutation-testing [project-path] [options]
 | `--timeout <seconds>` | Per-mutant test timeout (default: 120 Xcode, 30 SPM) |
 | `--concurrency <n>` | Parallel workers (default: CPUs − 1). Simulator destinations only |
 | `--no-cache` | Disable result caching — no verdict is read from the cache, and none is written back |
+| `--keep-logs <dir>` | Write each mutant's captured test output to `<dir>/<mutant-id>.log` |
 | `--output <path>` | Write Stryker-compatible JSON report |
 | `--html-output <path>` | Write interactive HTML report |
 | `--sonar-output <path>` | Write SonarQube generic coverage report |
@@ -291,6 +292,27 @@ Raising it for SPM would not help as things stand: every worker runs `swift test
 ---
 
 ## Output Formats
+
+### Per-mutant logs
+
+`--keep-logs <directory>` writes what each mutant's tests printed, one file per mutant, named after the mutant id. Without it that output is parsed into a verdict and discarded, which leaves an unexpected verdict with nothing behind it to read.
+
+```
+mutant:   swift-mutation-testing_42
+location: Sources/Validator.swift:18:9
+operator: RelationalOperatorReplacement
+mutation: > → >=
+status:   Crash
+duration: 2.25s
+---
+<everything the test run printed>
+```
+
+`Crash` is the verdict worth reaching for this first: it is reachable three separate ways — a fatal error, a bad instruction, or test output naming no failing test — and the verdict alone does not say which.
+
+Mutants reported `Unviable` get a log too, holding the output of the build that failed — or a note that the mutation could not be applied. That is the verdict which explains itself least, and on some packages it is the majority of a run.
+
+One file is written per mutant, so a large run produces as many logs as it has mutants, each holding a full test-suite run. Point it somewhere disposable.
 
 ### Progress output (default)
 

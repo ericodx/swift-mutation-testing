@@ -72,7 +72,7 @@ struct TestExecutionStage: Sendable {
         )
         try? FileManager.default.removeItem(atPath: launched.xcresultPath)
 
-        return await recordResult(mutant: mutant, key: key, outcome: outcome, duration: launched.duration)
+        return await recordResult(mutant: mutant, key: key, outcome: outcome, launched: launched, in: context)
     }
 
     private func runSPM(
@@ -91,16 +91,21 @@ struct TestExecutionStage: Sendable {
 
         let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
         await context.pool.release(slot)
-        return await recordResult(mutant: mutant, key: key, outcome: outcome, duration: launched.duration)
+        return await recordResult(mutant: mutant, key: key, outcome: outcome, launched: launched, in: context)
     }
 
     private func recordResult(
         mutant: MutantDescriptor,
         key: MutantCacheKey,
         outcome: TestRunOutcome,
-        duration: Double
+        launched: TestLaunchResult,
+        in context: TestExecutionContext
     ) async -> ExecutionResult {
         let status = outcome.asExecutionStatus
+        let duration = launched.duration
+
+        MutantLogWriter(directory: context.configuration.reporting.keepLogsPath)?
+            .write(mutant: mutant, status: status, duration: duration, output: launched.output)
         let killerTestFile = resolveKillerTestFile(status: status)
         let result = ExecutionResult(
             descriptor: mutant, status: status, testDuration: duration,
@@ -122,28 +127,17 @@ struct TestExecutionStage: Sendable {
         return deps.killerTestFileResolver.resolve(testName: testName)
     }
 
+    /// Runs the compiled test bundle rather than `swift test`, so that workers sharing a sandbox do
+    /// not queue behind SwiftPM's lock on `.build` (issue #77). Falls back to `swift test` when no
+    /// bundle can be found, which keeps a run working rather than failing on an unfamiliar layout.
     private func launchSPM(
         mutant: MutantDescriptor,
         in context: TestExecutionContext
     ) async throws -> TestLaunchResult {
-        var arguments = ["test", "--skip-build"]
-
-        if let testTarget = context.configuration.build.testTarget {
-            arguments += ["--filter", testTarget]
-        }
-
         let start = Date()
-        let captured = try await deps.launcher.launchCapturing(
-            ProcessRequest(
-                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
-                arguments: arguments,
-                environment: nil,
-                additionalEnvironment: [
-                    "__SWIFT_MUTATION_TESTING_ACTIVE": mutant.id
-                ],
-                workingDirectoryURL: context.sandbox.rootURL,
-                timeout: context.configuration.build.timeout
-            )
+        let captured = try await run(
+            spmRequests(mutant: mutant, in: context),
+            deadline: start.addingTimeInterval(context.configuration.build.timeout)
         )
 
         return TestLaunchResult(
@@ -152,6 +146,69 @@ struct TestExecutionStage: Sendable {
             xcresultPath: "",
             duration: Date().timeIntervalSince(start)
         )
+    }
+
+    /// Runs each request in turn, stopping at the first that does not succeed.
+    ///
+    /// The requests share one deadline, since between them they are the single test run a mutant is
+    /// given — running both testing libraries must not buy a mutant twice the configured timeout.
+    private func run(
+        _ requests: [ProcessRequest],
+        deadline: Date
+    ) async throws -> (exitCode: Int32, output: String) {
+        var combined = ""
+
+        for request in requests {
+            let remaining = deadline.timeIntervalSinceNow
+
+            guard remaining > 0 else {
+                return (exitCode: SPMResultParser.timedOutExitCode, output: combined)
+            }
+
+            let captured = try await deps.launcher.launchCapturing(request.withTimeout(remaining))
+
+            // The bundle holds no tests for this library, so there is nothing to report from it.
+            guard captured.exitCode != TestBundleInvocation.noTestsExitCode else { continue }
+
+            combined += combined.isEmpty ? captured.output : "\n" + captured.output
+
+            guard captured.exitCode == 0 else { return (exitCode: captured.exitCode, output: combined) }
+        }
+
+        return (exitCode: 0, output: combined)
+    }
+
+    private func spmRequests(
+        mutant: MutantDescriptor,
+        in context: TestExecutionContext
+    ) -> [ProcessRequest] {
+        let configuration = context.configuration
+
+        if let bundleURL = TestBundleInvocation.bundleURL(in: context.sandbox) {
+            return TestBundleInvocation(bundleURL: bundleURL, framework: configuration.build.testingFramework)
+                .requests(
+                    filter: configuration.build.testTarget,
+                    mutantID: mutant.id,
+                    workingDirectory: context.sandbox.rootURL,
+                    timeout: configuration.build.timeout
+                )
+        }
+
+        var arguments = ["test", "--skip-build"]
+        if let testTarget = configuration.build.testTarget {
+            arguments += ["--filter", testTarget]
+        }
+
+        return [
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/swift"),
+                arguments: arguments,
+                environment: nil,
+                additionalEnvironment: ["__SWIFT_MUTATION_TESTING_ACTIVE": mutant.id],
+                workingDirectoryURL: context.sandbox.rootURL,
+                timeout: configuration.build.timeout
+            )
+        ]
     }
 
     private func launch(

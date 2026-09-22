@@ -12,7 +12,8 @@ func makeMutantDescriptor(
     replacementKind: ReplacementKind = .binaryOperator,
     description: String = "+ → -",
     isSchematizable: Bool = false,
-    mutatedSourceContent: String? = nil
+    mutatedSourceContent: String? = nil,
+    sourceContentHash: String = "source-hash"
 ) -> MutantDescriptor {
     MutantDescriptor(
         id: id,
@@ -26,6 +27,7 @@ func makeMutantDescriptor(
         replacementKind: replacementKind,
         description: description,
         isSchematizable: isSchematizable,
-        mutatedSourceContent: mutatedSourceContent
+        mutatedSourceContent: mutatedSourceContent,
+        sourceContentHash: sourceContentHash
     )
 }

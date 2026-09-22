@@ -123,7 +123,8 @@ struct BaselineValidationTests {
             replacementKind: .booleanLiteral,
             description: "true → false",
             isSchematizable: true,
-            mutatedSourceContent: "let x = false"
+            mutatedSourceContent: "let x = false",
+            sourceContentHash: "test-hash"
         )
 
         return makeRunnerInput(

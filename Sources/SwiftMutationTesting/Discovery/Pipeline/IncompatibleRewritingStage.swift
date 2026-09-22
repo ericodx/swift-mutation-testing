@@ -9,7 +9,10 @@ struct IncompatibleRewritingStage: Sendable {
             let mutatedContent = rewriter.rewrite(
                 source: source.file.content, applying: entry.mutation
             )
-            return entry.toDescriptor(mutatedContent: mutatedContent)
+            return entry.toDescriptor(
+                mutatedContent: mutatedContent,
+                sourceContentHash: MutantCacheKey.hash(of: source.file.content)
+            )
         }
     }
 }

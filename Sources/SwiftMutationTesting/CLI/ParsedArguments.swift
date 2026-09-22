@@ -54,16 +54,24 @@ struct ParsedArguments: Sendable {
     }
 
     struct ReportingOptions: Sendable {
-        init(output: String? = nil, htmlOutput: String? = nil, sonarOutput: String? = nil, quiet: Bool = false) {
+        init(
+            output: String? = nil,
+            htmlOutput: String? = nil,
+            sonarOutput: String? = nil,
+            keepLogsPath: String? = nil,
+            quiet: Bool = false
+        ) {
             self.output = output
             self.htmlOutput = htmlOutput
             self.sonarOutput = sonarOutput
+            self.keepLogsPath = keepLogsPath
             self.quiet = quiet
         }
 
         var output: String?
         var htmlOutput: String?
         var sonarOutput: String?
+        var keepLogsPath: String?
         var quiet: Bool
     }
 

@@ -10,6 +10,7 @@ func makeRunnerConfiguration(
     output: String? = nil,
     htmlOutput: String? = nil,
     sonarOutput: String? = nil,
+    keepLogsPath: String? = nil,
     quiet: Bool = true,
     excludePatterns: [String] = [],
     operators: [String] = []
@@ -27,6 +28,7 @@ func makeRunnerConfiguration(
             output: output,
             htmlOutput: htmlOutput,
             sonarOutput: sonarOutput,
+            keepLogsPath: keepLogsPath,
             quiet: quiet
         ),
         filter: .init(excludePatterns: excludePatterns, operators: operators)

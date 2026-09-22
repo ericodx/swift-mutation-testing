@@ -41,6 +41,7 @@ struct ConfigurationResolver: Sendable {
                 output: cliArguments.reporting.output ?? fileValues["output"],
                 htmlOutput: cliArguments.reporting.htmlOutput ?? fileValues["html-output"],
                 sonarOutput: cliArguments.reporting.sonarOutput ?? fileValues["sonar-output"],
+                keepLogsPath: cliArguments.reporting.keepLogsPath ?? fileValues["keep-logs"],
                 quiet: cliArguments.reporting.quiet || fileValues["quiet"]?.lowercased() == "true"
             ),
             filter: .init(
@@ -57,21 +58,19 @@ struct ConfigurationResolver: Sendable {
 
     /// How many mutants can genuinely be tested at once.
     ///
-    /// Workers are handed out by `SimulatorPool`, which only has more than one slot when it has
-    /// cloned simulators to hand out. A run with no simulators — every SPM package, and any Xcode
-    /// scheme targeting macOS — gets a single slot however high `--concurrency` is set, so the
-    /// figure is resolved down to what the run can actually do rather than left to mislead (issue
-    /// #70).
+    /// SPM packages run their compiled test bundle directly, so workers are independent and the
+    /// request is honoured — they used to share one `.build` and queue on SwiftPM's lock, which is
+    /// why the figure was resolved down to 1 (issues #70, #77).
     ///
-    /// Raising it without giving each worker its own build directory would not help anyway: they
-    /// would share one `.build`, serialise on SwiftPM's lock, and count the wait against each
-    /// mutant's timeout.
+    /// Xcode runs still depend on the simulator pool, which only has more than one slot when it has
+    /// clones to hand out. A scheme targeting macOS has none, and XCTest shares state across a
+    /// bundle, so both stay sequential rather than reporting a figure the pool will not honour.
     static func effectiveConcurrency(
         requested: Int,
         projectType: ProjectType,
         testingFramework: TestingFramework
     ) -> Int {
-        guard case .xcode(_, let destination) = projectType else { return 1 }
+        guard case .xcode(_, let destination) = projectType else { return requested }
         guard SimulatorManager.requiresSimulatorPool(for: destination) else { return 1 }
         guard testingFramework != .xctest else { return 1 }
 

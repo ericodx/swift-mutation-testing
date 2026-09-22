@@ -21,6 +21,7 @@ enum HelpText {
           --output <json-path>          Write mutation report JSON to path
           --html-output <html-path>     Write HTML report to path
           --sonar-output <json-path>    Write Sonar Generic Coverage report to path
+          --keep-logs <directory>       Write each mutant's captured test output to <directory>
           --quiet                       Suppress progress output
           --sources-path <path>         Root directory to discover Swift source files (default: project path)
           --exclude <pattern>           Exclude files matching pattern (repeatable)

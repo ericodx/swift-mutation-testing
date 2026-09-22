@@ -217,11 +217,15 @@ Cache is stored at `<project>/.swift-mutation-testing-cache/results.json`. A cac
 
 **Granular invalidation:** Instead of invalidating the entire cache when any test file changes, `CacheStore` tracks which test file killed each mutant via `killerTestFile` metadata. On each run, `MutantExecutor.prepareCacheStore` computes per-file test hashes via `TestFilesHasher.hashPerFile`, compares them against stored hashes via `changedTestFiles(current:)` to produce a `TestFileDiff`, and calls `invalidate(diff:)` with status-aware rules:
 
-| Change | `.killed` | `.survived` | `.unviable` / `.killedByCrash` |
+| Change | `.killed` | `.survived` / `.noCoverage` / `.timeout` / `.killedByCrash` | `.unviable` |
 |---|---|---|---|
 | Test file **added** | kept | invalidated | kept (permanent) |
-| Test file **modified** | invalidated if killer matches | invalidated if killer matches | kept (permanent) |
-| Test file **removed** | invalidated if killer matches | kept | kept (permanent) |
+| Test file **modified** | invalidated if killer matches | invalidated | kept (permanent) |
+| Test file **removed** | invalidated if killer matches | invalidated | kept (permanent) |
+
+`.unviable` is permanent because it is a property of the mutant: a mutant that does not compile stays uncompilable however the tests change. Everything else is a statement about what happened when the tests ran, and is re-measured — including `.killedByCrash`, which used to be grouped with `.unviable` and so could never be cleared once recorded.
+
+Source changes are handled separately, by the key rather than by the diff: `MutantCacheKey.fileContentHash` is the hash of the unmutated file, so editing the code under test produces different keys and the old verdicts are simply not found.
 
 `KillerTestFileResolver` maps test names back to source file paths by matching XCTest class names and Swift Testing function names against the project's test file list.
 
