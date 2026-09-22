@@ -310,6 +310,8 @@ duration: 2.25s
 
 `Crash` is the verdict worth reaching for this first: it is reachable three separate ways — a fatal error, a bad instruction, or test output naming no failing test — and the verdict alone does not say which.
 
+Mutants reported `Unviable` get a log too, holding the output of the build that failed — or a note that the mutation could not be applied. That is the verdict which explains itself least, and on some packages it is the majority of a run.
+
 One file is written per mutant, so a large run produces as many logs as it has mutants, each holding a full test-suite run. Point it somewhere disposable.
 
 ### Progress output (default)
