@@ -49,7 +49,6 @@ struct TimeoutEscalationTests {
         escalation.arm(pid: target, descendants: [child])
         escalation.processTerminated()
 
-        // Started after termination, so the cancelled escalation must not reach it.
         let later = try spawnSleeper()
         defer { kill(later, SIGKILL) }
 
@@ -74,8 +73,6 @@ struct TimeoutEscalationTests {
 
     // MARK: - Private
 
-    /// A throwaway process that leads its own process group, so signalling that group cannot reach
-    /// the test runner.
     private func spawnGroupLeader() throws -> Int32 {
         let pid = try spawnSleeper()
         setpgid(pid, pid)

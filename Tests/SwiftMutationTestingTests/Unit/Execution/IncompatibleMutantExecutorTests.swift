@@ -118,7 +118,6 @@ struct IncompatibleMutantExecutorTests {
         )
         #expect(cached.first?.status == .unviable)
 
-        // The launcher now succeeds, so a replayed verdict and a fresh one differ.
         let fresh = try await execute(
             mutant, in: dir, storePath: storePath, noCache: true,
             launcher: MockProcessLauncher(exitCode: 0), configuration: configuration, pool: pool
@@ -412,7 +411,6 @@ struct IncompatibleMutantExecutorTests {
 
         #expect(results.first?.status == .unviable)
 
-        // Unviable says a mutant was not testable without saying why; the build output is the why.
         let log = try String(contentsOf: logs.appendingPathComponent("m0.log"), encoding: .utf8)
         #expect(log.contains("Unviable"))
         #expect(log.contains("error: cannot convert value of type"))

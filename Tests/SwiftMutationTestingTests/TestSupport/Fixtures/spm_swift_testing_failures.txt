@@ -1,0 +1,46 @@
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "Probe suite" started.
+◇ Test "Throwing test" started.
+◇ Test unnamedFailure() started.
+◇ Test "Given a display name, when it fails, then this shape is printed" started.
+◇ Test "Given a failed login, when retried, then it passes" started.
+◇ Test unnamedParameterized(value:) started.
+◇ Test "Parameterized" started.
+◇ Test case passing 1 argument value → 1 to "Parameterized" started.
+◇ Test case passing 1 argument value → 2 to "Parameterized" started.
+◇ Test case passing 1 argument value → 2 to unnamedParameterized(value:) started.
+◇ Test case passing 1 argument value → 1 to unnamedParameterized(value:) started.
+◇ Test "Known issue is expected" started.
+✔ Test "Given a failed login, when retried, then it passes" passed after 0.001 seconds.
+✘ Test "Given a display name, when it fails, then this shape is printed" recorded an issue at ProbeTests.swift:7:27: Expectation failed: answer == 43
+↳ answer == 43 → false
+↳   answer → 42
+✘ Test "Parameterized" recorded an issue with 1 argument value → 1 at ProbeTests.swift:13:38: Expectation failed: value == 99
+↳ value == 99 → false
+↳   value → 1
+━ Test "Known issue is expected" recorded a known issue at ProbeTests.swift:22:42: Expectation failed: answer == 50
+↳ answer == 50 → false
+↳   answer → 42
+✘ Test unnamedParameterized(value:) recorded an issue with 1 argument value → 1 at ProbeTests.swift:16:45: Expectation failed: value == 99
+↳ value == 99 → false
+↳   value → 1
+✘ Test "Given a display name, when it fails, then this shape is printed" failed after 0.001 seconds with 1 issue.
+✘ Test "Parameterized" recorded an issue with 1 argument value → 2 at ProbeTests.swift:13:38: Expectation failed: value == 99
+↳ value == 99 → false
+↳   value → 2
+✘ Test unnamedParameterized(value:) recorded an issue with 1 argument value → 2 at ProbeTests.swift:16:45: Expectation failed: value == 99
+↳ value == 99 → false
+↳   value → 2
+✘ Test unnamedFailure() recorded an issue at ProbeTests.swift:10:29: Expectation failed: answer == 44
+↳ answer == 44 → false
+↳   answer → 42
+✘ Test "Parameterized" with 2 test cases failed after 0.001 seconds with 2 issues.
+━ Test "Known issue is expected" passed after 0.001 seconds with 1 known issue.
+✘ Test unnamedFailure() failed after 0.001 seconds with 1 issue.
+✘ Test unnamedParameterized(value:) with 2 test cases failed after 0.001 seconds with 2 issues.
+✘ Test "Throwing test" recorded an issue at ProbeTests.swift:24:6: Caught error: .boom
+✘ Test "Throwing test" failed after 0.001 seconds with 1 issue.
+✘ Suite "Probe suite" failed after 0.001 seconds with 8 issues (including 1 known issue).
+✘ Test run with 7 tests in 1 suite failed after 0.001 seconds with 8 issues (including 1 known issue).

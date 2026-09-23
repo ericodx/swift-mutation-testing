@@ -338,16 +338,6 @@ struct MutantExecutor: Sendable {
             .execute(mutants, configuration: configuration, pool: pool)
     }
 
-    /// Runs the unmutated suite once, before any mutant does, and ends the run unless it passes.
-    ///
-    /// The schema falls through to its `default` branch when no mutant is selected, so this is the
-    /// original code under test. An empty selection is passed explicitly rather than left out, so
-    /// that a stray `__SWIFT_MUTATION_TESTING_ACTIVE` in the environment cannot select a mutant for
-    /// the very run that is meant to have none.
-    ///
-    /// The suite gets the same timeout a mutant gets, because it is the same suite run the same
-    /// way: one that cannot finish in time here would not finish in time for any mutant either,
-    /// and saying so once is better than reporting every mutant as a timeout.
     private func validateSPMBaseline(sandbox: Sandbox, deps: ExecutionDeps) async throws {
         var arguments = ["test", "--skip-build"]
         if let testTarget = configuration.build.testTarget {

@@ -458,8 +458,6 @@ struct ConfigurationResolverTests {
             fileValues: [:]
         )
 
-        // The xctest rule is about Xcode: an SPM run drives its test bundle directly, so its
-        // workers are independent whichever framework the tests use (issue #77).
         #expect(result.build.concurrency == 4)
     }
 

@@ -97,7 +97,19 @@ Scans stdout/stderr for known failure and crash patterns when `xcresulttool` yie
 | Framework | Pattern |
 |---|---|
 | XCTest | `Test Case '-[…]' failed` |
-| Swift Testing | `Test "…" failed` |
+| Swift Testing | `Test <name>` followed by `recorded an issue` or `failed` |
+
+Swift Testing names an individual test either by its display name in quotes — `Test "a check"` — or,
+when it has none, by its function signature — `Test aCheck()`, `Test aCheck(value:)`. Both forms are
+read, and both of the lines a failing test prints: one per issue as it records it, and the test's own
+closing summary. Matching only `Test "…" failed`, as this used to, missed every parameterized test
+(`Test "a check" with 2 test cases failed`) and every test without a display name, so the mutants
+they caught were reported as `Crash` and left `killerTestFile` unresolved (issue #83).
+
+The run's aggregate lines — `Suite "…" failed`, `Test run with 3 tests in 1 suite failed` — are
+deliberately not matched: naming a suite or the whole run as the killing test would be worse than
+naming nothing. A *known* issue is an expected failure and the test still passes, so `recorded a
+known issue` is excluded too.
 
 **Crash patterns detected:**
 

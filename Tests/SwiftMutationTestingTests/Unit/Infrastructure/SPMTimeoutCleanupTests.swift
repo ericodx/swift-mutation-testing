@@ -3,12 +3,6 @@ import Testing
 
 @testable import SwiftMutationTesting
 
-/// Cleanup after a timed-out run must not reach a later run sharing the same sandbox.
-///
-/// `IncompatibleMutantExecutor.runSPMShared` tests every incompatible mutant sequentially in one
-/// sandbox, and the escalation to SIGKILL fires five seconds after the timeout — by which point the
-/// next mutant is usually testing. Cleanup that matched processes by sandbox name killed that
-/// mutant's test binary, and the truncated output was read as a crash (issue #69).
 @Suite("SPM timeout cleanup")
 struct SPMTimeoutCleanupTests {
 
@@ -19,12 +13,10 @@ struct SPMTimeoutCleanupTests {
 
         let launcher = SPMProcessLauncher()
 
-        // The run that times out: killed after 1s, with SIGKILL escalation 5s later.
         async let timedOut = launcher.launchCapturing(
             try request(sleeping: 30, in: sandbox, timeout: 1)
         )
 
-        // The next mutant's run, started in the same sandbox while that escalation is pending.
         try await Task.sleep(for: .milliseconds(1500))
         async let survivor = launcher.launchCapturing(
             try request(sleeping: 8, in: sandbox, timeout: 30)
@@ -64,8 +56,6 @@ struct SPMTimeoutCleanupTests {
                 (try String(contentsOf: marker, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines)
             ))
 
-        // Cleanup is tied to the process ending, not to the five-second grace period, so this does
-        // not have to wait the period out.
         try await Task.sleep(for: .milliseconds(500))
 
         #expect(kill(childPID, 0) != 0, "the spawned child outlived the run that started it")
@@ -80,9 +70,6 @@ struct SPMTimeoutCleanupTests {
         return url
     }
 
-    /// A run whose arguments name a path inside the sandbox, the way SwiftPM's test bundle does:
-    /// it lives at `<sandbox>/.build/...`, so the sandbox name is in its argv. That is what cleanup
-    /// used to match on, and why it reached runs that were not its own.
     private func request(sleeping seconds: Int, in sandbox: URL, timeout: Double) throws -> ProcessRequest {
         let script = sandbox.appendingPathComponent("run-\(UUID().uuidString.prefix(8)).sh")
         try "#!/bin/sh\nsleep \(seconds)\n".write(to: script, atomically: true, encoding: .utf8)

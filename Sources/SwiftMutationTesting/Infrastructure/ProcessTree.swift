@@ -1,20 +1,7 @@
 import Foundation
 
-/// Reads the kernel's process table to find what a process has spawned.
-///
-/// Killing a process group does not always reach everything a test run started: a child that calls
-/// `setsid`, or one whose parent has already died, leaves the group and survives. Those are the
-/// processes cleanup has to chase, and they can only be identified while the process that owns them
-/// is still alive — once it dies they are reparented to `launchd` and nothing connects them to it
-/// any more.
-///
-/// So the descendants are snapshotted before the kill, and the snapshot is what gets killed
-/// afterwards. The alternative — searching every process on the machine for one whose arguments
-/// mention the sandbox — cannot tell one mutant's test run from another's when both run in the same
-/// sandbox, and killed the wrong one (issue #69).
 enum ProcessTree {
 
-    /// Every process descended from `pid`, however deeply, excluding `pid` itself.
     static func descendants(of pid: Int32) -> [Int32] {
         guard pid > 1 else { return [] }
 

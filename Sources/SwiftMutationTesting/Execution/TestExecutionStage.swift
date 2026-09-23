@@ -127,9 +127,6 @@ struct TestExecutionStage: Sendable {
         return deps.killerTestFileResolver.resolve(testName: testName)
     }
 
-    /// Runs the compiled test bundle rather than `swift test`, so that workers sharing a sandbox do
-    /// not queue behind SwiftPM's lock on `.build` (issue #77). Falls back to `swift test` when no
-    /// bundle can be found, which keeps a run working rather than failing on an unfamiliar layout.
     private func launchSPM(
         mutant: MutantDescriptor,
         in context: TestExecutionContext
@@ -148,10 +145,6 @@ struct TestExecutionStage: Sendable {
         )
     }
 
-    /// Runs each request in turn, stopping at the first that does not succeed.
-    ///
-    /// The requests share one deadline, since between them they are the single test run a mutant is
-    /// given — running both testing libraries must not buy a mutant twice the configured timeout.
     private func run(
         _ requests: [ProcessRequest],
         deadline: Date
@@ -167,7 +160,6 @@ struct TestExecutionStage: Sendable {
 
             let captured = try await deps.launcher.launchCapturing(request.withTimeout(remaining))
 
-            // The bundle holds no tests for this library, so there is nothing to report from it.
             guard captured.exitCode != TestBundleInvocation.noTestsExitCode else { continue }
 
             combined += combined.isEmpty ? captured.output : "\n" + captured.output
