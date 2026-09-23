@@ -11,6 +11,12 @@ retain_objc_accessible: false
 # Exclude test targets
 exclude_tests: true
 
+# Index store written by SwiftPM's build system, which since Swift 6.4 writes to
+# .build/out rather than the .build/debug/index/store periphery looks for by default.
+# Setting this implies --skip-build, so run 'swift build' before scanning.
+index_store_path:
+  - .build/out
+
 # Exclude build artifacts and tooling
 index_exclude:
   - "**/.build/**"
