@@ -77,7 +77,7 @@ struct IncompatibleMutantExecutor: Sendable {
                 environment: nil,
                 additionalEnvironment: [:],
                 workingDirectoryURL: sandbox.rootURL,
-                timeout: configuration.build.timeout
+                timeout: configuration.build.buildTimeout
             )
         )
 
@@ -88,7 +88,8 @@ struct IncompatibleMutantExecutor: Sendable {
                     await storeAndReport(
                         mutant: mutant, key: key, sandbox: nil,
                         keepLogsPath: configuration.reporting.keepLogsPath,
-                        buildOutput: initialBuild.output
+                        buildOutput: initialBuild.output,
+                        status: buildStatus(exitCode: initialBuild.exitCode)
                     )
                 )
             }
@@ -148,7 +149,7 @@ struct IncompatibleMutantExecutor: Sendable {
                 environment: nil,
                 additionalEnvironment: [:],
                 workingDirectoryURL: sandbox.rootURL,
-                timeout: configuration.build.timeout
+                timeout: configuration.build.buildTimeout
             )
         )
 
@@ -156,7 +157,8 @@ struct IncompatibleMutantExecutor: Sendable {
             return await storeAndReport(
                 mutant: mutant, key: key, sandbox: nil,
                 keepLogsPath: configuration.reporting.keepLogsPath,
-                buildOutput: build.output
+                buildOutput: build.output,
+                status: buildStatus(exitCode: build.exitCode)
             )
         }
 
@@ -273,8 +275,32 @@ struct IncompatibleMutantExecutor: Sendable {
         let xcresultPath = sandbox.rootURL
             .appendingPathComponent("\(UUID().uuidString).xcresult").path
 
-        var arguments = [
-            "test",
+        let start = Date()
+
+        let build = try await deps.launcher.launchCapturing(
+            xcodebuildRequest(
+                arguments: [
+                    "build-for-testing",
+                    "-scheme", scheme,
+                    "-destination", slot.destination,
+                    "-derivedDataPath", derivedDataPath,
+                ],
+                sandbox: sandbox,
+                timeout: configuration.build.buildTimeout
+            )
+        )
+
+        guard build.exitCode == 0 else {
+            return TestLaunchResult(
+                exitCode: build.exitCode,
+                output: build.output,
+                xcresultPath: xcresultPath,
+                duration: Date().timeIntervalSince(start)
+            )
+        }
+
+        var testArguments = [
+            "test-without-building",
             "-scheme", scheme,
             "-destination", slot.destination,
             "-derivedDataPath", derivedDataPath,
@@ -283,26 +309,37 @@ struct IncompatibleMutantExecutor: Sendable {
         ]
 
         if let testTarget = configuration.build.testTarget {
-            arguments += ["-only-testing", testTarget]
+            testArguments += ["-only-testing", testTarget]
         }
 
-        let start = Date()
-        let captured = try await deps.launcher.launchCapturing(
-            ProcessRequest(
-                executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-                arguments: arguments,
-                environment: nil,
-                additionalEnvironment: [:],
-                workingDirectoryURL: sandbox.rootURL,
+        let test = try await deps.launcher.launchCapturing(
+            xcodebuildRequest(
+                arguments: testArguments,
+                sandbox: sandbox,
                 timeout: configuration.build.timeout
             )
         )
 
         return TestLaunchResult(
-            exitCode: captured.exitCode,
-            output: captured.output,
+            exitCode: test.exitCode,
+            output: test.output,
             xcresultPath: xcresultPath,
             duration: Date().timeIntervalSince(start)
+        )
+    }
+
+    private func xcodebuildRequest(
+        arguments: [String],
+        sandbox: Sandbox,
+        timeout: Double
+    ) -> ProcessRequest {
+        ProcessRequest(
+            executableURL: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+            arguments: arguments,
+            environment: nil,
+            additionalEnvironment: [:],
+            workingDirectoryURL: sandbox.rootURL,
+            timeout: timeout
         )
     }
 
@@ -316,17 +353,22 @@ struct IncompatibleMutantExecutor: Sendable {
         key: MutantCacheKey,
         sandbox: Sandbox?,
         keepLogsPath: String?,
-        buildOutput: String = ""
+        buildOutput: String = "",
+        status: ExecutionStatus = .unviable
     ) async -> ExecutionResult {
         try? sandbox?.cleanup()
 
         MutantLogWriter(directory: keepLogsPath)?
-            .write(mutant: mutant, status: .unviable, duration: 0, output: buildOutput)
+            .write(mutant: mutant, status: status, duration: 0, output: buildOutput)
 
-        await deps.cacheStore.store(status: .unviable, for: key)
+        await deps.cacheStore.store(status: status, for: key)
         let total = deps.counter.total
         let index = await deps.counter.increment()
-        await deps.reporter.report(.mutantFinished(descriptor: mutant, status: .unviable, index: index, total: total))
-        return ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0)
+        await deps.reporter.report(.mutantFinished(descriptor: mutant, status: status, index: index, total: total))
+        return ExecutionResult(descriptor: mutant, status: status, testDuration: 0)
+    }
+
+    private func buildStatus(exitCode: Int32) -> ExecutionStatus {
+        exitCode == SPMResultParser.timedOutExitCode ? .timeout : .unviable
     }
 }
