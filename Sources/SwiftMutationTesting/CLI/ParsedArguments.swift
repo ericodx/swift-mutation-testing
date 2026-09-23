@@ -31,6 +31,7 @@ struct ParsedArguments: Sendable {
             destination: String? = nil,
             testTarget: String? = nil,
             timeout: Double? = nil,
+            buildTimeout: Double? = nil,
             concurrency: Int? = nil,
             noCache: Bool = false,
             testingFramework: String? = nil
@@ -39,6 +40,7 @@ struct ParsedArguments: Sendable {
             self.destination = destination
             self.testTarget = testTarget
             self.timeout = timeout
+            self.buildTimeout = buildTimeout
             self.concurrency = concurrency
             self.noCache = noCache
             self.testingFramework = testingFramework
@@ -48,6 +50,7 @@ struct ParsedArguments: Sendable {
         var destination: String?
         var testTarget: String?
         var timeout: Double?
+        var buildTimeout: Double?
         var concurrency: Int?
         var noCache: Bool
         var testingFramework: String?

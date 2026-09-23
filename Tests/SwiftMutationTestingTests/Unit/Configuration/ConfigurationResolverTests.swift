@@ -110,6 +110,37 @@ struct ConfigurationResolverTests {
         #expect(result.build.timeout == 30)
     }
 
+    @Test("Given build-timeout only in file, when resolved, then configuration uses it")
+    func buildTimeoutFromFile() throws {
+        let result = try ConfigurationResolver().resolve(
+            cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
+            fileValues: ["build-timeout": "240"]
+        )
+
+        #expect(result.build.buildTimeout == 240)
+    }
+
+    @Test("Given build-timeout in both CLI and file, when resolved, then CLI takes priority")
+    func buildTimeoutCLIWinsOverFile() throws {
+        let result = try ConfigurationResolver().resolve(
+            cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d", buildTimeout: 90)),
+            fileValues: ["build-timeout": "240"]
+        )
+
+        #expect(result.build.buildTimeout == 90)
+    }
+
+    @Test("Given no build-timeout anywhere, when resolved, then the build default is applied and test timeout is untouched")
+    func buildTimeoutFallsBackToDefault() throws {
+        let result = try ConfigurationResolver().resolve(
+            cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d", timeout: 30)),
+            fileValues: [:]
+        )
+
+        #expect(result.build.buildTimeout == RunnerConfiguration.defaultBuildTimeout)
+        #expect(result.build.timeout == 30)
+    }
+
     @Test("Given no timeout in CLI or file for Xcode, when resolved, then default Xcode timeout is applied")
     func appliesDefaultXcodeTimeout() throws {
         let result = try resolver.resolve(
@@ -469,5 +500,32 @@ struct ConfigurationResolverTests {
         )
 
         #expect(result.build.testTarget == "AppTests")
+    }
+
+    @Test("Given build-timeout written in the config file, when parsed and resolved, then it reaches the configuration")
+    func buildTimeoutSurvivesTheConfigFileRoundTrip() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try """
+            scheme: App
+            destination: platform=macOS
+            timeout: 30
+            build-timeout: 240
+            """
+            .write(
+                to: dir.appendingPathComponent(".swift-mutation-testing.yml"),
+                atomically: true,
+                encoding: .utf8
+            )
+
+        let fileValues = try ConfigurationFileParser().parse(at: dir.path)
+        let result = try ConfigurationResolver().resolve(
+            cliArguments: ParsedArguments(projectPath: dir.path),
+            fileValues: fileValues
+        )
+
+        #expect(result.build.buildTimeout == 240)
+        #expect(result.build.timeout == 30)
     }
 }

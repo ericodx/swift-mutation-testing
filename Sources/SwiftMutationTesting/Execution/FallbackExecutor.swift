@@ -41,26 +41,26 @@ struct FallbackExecutor: Sendable {
                     sandbox: sandbox,
                     scheme: scheme,
                     destination: destination,
-                    timeout: configuration.build.timeout
+                    timeout: configuration.build.buildTimeout
                 )
                 await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
             } catch {
                 await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
                 try? sandbox.cleanup()
-                return await markUnviable(mutants: fileMutants)
+                return await markBuildFailure(error, mutants: fileMutants)
             }
 
         case .spm:
             do {
                 artifact = try await BuildStage(launcher: deps.launcher).buildSPM(
                     sandbox: sandbox,
-                    timeout: configuration.build.timeout
+                    timeout: configuration.build.buildTimeout
                 )
                 await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
             } catch {
                 await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
                 try? sandbox.cleanup()
-                return await markUnviable(mutants: fileMutants)
+                return await markBuildFailure(error, mutants: fileMutants)
             }
         }
 
@@ -97,15 +97,25 @@ struct FallbackExecutor: Sendable {
         return results
     }
 
-    private func markUnviable(mutants: [MutantDescriptor]) async -> [ExecutionResult] {
+    private func isTimeout(_ error: any Error) -> Bool {
+        guard case BuildError.timedOut = error else { return false }
+        return true
+    }
+
+    private func markBuildFailure(
+        _ error: any Error,
+        mutants: [MutantDescriptor]
+    ) async -> [ExecutionResult] {
+        let status: ExecutionStatus = isTimeout(error) ? .timeout : .unviable
+
         var results: [ExecutionResult] = []
         for mutant in mutants {
             let key = MutantCacheKey.make(for: mutant)
-            await deps.cacheStore.store(status: .unviable, for: key)
+            await deps.cacheStore.store(status: status, for: key)
             let index = await deps.counter.increment()
             await deps.reporter.report(
-                .mutantFinished(descriptor: mutant, status: .unviable, index: index, total: deps.counter.total))
-            results.append(ExecutionResult(descriptor: mutant, status: .unviable, testDuration: 0))
+                .mutantFinished(descriptor: mutant, status: status, index: index, total: deps.counter.total))
+            results.append(ExecutionResult(descriptor: mutant, status: status, testDuration: 0))
         }
         return results
     }

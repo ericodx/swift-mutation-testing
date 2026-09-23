@@ -211,7 +211,7 @@ struct MutantExecutor: Sendable {
                     sandbox: sandbox,
                     scheme: scheme,
                     destination: destination,
-                    timeout: configuration.build.timeout
+                    timeout: configuration.build.buildTimeout
                 )
                 await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
                 return (artifact, [])
@@ -223,7 +223,7 @@ struct MutantExecutor: Sendable {
             do {
                 let artifact = try await stage.buildSPM(
                     sandbox: sandbox,
-                    timeout: configuration.build.timeout
+                    timeout: configuration.build.buildTimeout
                 )
                 await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
                 return (artifact, [])
@@ -287,7 +287,7 @@ struct MutantExecutor: Sendable {
         do {
             let artifact = try await context.stage.buildSPM(
                 sandbox: sandbox,
-                timeout: configuration.build.timeout
+                timeout: configuration.build.buildTimeout
             )
             await context.deps.reporter.report(
                 .buildFinished(duration: Date().timeIntervalSince(context.start))

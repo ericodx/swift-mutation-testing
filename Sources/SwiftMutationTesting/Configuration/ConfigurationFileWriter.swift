@@ -77,6 +77,9 @@ struct ConfigurationFileWriter: Sendable {
         lines.append("# Per-mutant test timeout in seconds (default: 120)")
         lines.append("timeout: 120")
         lines.append("")
+        lines.append("# Build timeout in seconds (default: 120)")
+        lines.append("# build-timeout: 240")
+        lines.append("")
         lines.append("# Number of parallel workers (default: max(1, CPU count - 1))")
         if testingFramework == .xctest {
             lines.append("concurrency: 1")
@@ -110,6 +113,9 @@ struct ConfigurationFileWriter: Sendable {
         lines.append("")
         lines.append("# Per-mutant test timeout in seconds (default: 30 for SPM)")
         lines.append("timeout: 30")
+        lines.append("")
+        lines.append("# Build timeout in seconds (default: 120)")
+        lines.append("# build-timeout: 240")
         lines.append(contentsOf: reportSection(testTarget: testTarget, excludeExample: "**/Tests/**"))
         lines.append(contentsOf: mutatorsSection())
 

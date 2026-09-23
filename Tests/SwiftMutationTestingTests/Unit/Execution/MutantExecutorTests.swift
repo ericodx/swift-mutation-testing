@@ -887,4 +887,122 @@ struct MutantExecutorTests {
         #expect(results.count == 1)
         #expect(results[0].status == .unviable)
     }
+
+    @Test("Given an Xcode project, when execute called, then the shared build is bounded by the build timeout")
+    func xcodeSharedBuildUsesBuildTimeout() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let launcher = RecordingProcessLauncher(responses: [(0, "")])
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(
+                projectPath: dir.path, timeout: 30, buildTimeout: 240
+            ),
+            launcher: launcher
+        )
+
+        _ = try? await executor.execute(
+            makeRunnerInput(projectPath: dir.path, mutants: [makeMutantDescriptor(id: "m0")])
+        )
+
+        #expect(await launcher.timeouts(forCommandStartingWith: "build-for-testing") == [240])
+    }
+
+    @Test("Given an SPM project, when execute called, then every shared build is bounded by the build timeout")
+    func spmSharedBuildUsesBuildTimeout() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let launcher = RecordingProcessLauncher(responses: [(0, "")])
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(
+                projectPath: dir.path, projectType: .spm, timeout: 30, buildTimeout: 240
+            ),
+            launcher: launcher
+        )
+
+        _ = try await executor.execute(
+            makeRunnerInput(
+                projectPath: dir.path,
+                projectType: .spm,
+                schematizedFiles: [
+                    SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")
+                ],
+                mutants: [makeMutantDescriptor(id: "m0", filePath: sourceFile.path, isSchematizable: true)]
+            )
+        )
+
+        let buildTimeouts = await launcher.timeouts(forCommandStartingWith: "build")
+        let testTimeouts = await launcher.timeouts(forCommandStartingWith: "test")
+
+        #expect(!buildTimeouts.isEmpty)
+        #expect(buildTimeouts.allSatisfy { $0 == 240 })
+        #expect(!testTimeouts.isEmpty)
+        #expect(testTimeouts.allSatisfy { $0 <= 30 })
+    }
+
+    @Test("Given the shared build times out, when execute called, then the run fails instead of reporting unviable")
+    func sharedBuildTimeoutEndsTheRun() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            launcher: MockProcessLauncher(exitCode: SPMResultParser.timedOutExitCode)
+        )
+
+        let input = makeRunnerInput(
+            projectPath: dir.path,
+            projectType: .spm,
+            schematizedFiles: [
+                SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")
+            ],
+            mutants: [makeMutantDescriptor(id: "m0", filePath: sourceFile.path, isSchematizable: true)]
+        )
+
+        await #expect(throws: BuildError.timedOut(seconds: 0, output: "")) {
+            try await executor.execute(input)
+        }
+    }
+
+    @Test("Given the first SPM build fails, when the retry build runs, then it is also bounded by the build timeout")
+    func spmRetryBuildUsesBuildTimeout() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let launcher = RecordingSPMRetryLauncher(failingFileName: "Foo.swift")
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(
+                projectPath: dir.path, projectType: .spm, timeout: 30, buildTimeout: 240
+            ),
+            launcher: launcher
+        )
+
+        _ = try? await executor.execute(
+            makeRunnerInput(
+                projectPath: dir.path,
+                projectType: .spm,
+                schematizedFiles: [
+                    SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")
+                ],
+                mutants: [makeMutantDescriptor(id: "m0", filePath: sourceFile.path, isSchematizable: true)]
+            )
+        )
+
+        let buildTimeouts = await launcher.timeouts(forCommandStartingWith: "build")
+        #expect(buildTimeouts.count >= 2)
+        #expect(buildTimeouts.allSatisfy { $0 == 240 })
+    }
 }

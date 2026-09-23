@@ -54,6 +54,18 @@ struct CommandLineParserTests {
         #expect(result.showVersion)
     }
 
+    @Test("Given --build-timeout, when parsed, then it is separate from --timeout")
+    func parsesBuildTimeoutSeparatelyFromTimeout() throws {
+        let result = try parser.parse([
+            "run", "--scheme", "App", "--destination", "d",
+            "--timeout", "30",
+            "--build-timeout", "240",
+        ])
+
+        #expect(result.build.timeout == 30)
+        #expect(result.build.buildTimeout == 240)
+    }
+
     @Test("Given --no-cache and --quiet flags, when parsed, then noCache and quiet are true")
     func parsesBooleanFlags() throws {
         let result = try parser.parse(["run", "--scheme", "App", "--destination", "d", "--no-cache", "--quiet"])

@@ -49,4 +49,91 @@ struct FallbackExecutorTests {
 
         #expect(results.count == 1)
     }
+
+    @Test("Given the fallback build times out, when execute called, then mutants are timeout and nothing is cached")
+    func fallbackBuildTimeoutIsNotRecordedAsUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let config = makeRunnerConfiguration(projectPath: dir.path, projectType: .spm)
+        let cachePath = dir.appendingPathComponent("cache.json").path
+        let deps = makeExecutionDeps(
+            launcher: MockProcessLauncher(exitCode: SPMResultParser.timedOutExitCode),
+            cacheStorePath: cachePath
+        )
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "true",
+            mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement",
+            replacementKind: .booleanLiteral,
+            description: "true → false",
+            isSchematizable: true
+        )
+
+        let input = makeRunnerInput(
+            projectPath: dir.path,
+            projectType: .spm,
+            schematizedFiles: [
+                SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")
+            ],
+            mutants: [mutant]
+        )
+
+        let results = try await FallbackExecutor(deps: deps, configuration: config)
+            .execute(input: input, pool: pool)
+
+        #expect(results.map(\.status) == [.timeout])
+        #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
+    }
+
+    @Test(
+        "Given a per-file fallback build, when execute called, then it is bounded by the build timeout",
+        arguments: [
+            (ProjectType.spm, "build"),
+            (ProjectType.xcode(scheme: "App", destination: "platform=macOS"), "build-for-testing"),
+        ]
+    )
+    func fallbackBuildUsesBuildTimeout(projectType: ProjectType, verb: String) async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let launcher = RecordingProcessLauncher(responses: [(0, "")])
+        let config = makeRunnerConfiguration(
+            projectPath: dir.path, projectType: projectType, timeout: 30, buildTimeout: 240
+        )
+        let deps = makeExecutionDeps(
+            launcher: launcher,
+            cacheStorePath: dir.appendingPathComponent("cache.json").path
+        )
+
+        let input = makeRunnerInput(
+            projectPath: dir.path,
+            projectType: projectType,
+            schematizedFiles: [
+                SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")
+            ],
+            mutants: [
+                makeMutantDescriptor(id: "m0", filePath: sourceFile.path, isSchematizable: true)
+            ]
+        )
+
+        _ = try? await FallbackExecutor(deps: deps, configuration: config).execute(input: input, pool: pool)
+
+        #expect(await launcher.timeouts(forCommandStartingWith: verb) == [240])
+    }
 }

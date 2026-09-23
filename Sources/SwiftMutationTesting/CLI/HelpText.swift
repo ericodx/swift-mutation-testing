@@ -15,6 +15,7 @@ enum HelpText {
           --testing-framework <fw>       Testing framework: xctest or swift-testing (default: swift-testing)
           --target <test-target>        Test target name
           --timeout <seconds>           Per-mutant test timeout in seconds (default: 120 Xcode, 30 SPM)
+          --build-timeout <seconds>     Build timeout in seconds (default: 120)
           --concurrency <n>             Parallel test workers (default: CPUs - 1). Simulator
                                         destinations only; SPM and macOS runs use one worker
           --no-cache                    Disable the result cache — nothing is read or written

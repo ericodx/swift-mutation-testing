@@ -589,4 +589,250 @@ struct IncompatibleMutantExecutorTests {
 
         #expect(results.first?.status == .unviable)
     }
+
+    @Test("Given an Xcode mutant, when run, then the build and the test are separate commands with their own timeouts")
+    func xcodeRunSplitsBuildAndTestWithSeparateTimeouts() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 1".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let launcher = RecordingProcessLauncher(responses: [(0, ""), (0, "")])
+        let configuration = makeRunnerConfiguration(
+            projectPath: dir.path, timeout: 30, buildTimeout: 240
+        )
+
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "1",
+            mutatedText: "2",
+            operatorIdentifier: "ArithmeticOperatorReplacement",
+            description: "1 → 2",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = 2"
+        )
+
+        _ = try await IncompatibleMutantExecutor(
+            deps: makeExecutionDeps(
+                launcher: launcher,
+                cacheStorePath: dir.appendingPathComponent("cache.json").path
+            ),
+            sandboxFactory: SandboxFactory()
+        ).execute([mutant], configuration: configuration, pool: pool)
+
+        let build = await launcher.recorded(commandStartingWith: "build-for-testing")
+        let test = await launcher.recorded(commandStartingWith: "test-without-building")
+
+        #expect(build?.timeout == 240)
+        #expect(test?.timeout == 30)
+        #expect(await launcher.requests.allSatisfy { $0.arguments.first != "test" })
+    }
+
+    @Test("Given the Xcode build times out, when run, then the test is never launched")
+    func xcodeBuildTimeoutSkipsTheTestCommand() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 1".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let launcher = RecordingProcessLauncher(
+            responses: [(SPMResultParser.timedOutExitCode, "")]
+        )
+
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "1",
+            mutatedText: "2",
+            operatorIdentifier: "ArithmeticOperatorReplacement",
+            description: "1 → 2",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = 2"
+        )
+
+        let results = try await IncompatibleMutantExecutor(
+            deps: makeExecutionDeps(
+                launcher: launcher,
+                cacheStorePath: dir.appendingPathComponent("cache.json").path
+            ),
+            sandboxFactory: SandboxFactory()
+        ).execute([mutant], configuration: makeRunnerConfiguration(projectPath: dir.path), pool: pool)
+
+        #expect(await launcher.recorded(commandStartingWith: "test-without-building") == nil)
+        #expect(results.map(\.status) == [.timeout])
+    }
+
+    @Test("Given an SPM build that times out, when execute called, then the mutant is timeout and nothing is cached")
+    func spmBuildTimeoutIsNotRecordedAsUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 1".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let deps = makeExecutionDeps(
+            launcher: MockProcessLauncher(exitCode: SPMResultParser.timedOutExitCode),
+            cacheStorePath: dir.appendingPathComponent("cache.json").path
+        )
+
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "1",
+            mutatedText: "2",
+            operatorIdentifier: "ArithmeticOperatorReplacement",
+            description: "1 → 2",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = 2"
+        )
+
+        let results = try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
+            .execute(
+                [mutant],
+                configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+                pool: pool
+            )
+
+        #expect(results.map(\.status) == [.timeout])
+        #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
+    }
+
+    @Test("Given SPM incompatible mutants, when execute called, then builds use the build timeout and tests use the test timeout")
+    func spmIncompatibleBuildsUseBuildTimeout() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 1".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let launcher = RecordingProcessLauncher(responses: [(0, "")])
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "1",
+            mutatedText: "2",
+            operatorIdentifier: "ArithmeticOperatorReplacement",
+            description: "1 → 2",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = 2"
+        )
+
+        _ = try await IncompatibleMutantExecutor(
+            deps: makeExecutionDeps(
+                launcher: launcher,
+                cacheStorePath: dir.appendingPathComponent("cache.json").path
+            ),
+            sandboxFactory: SandboxFactory()
+        ).execute(
+            [mutant],
+            configuration: makeRunnerConfiguration(
+                projectPath: dir.path, projectType: .spm, timeout: 30, buildTimeout: 240
+            ),
+            pool: pool
+        )
+
+        let buildTimeouts = await launcher.timeouts(forCommandStartingWith: "build")
+        let testTimeouts = await launcher.timeouts(forCommandStartingWith: "test")
+
+        #expect(buildTimeouts.count >= 2)
+        #expect(buildTimeouts.allSatisfy { $0 == 240 })
+        #expect(!testTimeouts.isEmpty)
+        #expect(testTimeouts.allSatisfy { $0 == 30 })
+    }
+
+    @Test("Given the shared build succeeds but a per-mutant build times out, then that mutant is timeout and is not cached")
+    func perMutantBuildTimeoutIsNotRecordedAsUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 1".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let deps = makeExecutionDeps(
+            launcher: SPMPerMutantBuildTimeoutMock(),
+            cacheStorePath: dir.appendingPathComponent("cache.json").path
+        )
+
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "1",
+            mutatedText: "2",
+            operatorIdentifier: "ArithmeticOperatorReplacement",
+            description: "1 → 2",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = 2"
+        )
+
+        let results = try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
+            .execute(
+                [mutant],
+                configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+                pool: pool
+            )
+
+        #expect(results.map(\.status) == [.timeout])
+        #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
+    }
+
+    @Test("Given a testTarget and a build that succeeds, when run, then only-testing is applied to the test command")
+    func xcodeTestTargetIsAppliedToTheTestCommand() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 1".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let launcher = RecordingProcessLauncher(responses: [(0, ""), (0, "")])
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "1",
+            mutatedText: "2",
+            operatorIdentifier: "ArithmeticOperatorReplacement",
+            description: "1 → 2",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = 2"
+        )
+
+        _ = try await IncompatibleMutantExecutor(
+            deps: makeExecutionDeps(
+                launcher: launcher,
+                cacheStorePath: dir.appendingPathComponent("cache.json").path
+            ),
+            sandboxFactory: SandboxFactory()
+        ).execute(
+            [mutant],
+            configuration: makeRunnerConfiguration(projectPath: dir.path, testTarget: "AppTests"),
+            pool: pool
+        )
+
+        let build = await launcher.recorded(commandStartingWith: "build-for-testing")
+        let test = await launcher.recorded(commandStartingWith: "test-without-building")
+
+        #expect(test?.arguments.contains("-only-testing") == true)
+        #expect(test?.arguments.contains("AppTests") == true)
+        #expect(build?.arguments.contains("-only-testing") == false)
+    }
 }

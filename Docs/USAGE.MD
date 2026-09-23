@@ -113,6 +113,9 @@ destination: platform=iOS Simulator,name=iPhone 16
 # Per-mutant test timeout in seconds (default: 120 Xcode, 30 SPM)
 timeout: 60
 
+# Build timeout in seconds (default: 120)
+# build-timeout: 240
+
 # Number of parallel workers (default: max(1, CPU count - 1))
 # concurrency: 4
 
@@ -224,6 +227,7 @@ swift-mutation-testing [project-path] [options]
 | `--destination <destination>` | `xcodebuild` destination specifier (required for Xcode, omit for SPM) |
 | `--target <test-target>` | Limit test execution to this target |
 | `--timeout <seconds>` | Per-mutant test timeout (default: 120 Xcode, 30 SPM) |
+| `--build-timeout <seconds>` | Build timeout (default: 120). Sandboxes never inherit `.build`, so every build is cold |
 | `--concurrency <n>` | Parallel workers (default: CPUs − 1). Simulator destinations only |
 | `--no-cache` | Disable result caching — no verdict is read from the cache, and none is written back |
 | `--keep-logs <dir>` | Write each mutant's captured test output to `<dir>/<mutant-id>.log` |

@@ -41,6 +41,7 @@ actor CacheStore {
 
     func store(status: ExecutionStatus, for key: MutantCacheKey, killerTestFile: String? = nil) {
         guard !noCache else { return }
+        guard status != .timeout else { return }
 
         entries[key] = status
         if let killerTestFile {

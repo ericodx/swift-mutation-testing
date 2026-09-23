@@ -35,6 +35,10 @@ struct BuildStage: Sendable {
             )
         )
 
+        guard exitCode != SPMResultParser.timedOutExitCode else {
+            throw BuildError.timedOut(seconds: timeout, output: buildOutput)
+        }
+
         guard exitCode == 0 else {
             throw BuildError.compilationFailed(output: buildOutput)
         }
@@ -74,6 +78,10 @@ struct BuildStage: Sendable {
                 timeout: timeout
             )
         )
+
+        guard exitCode != SPMResultParser.timedOutExitCode else {
+            throw BuildError.timedOut(seconds: timeout, output: buildOutput)
+        }
 
         guard exitCode == 0 else { throw BuildError.compilationFailed(output: buildOutput) }
 
