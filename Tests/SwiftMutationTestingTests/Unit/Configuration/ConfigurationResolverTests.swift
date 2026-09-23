@@ -501,4 +501,31 @@ struct ConfigurationResolverTests {
 
         #expect(result.build.testTarget == "AppTests")
     }
+
+    @Test("Given build-timeout written in the config file, when parsed and resolved, then it reaches the configuration")
+    func buildTimeoutSurvivesTheConfigFileRoundTrip() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try """
+            scheme: App
+            destination: platform=macOS
+            timeout: 30
+            build-timeout: 240
+            """
+            .write(
+                to: dir.appendingPathComponent(".swift-mutation-testing.yml"),
+                atomically: true,
+                encoding: .utf8
+            )
+
+        let fileValues = try ConfigurationFileParser().parse(at: dir.path)
+        let result = try ConfigurationResolver().resolve(
+            cliArguments: ParsedArguments(projectPath: dir.path),
+            fileValues: fileValues
+        )
+
+        #expect(result.build.buildTimeout == 240)
+        #expect(result.build.timeout == 30)
+    }
 }

@@ -18,6 +18,29 @@ struct ConfigurationFileWriterTests {
         #expect(content.contains("# swift-mutation-testing configuration"))
     }
 
+    @Test("Given any project, when write called, then build-timeout is offered as a commented line")
+    func buildTimeoutLineIsOffered() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(to: dir.path, project: .empty)
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("# build-timeout: 240"))
+    }
+
+    @Test("Given an SPM project, when write called, then build-timeout is offered as a commented line")
+    func buildTimeoutLineIsOfferedForSPM() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let project = DetectedProject(kind: .spm(testTargets: ["AppTests"]), testTarget: "AppTests")
+        try writer.write(to: dir.path, project: project)
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("# build-timeout: 240"))
+    }
+
     @Test("Given no detected scheme, when write called, then scheme line is commented")
     func schemeLineIsCommentedWhenNotDetected() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

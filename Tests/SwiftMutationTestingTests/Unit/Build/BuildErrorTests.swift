@@ -17,6 +17,19 @@ struct BuildErrorTests {
         #expect(error.errorDescription == "Build failed. The schematized source could not be compiled.")
     }
 
+    @Test("Given timedOut with output, when errorDescription accessed, then names the limit and the flag to raise")
+    func timedOutWithOutput() {
+        let error = BuildError.timedOut(seconds: 120, output: "compiling Foo.swift")
+        #expect(error.errorDescription?.contains("compiling Foo.swift") == true)
+        #expect(error.errorDescription?.contains("did not finish within 120s") == true)
+        #expect(error.errorDescription?.contains("--build-timeout") == true)
+    }
+
+    @Test("Given timedOut and compilationFailed, when compared, then they are not equal")
+    func timedOutIsNotCompilationFailed() {
+        #expect(BuildError.timedOut(seconds: 1, output: "") != BuildError.compilationFailed(output: ""))
+    }
+
     @Test("Given xctestrunNotFound, when errorDescription accessed, then returns expected message")
     func xctestrunNotFound() {
         let error = BuildError.xctestrunNotFound
