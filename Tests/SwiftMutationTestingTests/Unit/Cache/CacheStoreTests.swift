@@ -504,4 +504,16 @@ struct CacheStoreTests {
         #expect(!diff.hasChanges)
     }
 
+    @Test("Given a timeout verdict, when stored, then it is not kept — a timeout says nothing about the mutant")
+    func timeoutIsNeverStored() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let store = CacheStore(storePath: dir.appendingPathComponent("cache.json").path)
+        let key = makeMutantCacheKey()
+
+        await store.store(status: .timeout, for: key)
+
+        #expect(await store.result(for: key) == nil)
+    }
 }

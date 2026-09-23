@@ -34,6 +34,35 @@ struct BuildStageTests {
         #expect(artifact.xctestrunURL?.lastPathComponent == "App.xctestrun")
     }
 
+    @Test("Given the build is killed by its timeout, when build called, then throws timedOut not compilationFailed")
+    func throwsTimedOutWhenXcodeBuildIsKilledByTimeout() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let stage = BuildStage(launcher: MockProcessLauncher(exitCode: SPMResultParser.timedOutExitCode))
+
+        await #expect(throws: BuildError.timedOut(seconds: 5, output: "")) {
+            try await stage.build(
+                sandbox: Sandbox(rootURL: projectDir),
+                scheme: "App",
+                destination: "platform=macOS",
+                timeout: 5
+            )
+        }
+    }
+
+    @Test("Given the SPM build is killed by its timeout, when buildSPM called, then throws timedOut not compilationFailed")
+    func throwsTimedOutWhenSPMBuildIsKilledByTimeout() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let stage = BuildStage(launcher: MockProcessLauncher(exitCode: SPMResultParser.timedOutExitCode))
+
+        await #expect(throws: BuildError.timedOut(seconds: 5, output: "")) {
+            try await stage.buildSPM(sandbox: Sandbox(rootURL: projectDir), timeout: 5)
+        }
+    }
+
     @Test("Given build failure, when build called, then throws compilationFailed")
     func throwsCompilationFailedOnNonZeroExitCode() async throws {
         let projectDir = try FileHelpers.makeTemporaryDirectory()
