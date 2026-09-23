@@ -32,4 +32,8 @@ actor RecordingProcessLauncher: ProcessLaunching {
     func recorded(commandStartingWith verb: String) -> ProcessRequest? {
         requests.first { $0.arguments.first == verb }
     }
+
+    func timeouts(forCommandStartingWith verb: String) -> [Double] {
+        requests.filter { $0.arguments.first == verb }.map(\.timeout)
+    }
 }

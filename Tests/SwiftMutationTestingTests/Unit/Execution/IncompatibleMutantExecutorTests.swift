@@ -708,4 +708,50 @@ struct IncompatibleMutantExecutorTests {
         #expect(results.map(\.status) == [.timeout])
         #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
     }
+
+    @Test("Given SPM incompatible mutants, when execute called, then builds use the build timeout and tests use the test timeout")
+    func spmIncompatibleBuildsUseBuildTimeout() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 1".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let launcher = RecordingProcessLauncher(responses: [(0, "")])
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "1",
+            mutatedText: "2",
+            operatorIdentifier: "ArithmeticOperatorReplacement",
+            description: "1 → 2",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = 2"
+        )
+
+        _ = try await IncompatibleMutantExecutor(
+            deps: makeExecutionDeps(
+                launcher: launcher,
+                cacheStorePath: dir.appendingPathComponent("cache.json").path
+            ),
+            sandboxFactory: SandboxFactory()
+        ).execute(
+            [mutant],
+            configuration: makeRunnerConfiguration(
+                projectPath: dir.path, projectType: .spm, timeout: 30, buildTimeout: 240
+            ),
+            pool: pool
+        )
+
+        let buildTimeouts = await launcher.timeouts(forCommandStartingWith: "build")
+        let testTimeouts = await launcher.timeouts(forCommandStartingWith: "test")
+
+        #expect(buildTimeouts.count >= 2)
+        #expect(buildTimeouts.allSatisfy { $0 == 240 })
+        #expect(!testTimeouts.isEmpty)
+        #expect(testTimeouts.allSatisfy { $0 == 30 })
+    }
 }
