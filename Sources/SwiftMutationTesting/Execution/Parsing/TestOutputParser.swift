@@ -32,10 +32,6 @@ struct TestOutputParser: Sendable {
         return hasTestOutput ? .crashed : .unviable
     }
 
-    /// Every test the output reports as failed, in the order they first appear.
-    ///
-    /// `parse` stops at the first one, which is all a mutant's verdict needs. A baseline failure is
-    /// read by someone who has to go and fix them, and wants the whole list.
     func failingTests(in output: String) -> [String] {
         var seen: Set<String> = []
 
@@ -80,14 +76,32 @@ struct TestOutputParser: Sendable {
     }
 
     private func extractSwiftTestingFailure(from line: String) -> String? {
-        guard line.contains("Test \""), line.contains("\" failed") else { return nil }
+        guard let marker = line.range(of: "Test ")?.upperBound else { return nil }
+        guard let (name, remainder) = splitTestName(in: line[marker...]) else { return nil }
 
-        guard
-            let start = line.range(of: "Test \"")?.upperBound,
-            let end = line.range(of: "\" failed")?.lowerBound,
-            start < end
-        else { return nil }
+        return describesFailure(remainder) ? name : nil
+    }
 
-        return String(line[start ..< end])
+    private func splitTestName(in text: Substring) -> (name: String, remainder: Substring)? {
+        if text.hasPrefix("\"") {
+            let afterQuote = text.dropFirst()
+
+            guard let close = afterQuote.firstIndex(of: "\"") else { return nil }
+
+            return (String(afterQuote[..<close]), afterQuote[afterQuote.index(after: close)...])
+        }
+
+        let end = text.firstIndex(of: " ") ?? text.endIndex
+        let candidate = text[..<end]
+
+        guard candidate.contains("("), candidate.hasSuffix(")") else { return nil }
+
+        return (String(candidate), text[end...])
+    }
+
+    private func describesFailure(_ remainder: Substring) -> Bool {
+        guard !remainder.contains("recorded a known issue") else { return false }
+
+        return remainder.contains("recorded an issue") || remainder.contains(" failed")
     }
 }
