@@ -311,12 +311,6 @@ struct IncompatibleMutantExecutor: Sendable {
         return deps.killerTestFileResolver.resolve(testName: testName)
     }
 
-    /// Records a mutant as unviable — it could not be rewritten, or the build that would have
-    /// tested it failed.
-    ///
-    /// `buildOutput` is what that build printed, and is written to the log when `--keep-logs` is
-    /// on. Unviable is the verdict that explains itself least: it says a mutant was not testable
-    /// without saying why, and on some packages it is the majority of a run (issue #75).
     private func storeAndReport(
         mutant: MutantDescriptor,
         key: MutantCacheKey,

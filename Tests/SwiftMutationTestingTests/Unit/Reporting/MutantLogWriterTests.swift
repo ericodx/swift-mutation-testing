@@ -86,7 +86,6 @@ struct MutantLogWriterTests {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
-        // A file where the directory should be: creating it fails, and so does the write.
         let blocked = dir.appendingPathComponent("blocked")
         try "not a directory".write(to: blocked, atomically: true, encoding: .utf8)
 

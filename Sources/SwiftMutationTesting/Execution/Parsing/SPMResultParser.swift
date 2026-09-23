@@ -1,5 +1,4 @@
 struct SPMResultParser: Sendable {
-    /// What `ProcessRunner` reports for a process it killed itself.
     static let timedOutExitCode: Int32 = -1
 
     func parse(exitCode: Int32, output: String) -> TestRunOutcome {

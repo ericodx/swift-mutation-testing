@@ -99,7 +99,6 @@ struct CommandLineParser: Sendable {
         return values
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     private func applyFlag(
         _ flag: String,
         to values: inout FlagValues,

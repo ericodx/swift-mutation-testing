@@ -20,7 +20,6 @@ struct ProcessTreeTests {
 
     @Test("Given a grandchild, when descendants queried, then the whole tree is found")
     func findsGrandchild() async throws {
-        // The inner shell keeps a job of its own, so it cannot exec away and stays a level deep.
         let parent = try longRunningShell(spawning: "/bin/sh -c 'sleep 30 & wait'")
         defer { terminate(parent) }
 

@@ -2,11 +2,6 @@ import Foundation
 
 @testable import SwiftMutationTesting
 
-/// Succeeds at everything except the baseline test run, which is given the configured outcome.
-///
-/// The baseline is the one `swift test` invocation that selects no mutant, which is how it is told
-/// apart from a mutant's own run here. `mutantTestRuns` counts the runs that did select one, so a
-/// test can assert that a rejected baseline stopped the run before any mutant was tested.
 actor SPMBaselineOutcomeMock: ProcessLaunching {
 
     init(exitCode: Int32, output: String = "") {

@@ -105,7 +105,6 @@ struct TestBundleInvocationTests {
             ).first
         )
 
-        // Without these the helper cannot dlopen the bundle; `swift test` would have set them.
         #expect(request.additionalEnvironment["DYLD_FRAMEWORK_PATH"]?.hasSuffix("Library/Frameworks") == true)
         #expect(request.additionalEnvironment["DYLD_LIBRARY_PATH"]?.hasSuffix("Developer/usr/lib") == true)
     }
@@ -121,8 +120,6 @@ struct TestBundleInvocationTests {
                 workingDirectory: URL(fileURLWithPath: "/sandbox"), timeout: 30
             )
 
-            // A package can hold both; running only one would skip the other's tests and report
-            // mutants as survivors.
             #expect(requests.count == 2, "\(framework) should still run both libraries")
             #expect(requests.contains { $0.executableURL.lastPathComponent == "xcrun" })
             #expect(requests.contains { $0.executableURL.lastPathComponent == "swiftpm-testing-helper" })

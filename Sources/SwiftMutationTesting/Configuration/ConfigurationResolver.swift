@@ -56,15 +56,6 @@ struct ConfigurationResolver: Sendable {
         )
     }
 
-    /// How many mutants can genuinely be tested at once.
-    ///
-    /// SPM packages run their compiled test bundle directly, so workers are independent and the
-    /// request is honoured — they used to share one `.build` and queue on SwiftPM's lock, which is
-    /// why the figure was resolved down to 1 (issues #70, #77).
-    ///
-    /// Xcode runs still depend on the simulator pool, which only has more than one slot when it has
-    /// clones to hand out. A scheme targeting macOS has none, and XCTest shares state across a
-    /// bundle, so both stay sequential rather than reporting a figure the pool will not honour.
     static func effectiveConcurrency(
         requested: Int,
         projectType: ProjectType,

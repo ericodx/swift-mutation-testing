@@ -11,7 +11,6 @@ actor SimulatorPool {
 
     nonisolated let size: Int
 
-    /// Whether slots are cloned simulators, as opposed to plain permits to run.
     nonisolated var usesSimulators: Bool { baseUDID != nil }
 
     private let baseUDID: String?
@@ -24,10 +23,6 @@ actor SimulatorPool {
 
     func setUp() async throws {
         guard let baseUDID else {
-            // Nothing to clone, so nothing to isolate workers from each other — the slots exist
-            // only to bound how many run at once. SPM packages need that bound to be the
-            // configured one, since they run their test bundle directly and are genuinely
-            // independent (issue #77).
             available = (0 ..< size).map { _ in SimulatorSlot(udid: "", destination: destination) }
             return
         }

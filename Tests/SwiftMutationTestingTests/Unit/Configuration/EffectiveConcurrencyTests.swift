@@ -8,7 +8,6 @@ struct EffectiveConcurrencyTests {
 
     @Test("Given an SPM package, when concurrency is resolved, then the request is kept")
     func spmKeepsRequestedConcurrency() {
-        // SPM runs its test bundle directly, so workers do not share a `.build` to queue on.
         let resolved = ConfigurationResolver.effectiveConcurrency(
             requested: 9,
             projectType: .spm,

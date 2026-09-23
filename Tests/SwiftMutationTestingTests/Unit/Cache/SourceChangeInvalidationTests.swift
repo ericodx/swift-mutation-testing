@@ -3,11 +3,6 @@ import Testing
 
 @testable import SwiftMutationTesting
 
-/// Editing the code under test must change the key its mutants are cached under.
-///
-/// The key used to fall back to the file *path* whenever a mutant carried no mutated source, which
-/// is every schematizable mutant. A path does not change when the file does, so verdicts measured
-/// against the old code were replayed against the new (issue #79).
 @Suite("Source change invalidation")
 struct SourceChangeInvalidationTests {
 
@@ -16,7 +11,6 @@ struct SourceChangeInvalidationTests {
         let project = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(project) }
 
-        // Same file, same length, same mutation offsets — only the values change.
         let before = try await keys(for: "func f() -> Bool { 1 > 2 }\n", in: project)
         let after = try await keys(for: "func f() -> Bool { 9 > 8 }\n", in: project)
 
@@ -55,7 +49,6 @@ struct SourceChangeInvalidationTests {
 
     // MARK: - Private
 
-    /// Writes `source` into `project` and returns the cache keys discovery produces for it.
     private func keys(
         for source: String,
         in project: URL,

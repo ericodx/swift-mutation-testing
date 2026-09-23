@@ -2,9 +2,6 @@ import Foundation
 
 actor CacheStore {
 
-    /// - Parameter noCache: when `true` the store is inert — it reads nothing from disk, keeps no
-    ///   verdict, and writes nothing back. A run cannot replay a verdict, nor leave one behind for
-    ///   the next run to replay (issue #68).
     init(storePath: String, noCache: Bool = false) {
         self.storePath = storePath
         self.noCache = noCache
@@ -112,7 +109,6 @@ actor CacheStore {
         for (key, status) in entries {
             switch status {
             case .unviable:
-                // A mutant that does not compile stays uncompilable however the tests change.
                 continue
 
             case .killed:
@@ -128,9 +124,6 @@ actor CacheStore {
                 }
 
             case .survived, .noCoverage, .timeout, .killedByCrash:
-                // All statements about what happened when the tests ran, so all re-measured.
-                // A crash used to be kept forever alongside .unviable, which meant a spurious one
-                // — the kind #69 produced — could never be cleared (issue #80).
 
                 entries.removeValue(forKey: key)
                 killerTestFiles.removeValue(forKey: key)
