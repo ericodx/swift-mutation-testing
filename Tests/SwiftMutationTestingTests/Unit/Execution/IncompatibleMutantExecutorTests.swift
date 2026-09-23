@@ -792,4 +792,47 @@ struct IncompatibleMutantExecutorTests {
         #expect(results.map(\.status) == [.timeout])
         #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
     }
+
+    @Test("Given a testTarget and a build that succeeds, when run, then only-testing is applied to the test command")
+    func xcodeTestTargetIsAppliedToTheTestCommand() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 1".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let launcher = RecordingProcessLauncher(responses: [(0, ""), (0, "")])
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "1",
+            mutatedText: "2",
+            operatorIdentifier: "ArithmeticOperatorReplacement",
+            description: "1 → 2",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = 2"
+        )
+
+        _ = try await IncompatibleMutantExecutor(
+            deps: makeExecutionDeps(
+                launcher: launcher,
+                cacheStorePath: dir.appendingPathComponent("cache.json").path
+            ),
+            sandboxFactory: SandboxFactory()
+        ).execute(
+            [mutant],
+            configuration: makeRunnerConfiguration(projectPath: dir.path, testTarget: "AppTests"),
+            pool: pool
+        )
+
+        let build = await launcher.recorded(commandStartingWith: "build-for-testing")
+        let test = await launcher.recorded(commandStartingWith: "test-without-building")
+
+        #expect(test?.arguments.contains("-only-testing") == true)
+        #expect(test?.arguments.contains("AppTests") == true)
+        #expect(build?.arguments.contains("-only-testing") == false)
+    }
 }
