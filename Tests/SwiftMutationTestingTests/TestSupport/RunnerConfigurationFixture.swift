@@ -5,6 +5,7 @@ func makeRunnerConfiguration(
     projectType: ProjectType = .xcode(scheme: "MyScheme", destination: "platform=macOS"),
     testTarget: String? = nil,
     timeout: Double = 60,
+    buildTimeout: Double = 60,
     concurrency: Int = 1,
     noCache: Bool = false,
     output: String? = nil,
@@ -21,6 +22,7 @@ func makeRunnerConfiguration(
             projectType: projectType,
             testTarget: testTarget,
             timeout: timeout,
+            buildTimeout: buildTimeout,
             concurrency: concurrency,
             noCache: noCache
         ),
