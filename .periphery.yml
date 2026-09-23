@@ -16,6 +16,7 @@ exclude_tests: true
 # Setting this implies --skip-build, so run 'swift build' before scanning.
 index_store_path:
   - .build/out
+skip_build: true
 
 # Exclude build artifacts and tooling
 index_exclude:
