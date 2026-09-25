@@ -10,14 +10,20 @@ final class SwapTernaryVisitor: MutationSyntaxVisitor {
             ternaryIndex + 1 < elements.count
         else { return .visitChildren }
 
-        let conditionExpr = elements[ternaryIndex - 1]
-        let thenExpr = node.thenExpression
-        let elseExpr = elements[ternaryIndex + 1]
+        let conditionStart = conditionStartIndex(in: elements, before: ternaryIndex)
+        let conditionElements = elements[conditionStart ..< ternaryIndex]
+        let elseElements = elements[(ternaryIndex + 1)...]
 
-        guard let firstToken = conditionExpr.firstToken(viewMode: .sourceAccurate)
+        guard let firstToken = conditionElements.first?.firstToken(viewMode: .sourceAccurate)
         else { return .visitChildren }
 
-        let condition = conditionExpr.trimmedDescription
+        let condition = joined(conditionElements)
+        let thenText = node.thenExpression.trimmedDescription
+        let elseText = joined(elseElements)
+
+        guard thenText != elseText else { return .visitChildren }
+
+        let original = joined(elements[conditionStart...])
         let location = firstToken.startLocation(converter: locationConverter)
 
         mutations.append(
@@ -27,13 +33,25 @@ final class SwapTernaryVisitor: MutationSyntaxVisitor {
                 line: location.line,
                 column: location.column,
                 utf8Offset: firstToken.positionAfterSkippingLeadingTrivia.utf8Offset,
-                originalText: condition,
-                mutatedText: "\(condition) ? \(elseExpr.trimmedDescription) : \(thenExpr.trimmedDescription)",
+                originalText: original,
+                mutatedText: "\(condition) ? \(elseText) : \(thenText)",
                 replacement: .swapTernary,
                 description: "swap ternary branches"
             )
         )
 
         return .visitChildren
+    }
+
+    private func conditionStartIndex(in elements: [ExprSyntax], before ternaryIndex: Int) -> Int {
+        for index in stride(from: ternaryIndex - 1, through: 0, by: -1)
+        where elements[index].is(UnresolvedTernaryExprSyntax.self) {
+            return index + 1
+        }
+        return 0
+    }
+
+    private func joined(_ elements: ArraySlice<ExprSyntax>) -> String {
+        elements.map(\.description).joined().trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

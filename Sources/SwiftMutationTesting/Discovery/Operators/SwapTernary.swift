@@ -1,3 +1,5 @@
+import SwiftSyntax
+
 struct SwapTernary: Sendable, MutationOperator {
     func mutations(in source: ParsedSource) -> [MutationPoint] {
         let visitor = SwapTernaryVisitor(source: source)
