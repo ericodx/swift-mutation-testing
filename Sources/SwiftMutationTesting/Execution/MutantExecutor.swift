@@ -162,7 +162,8 @@ struct MutantExecutor: Sendable {
             }
             let context = TestExecutionContext(
                 artifact: artifact, sandbox: sandbox, pool: pool,
-                configuration: configuration
+                configuration: configuration,
+                libraries: try await detectTestingLibraries(sandbox: sandbox, deps: deps)
             )
             results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
         } else if !testableSchematizable.isEmpty {
@@ -348,6 +349,34 @@ struct MutantExecutor: Sendable {
     ) async throws -> [ExecutionResult] {
         try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
             .execute(mutants, configuration: configuration, pool: pool)
+    }
+
+    private func detectTestingLibraries(sandbox: Sandbox, deps: ExecutionDeps) async throws -> Set<TestingFramework> {
+        let all: Set<TestingFramework> = [.xctest, .swiftTesting]
+
+        guard let bundleURL = TestBundleInvocation.bundleURL(in: sandbox) else { return all }
+
+        let invocation = TestBundleInvocation(bundleURL: bundleURL, framework: configuration.build.testingFramework)
+        var present: Set<TestingFramework> = []
+
+        for library in all {
+            let requests = invocation.requests(
+                filter: configuration.build.testTarget,
+                mutantID: "",
+                workingDirectory: sandbox.rootURL,
+                timeout: configuration.build.timeout,
+                libraries: [library]
+            )
+
+            guard let request = requests.first else { continue }
+
+            let captured = try await deps.launcher.launchCapturing(request)
+            if !TestBundleInvocation.reportsNoTests(exitCode: captured.exitCode, output: captured.output) {
+                present.insert(library)
+            }
+        }
+
+        return present.isEmpty ? all : present
     }
 
     private func validateSPMBaseline(sandbox: Sandbox, deps: ExecutionDeps) async throws {

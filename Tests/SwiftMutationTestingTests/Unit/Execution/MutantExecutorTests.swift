@@ -1056,4 +1056,35 @@ struct MutantExecutorTests {
         #expect(results.count == 2)
         #expect(output.contains("Built in"))
     }
+
+    // MARK: - Testing libraries
+
+    @Test("Given a bundle with no XCTest tests, when mutants run, then the XCTest pass is probed once and skipped for every mutant")
+    func emptyXCTestLibraryIsSkippedAfterOneProbe() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let launcher = EmptyXCTestBundleLauncher()
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            launcher: launcher
+        )
+        let mutants = (0 ..< 3).map {
+            makeMutantDescriptor(id: "m\($0)", filePath: sourceFile.path, utf8Offset: $0, isSchematizable: true)
+        }
+        let input = makeRunnerInput(
+            projectPath: dir.path,
+            projectType: .spm,
+            schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+            mutants: mutants
+        )
+
+        let results = try await executor.execute(input)
+
+        #expect(results.map(\.status) == [.survived, .survived, .survived])
+        #expect((await launcher.xctestRuns, await launcher.swiftTestingRuns) == (1, 4))
+    }
 }

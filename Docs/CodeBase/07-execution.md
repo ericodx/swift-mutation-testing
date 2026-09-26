@@ -85,6 +85,8 @@ Runs `xcodebuild test-without-building` for each mutant in parallel via `withThr
 
 A mutant whose run times out during that parallel pass is not recorded yet. Once the group has drained, every such mutant is run once more on its own, under the same `--timeout`, and that second outcome is the one reported and cached. Measured on `swift-cpd`, a suite that takes 2.7s alone takes 16–17s with 15 workers competing for the machine, which is what turned a 30s limit into hundreds of spurious timeouts; running the stragglers alone removes the contention without guessing a bigger limit.
 
+Before that pass, when the package was built to a test bundle, each testing library is run once against the unmutated sandbox, and a library that reports no tests — exit 69 from SwiftPM's helper, or `Executed 0 tests` from `xctest` — is left out of every mutant's run. On a Swift Testing-only package that links swift-syntax, the `xctest` pass costs 13.8s just to load the bundle and find nothing, against 1.7s for the Swift Testing pass, and it ran for every surviving mutant.
+
 **Per-mutant flow:**
 
 ```mermaid

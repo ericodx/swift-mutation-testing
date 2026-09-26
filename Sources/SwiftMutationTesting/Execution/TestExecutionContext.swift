@@ -3,4 +3,5 @@ struct TestExecutionContext: Sendable {
     let sandbox: Sandbox
     let pool: SimulatorPool
     let configuration: RunnerConfiguration
+    var libraries: Set<TestingFramework> = [.xctest, .swiftTesting]
 }

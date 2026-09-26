@@ -220,7 +220,8 @@ struct TestExecutionStage: Sendable {
                     filter: configuration.build.testTarget,
                     mutantID: mutant.id,
                     workingDirectory: context.sandbox.rootURL,
-                    timeout: configuration.build.timeout
+                    timeout: configuration.build.timeout,
+                    libraries: context.libraries
                 )
         }
 

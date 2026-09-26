@@ -133,4 +133,36 @@ struct TestBundleInvocationTests {
         #expect(FileManager.default.fileExists(atPath: DeveloperToolchain.frameworksPath))
         #expect(FileManager.default.fileExists(atPath: DeveloperToolchain.librariesPath))
     }
+
+    // MARK: - Library selection
+
+    @Test(
+        "Given a subset of libraries, when requests are built, then only those libraries are run",
+        arguments: [
+            (Set<TestingFramework>([.swiftTesting]), ["--test-bundle-path"]),
+            (Set<TestingFramework>([.xctest]), ["xctest"]),
+            (Set<TestingFramework>([.xctest, .swiftTesting]), ["--test-bundle-path", "xctest"]),
+        ]
+    )
+    func onlyRequestedLibrariesAreRun(libraries: Set<TestingFramework>, firstArguments: [String]) {
+        let requests = TestBundleInvocation(
+            bundleURL: URL(fileURLWithPath: "/sandbox/.build/out/Products/Debug/PkgTests.xctest"),
+            framework: .swiftTesting
+        ).requests(filter: nil, mutantID: "m0", workingDirectory: URL(fileURLWithPath: "/sandbox"), timeout: 30, libraries: libraries)
+
+        #expect(requests.map { $0.arguments.first } == firstArguments)
+    }
+
+    @Test(
+        "Given a run's exit code and output, when asked whether it found no tests, then both signals are recognised",
+        arguments: [
+            (Int32(69), "", true),
+            (Int32(0), "Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds", true),
+            (Int32(0), "Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds", false),
+            (Int32(1), "", false),
+        ]
+    )
+    func recognisesARunThatFoundNoTests(exitCode: Int32, output: String, expected: Bool) {
+        #expect(TestBundleInvocation.reportsNoTests(exitCode: exitCode, output: output) == expected)
+    }
 }
