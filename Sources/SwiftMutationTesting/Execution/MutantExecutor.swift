@@ -1,4 +1,5 @@
 import Foundation
+import SwiftParser
 
 struct MutantExecutor: Sendable {
 
@@ -161,7 +162,8 @@ struct MutantExecutor: Sendable {
             }
             let context = TestExecutionContext(
                 artifact: artifact, sandbox: sandbox, pool: pool,
-                configuration: configuration
+                configuration: configuration,
+                libraries: try await detectTestingLibraries(sandbox: sandbox, deps: deps)
             )
             results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
         } else if !testableSchematizable.isEmpty {
@@ -303,13 +305,24 @@ struct MutantExecutor: Sendable {
     }
 
     private func extractErrorPaths(from output: String, sandboxRoot: String) -> Set<String> {
-        Set(
-            output.components(separatedBy: "\n").compactMap { line -> String? in
-                guard line.hasPrefix(sandboxRoot) else { return nil }
-                let path = line.components(separatedBy: ":").first ?? ""
-                return path.hasSuffix(".swift") ? path : nil
-            }
-        )
+        Set(errorLocations(in: output, under: sandboxRoot).map(\.path))
+    }
+
+    private func errorLocations(in output: String, under root: String) -> [(path: String, line: Int)] {
+        output.components(separatedBy: "\n").compactMap { errorLocation(in: $0, under: root) }
+    }
+
+    private func errorLocation(in line: String, under root: String) -> (path: String, line: Int)? {
+        guard let rootRange = line.range(of: root) else { return nil }
+        let fromRoot = line[rootRange.lowerBound...]
+
+        guard let marker = fromRoot.range(of: ".swift:") else { return nil }
+        let afterPath = fromRoot[marker.upperBound...]
+        let digits = afterPath.prefix { $0.isNumber }
+
+        guard let lineNumber = Int(digits), afterPath.dropFirst(digits.count).first == ":" else { return nil }
+
+        return (String(fromRoot[..<marker.upperBound].dropLast()), lineNumber)
     }
 
     private func runNormal(
@@ -336,6 +349,34 @@ struct MutantExecutor: Sendable {
     ) async throws -> [ExecutionResult] {
         try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
             .execute(mutants, configuration: configuration, pool: pool)
+    }
+
+    private func detectTestingLibraries(sandbox: Sandbox, deps: ExecutionDeps) async throws -> Set<TestingFramework> {
+        let all: Set<TestingFramework> = [.xctest, .swiftTesting]
+
+        guard let bundleURL = TestBundleInvocation.bundleURL(in: sandbox) else { return all }
+
+        let invocation = TestBundleInvocation(bundleURL: bundleURL, framework: configuration.build.testingFramework)
+        var present: Set<TestingFramework> = []
+
+        for library in all {
+            let requests = invocation.requests(
+                filter: configuration.build.testTarget,
+                mutantID: "",
+                workingDirectory: sandbox.rootURL,
+                timeout: configuration.build.timeout,
+                libraries: [library]
+            )
+
+            guard let request = requests.first else { continue }
+
+            let captured = try await deps.launcher.launchCapturing(request)
+            if !TestBundleInvocation.reportsNoTests(exitCode: captured.exitCode, output: captured.output) {
+                present.insert(library)
+            }
+        }
+
+        return present.isEmpty ? all : present
     }
 
     private func validateSPMBaseline(sandbox: Sandbox, deps: ExecutionDeps) async throws {
@@ -377,11 +418,9 @@ struct MutantExecutor: Sendable {
         mutantsInFile: [MutantDescriptor]
     ) -> [MutantDescriptor] {
         let errorLines = Set(
-            errorOutput.components(separatedBy: "\n").compactMap { line -> Int? in
-                guard line.hasPrefix(sandboxPath + ":") else { return nil }
-                let remainder = String(line.dropFirst(sandboxPath.count + 1))
-                return remainder.components(separatedBy: ":").first.flatMap { Int($0) }
-            }
+            errorLocations(in: errorOutput, under: sandboxPath)
+                .filter { $0.path == sandboxPath }
+                .map(\.line)
         )
 
         guard
@@ -416,11 +455,40 @@ struct MutantExecutor: Sendable {
             return mutantsInFile
         }
 
-        let narrowed = removingCases(problematicIDs, from: lines)
+        let kept = mutantsInFile.filter { !problematicIDs.contains($0.id) }
+
+        guard let narrowed = regeneratedSchema(originalPath: originalPath, keeping: kept) else {
+            restoreOriginal(sandboxPath: sandboxPath, originalPath: originalPath)
+            return mutantsInFile
+        }
+
         try? narrowed.write(toFile: sandboxPath, atomically: true, encoding: .utf8)
 
-        let excluded = mutantsInFile.filter { problematicIDs.contains($0.id) }
-        return excluded
+        return mutantsInFile.filter { problematicIDs.contains($0.id) }
+    }
+
+    func regeneratedSchema(originalPath: String, keeping mutants: [MutantDescriptor]) -> String? {
+        guard let content = try? String(contentsOfFile: originalPath, encoding: .utf8) else { return nil }
+
+        let source = ParsedSource(
+            file: SourceFile(path: originalPath, content: content),
+            syntax: Parser.parse(source: content)
+        )
+
+        var entries: [(index: Int, point: MutationPoint)] = []
+
+        for descriptor in mutants {
+            guard let index = mutantIndex(from: descriptor.id) else { return nil }
+            entries.append((index: index, point: MutationPoint(descriptor)))
+        }
+
+        return SchemataGenerator().generate(source: source, mutations: entries)
+    }
+
+    private func mutantIndex(from id: String) -> Int? {
+        let prefix = "swift-mutation-testing_"
+        guard id.hasPrefix(prefix) else { return nil }
+        return Int(id.dropFirst(prefix.count))
     }
 
     private func restoreOriginal(sandboxPath: String, originalPath: String) {
@@ -434,28 +502,6 @@ struct MutantExecutor: Sendable {
         guard trimmedLine.hasPrefix(casePrefix), trimmedLine.hasSuffix(caseSuffix) else { return nil }
         let id = String(trimmedLine.dropFirst(casePrefix.count).dropLast(caseSuffix.count))
         return id.hasPrefix("swift-mutation-testing_") ? id : nil
-    }
-
-    private func removingCases(_ ids: Set<String>, from lines: [String]) -> String {
-        var result: [String] = []
-        var skipping = false
-
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let id = mutantCaseID(from: trimmed) {
-                skipping = ids.contains(id)
-                if !skipping { result.append(line) }
-            } else if skipping {
-                if trimmed == "default:" || mutantCaseID(from: trimmed) != nil {
-                    skipping = false
-                    result.append(line)
-                }
-            } else {
-                result.append(line)
-            }
-        }
-
-        return result.joined(separator: "\n")
     }
 
     private func rewriteForIncompatible(
@@ -535,6 +581,22 @@ struct MutantExecutor: Sendable {
         return SimulatorPool(
             baseUDID: baseUDID, size: configuration.build.concurrency,
             destination: destination, launcher: launcher
+        )
+    }
+}
+
+extension MutationPoint {
+    init(_ descriptor: MutantDescriptor) {
+        self.init(
+            operatorIdentifier: descriptor.operatorIdentifier,
+            filePath: descriptor.filePath,
+            line: descriptor.line,
+            column: descriptor.column,
+            utf8Offset: descriptor.utf8Offset,
+            originalText: descriptor.originalText,
+            mutatedText: descriptor.mutatedText,
+            replacement: descriptor.replacementKind,
+            description: descriptor.description
         )
     }
 }

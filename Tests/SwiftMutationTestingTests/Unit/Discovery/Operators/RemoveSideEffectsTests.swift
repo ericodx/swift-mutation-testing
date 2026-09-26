@@ -12,11 +12,11 @@ struct RemoveSideEffectsTests {
         #expect(op.mutations(in: source).isEmpty)
     }
 
-    @Test("Given standalone function call, when visited, then produces one mutation")
+    @Test("Given a standalone call among others, when visited, then produces one mutation")
     func standaloneFunctionCallProducesOneMutation() {
-        let source = makeParsedSource("func f() { foo() }")
+        let source = makeParsedSource("func f() { foo(); other() }")
         let result = op.mutations(in: source)
-        #expect(result.count == 1)
+        #expect(result.count == 2)
         #expect(result[0].replacement == .removeStatement)
         #expect(result[0].mutatedText == "")
     }
@@ -54,8 +54,44 @@ struct RemoveSideEffectsTests {
 
     @Test("Given side effect call, when visited, then mutation carries correct operator identifier")
     func mutationCarriesCorrectOperatorIdentifier() {
-        let source = makeParsedSource("func f() { notify() }")
+        let source = makeParsedSource("func f() { notify(); other() }")
         let result = op.mutations(in: source)
         #expect(result[0].operatorIdentifier == "RemoveSideEffects")
+    }
+
+    // MARK: - Removing the whole body
+
+    @Test(
+        "Given the call is the only statement of a body, when visited, then no mutation is produced",
+        arguments: [
+            "func f() { foo() }",
+            "func f() -> Int { compute() }",
+            "init() { setUp() }",
+            "deinit { tearDown() }",
+            "var x: Int { compute() }",
+            "var y: Int { get { compute() } }",
+            #"func f() -> [String] { digest.map { String(format: "%02x", $0) } }"#,
+            "func f() { list.forEach { handle($0) } }",
+            "func f(_ n: Int) { switch n { case 1: foo()\ndefault: bar() } }",
+            "func f(_ n: Int) { switch n { case 1: bar()\ndefault: foo() } }",
+        ]
+    )
+    func soleStatementOfABodyIsNotRemoved(code: String) {
+        let removed = op.mutations(in: makeParsedSource(code)).map(\.description)
+        #expect(!removed.contains { $0.hasPrefix("remove foo") })
+    }
+
+    @Test(
+        "Given the call is the only statement of a control-flow block, when visited, then it is still removed",
+        arguments: [
+            "func f() { if cond { foo() }\nbar() }",
+            "func f() { for x in xs { foo(x) }\nbar() }",
+            "func f() { while cond { foo() }\nbar() }",
+            "func f() { do { foo() }\nbar() }",
+        ]
+    )
+    func soleStatementOfAControlFlowBlockIsStillRemoved(code: String) {
+        let names = op.mutations(in: makeParsedSource(code)).map(\.description)
+        #expect(names.contains { $0.hasPrefix("remove foo") })
     }
 }

@@ -4,6 +4,10 @@ struct TestBundleInvocation: Sendable {
 
     static let noTestsExitCode: Int32 = 69
 
+    static func reportsNoTests(exitCode: Int32, output: String) -> Bool {
+        exitCode == noTestsExitCode || output.contains("Executed 0 tests")
+    }
+
     static func bundleURL(in sandbox: Sandbox) -> URL? {
         let products = sandbox.rootURL.appendingPathComponent(".build/out/Products/Debug")
         let candidates =
@@ -19,7 +23,8 @@ struct TestBundleInvocation: Sendable {
         filter: String?,
         mutantID: String,
         workingDirectory: URL,
-        timeout: Double
+        timeout: Double,
+        libraries: Set<TestingFramework> = [.xctest, .swiftTesting]
     ) -> [ProcessRequest] {
         let xctest = xctestRequest(
             filter: filter, mutantID: mutantID, workingDirectory: workingDirectory, timeout: timeout
@@ -28,7 +33,12 @@ struct TestBundleInvocation: Sendable {
             filter: filter, mutantID: mutantID, workingDirectory: workingDirectory, timeout: timeout
         )
 
-        return framework == .xctest ? [xctest, swiftTesting] : [swiftTesting, xctest]
+        let ordered: [(TestingFramework, ProcessRequest)] =
+            framework == .xctest
+            ? [(.xctest, xctest), (.swiftTesting, swiftTesting)]
+            : [(.swiftTesting, swiftTesting), (.xctest, xctest)]
+
+        return ordered.filter { libraries.contains($0.0) }.map(\.1)
     }
 
     // MARK: - Private
