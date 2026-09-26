@@ -304,13 +304,24 @@ struct MutantExecutor: Sendable {
     }
 
     private func extractErrorPaths(from output: String, sandboxRoot: String) -> Set<String> {
-        Set(
-            output.components(separatedBy: "\n").compactMap { line -> String? in
-                guard line.hasPrefix(sandboxRoot) else { return nil }
-                let path = line.components(separatedBy: ":").first ?? ""
-                return path.hasSuffix(".swift") ? path : nil
-            }
-        )
+        Set(errorLocations(in: output, under: sandboxRoot).map(\.path))
+    }
+
+    private func errorLocations(in output: String, under root: String) -> [(path: String, line: Int)] {
+        output.components(separatedBy: "\n").compactMap { errorLocation(in: $0, under: root) }
+    }
+
+    private func errorLocation(in line: String, under root: String) -> (path: String, line: Int)? {
+        guard let rootRange = line.range(of: root) else { return nil }
+        let fromRoot = line[rootRange.lowerBound...]
+
+        guard let marker = fromRoot.range(of: ".swift:") else { return nil }
+        let afterPath = fromRoot[marker.upperBound...]
+        let digits = afterPath.prefix { $0.isNumber }
+
+        guard let lineNumber = Int(digits), afterPath.dropFirst(digits.count).first == ":" else { return nil }
+
+        return (String(fromRoot[..<marker.upperBound].dropLast()), lineNumber)
     }
 
     private func runNormal(
@@ -378,11 +389,9 @@ struct MutantExecutor: Sendable {
         mutantsInFile: [MutantDescriptor]
     ) -> [MutantDescriptor] {
         let errorLines = Set(
-            errorOutput.components(separatedBy: "\n").compactMap { line -> Int? in
-                guard line.hasPrefix(sandboxPath + ":") else { return nil }
-                let remainder = String(line.dropFirst(sandboxPath.count + 1))
-                return remainder.components(separatedBy: ":").first.flatMap { Int($0) }
-            }
+            errorLocations(in: errorOutput, under: sandboxPath)
+                .filter { $0.path == sandboxPath }
+                .map(\.line)
         )
 
         guard

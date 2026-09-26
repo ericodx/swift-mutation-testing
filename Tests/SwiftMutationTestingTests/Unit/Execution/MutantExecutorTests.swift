@@ -1006,4 +1006,54 @@ struct MutantExecutorTests {
         #expect(buildTimeouts.count >= 2)
         #expect(buildTimeouts.allSatisfy { $0 == 240 })
     }
+
+    // MARK: - Build output formats
+
+    @Test(
+        "Given the build reports errors with the path after the error label, when the retry runs, then only the failing file is excluded",
+        arguments: ["error: ", "\u{1B}[1;31merror: \u{1B}[1;39m"]
+    )
+    func retryReadsErrorsWithThePathAfterTheLabel(prefix: String) async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let fooFile = dir.appendingPathComponent("Foo.swift")
+        let barFile = dir.appendingPathComponent("Bar.swift")
+        try "let x = true".write(to: fooFile, atomically: true, encoding: .utf8)
+        try "let y = true".write(to: barFile, atomically: true, encoding: .utf8)
+
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, quiet: false),
+            launcher: SPMRetrySwiftBuildFormatMock(prefix: prefix)
+        )
+        let mutantFoo = makeMutantDescriptor(
+            id: "m0", filePath: fooFile.path, originalText: "true", mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement", replacementKind: .booleanLiteral,
+            description: "true → false", isSchematizable: true,
+            mutatedSourceContent: "let x = false", sourceContentHash: "hash"
+        )
+        let mutantBar = makeMutantDescriptor(
+            id: "m1", filePath: barFile.path, originalText: "true", mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement", replacementKind: .booleanLiteral,
+            description: "true → false", isSchematizable: true,
+            mutatedSourceContent: "let y = false", sourceContentHash: "hash"
+        )
+        let input = makeRunnerInput(
+            projectPath: dir.path,
+            projectType: .spm,
+            schematizedFiles: [
+                SchematizedFile(originalPath: fooFile.path, schematizedContent: "let x = false"),
+                SchematizedFile(originalPath: barFile.path, schematizedContent: "let y = false"),
+            ],
+            mutants: [mutantFoo, mutantBar]
+        )
+
+        var results: [ExecutionResult] = []
+        let output = await captureOutput {
+            results = (try? await executor.execute(input)) ?? []
+        }
+
+        #expect(results.count == 2)
+        #expect(output.contains("Built in"))
+    }
 }
