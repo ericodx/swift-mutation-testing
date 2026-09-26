@@ -17,7 +17,7 @@ struct MutationRewriterTests {
 
     @Test("Given mutation with empty mutatedText, when rewritten, then original text is removed")
     func removesOriginalTextWhenMutatedTextIsEmpty() {
-        let source = makeParsedSource("func f() { notify() }")
+        let source = makeParsedSource("func f() { notify(); other() }")
         let mutation = RemoveSideEffects().mutations(in: source)[0]
         let result = rewriter.rewrite(source: source.file.content, applying: mutation)
         #expect(!result.contains("notify()"))
