@@ -36,7 +36,7 @@ flowchart TD
 
 **Baseline validation (SPM only):** before any mutant runs, `validateSPMBaseline` runs the suite once with no mutant selected — the schema falls through to its `default` branch, so this is the original code. A kill verdict only means something if the same tests pass unmutated: a suite that already fails kills every mutant it reaches and produces a flattering score with nothing in the report to show it. Anything other than a passing suite throws `BaselineError` and ends the run. The Xcode path has no equivalent yet.
 
-**Normal path:** builds once, runs `TestExecutionStage` for all schematizable mutants in parallel.
+**Normal path:** builds once, runs `TestExecutionStage` for all schematizable mutants in parallel, then re-runs any mutant that timed out on its own before reporting it.
 
 **Fallback path:** triggered when `BuildStage` throws `compilationFailed`. Delegates to `FallbackExecutor`, which rebuilds one schematized file at a time. Mutants in files that still fail to compile are marked `.unviable`.
 
@@ -82,6 +82,8 @@ struct TestExecutionStage: Sendable {
 ```
 
 Runs `xcodebuild test-without-building` for each mutant in parallel via `withThrowingTaskGroup`. Maintains exactly `concurrency` active tasks at all times using a dynamic refill strategy.
+
+A mutant whose run times out during that parallel pass is not recorded yet. Once the group has drained, every such mutant is run once more on its own, under the same `--timeout`, and that second outcome is the one reported and cached. Measured on `swift-cpd`, a suite that takes 2.7s alone takes 16–17s with 15 workers competing for the machine, which is what turned a 30s limit into hundreds of spurious timeouts; running the stragglers alone removes the contention without guessing a bigger limit.
 
 **Per-mutant flow:**
 
