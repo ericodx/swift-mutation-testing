@@ -65,7 +65,7 @@ class MutationSyntaxVisitor: SyntaxVisitor {
 
 Every operator's visitor inherits one rule: the condition of an `#if`, `#elseif` or `#else` clause is never visited. It is a compile-time expression — `#if DEBUG && !os(Windows)`, `#elseif compiler(<6.1)` — whose `&&`, `||`, `<` and literals are not code that runs, and a mutation there changes what compiles instead of what executes. The clause's code is walked as usual, whichever branch the build will take; the points that fall in a branch the host build leaves out are dropped afterwards, by the filter in [Inactive `#if` branches](#inactive-if-branches).
 
-Base class for all operator visitors. Subclasses override `visit(_:)` methods to detect applicable nodes and append `MutationPoint` values to `mutations`. The initializer is `required` so that `VisitorOperator` can create any subclass from its type.
+Base class for all operator visitors. Subclasses override `visit(_:)` methods to detect applicable nodes and append `MutationPoint` values to `mutations`. The initializer is `required` so that `VisitorOperator` can create any subclass from its type. `locationConverter` is the source's own (`ParsedSource.locationConverter`), not one built per visitor.
 
 | Field | Description |
 |---|---|
@@ -234,7 +234,7 @@ struct SuppressionFilter: MutationExclusion {
 }
 ```
 
-A `MutationExclusion` whose ranges are the suppressed ones `SuppressionAnnotationExtractor` finds. It keeps the default `applies(to:)`, so the shared `filter` removes any `MutationPoint` whose `utf8Offset` (as `AbsolutePosition`) falls within a suppressed range.
+A `MutationExclusion` whose ranges are the suppressed ones `SuppressionAnnotationExtractor` finds. Its `ranges(in:)` for a `ParsedSource` hands the extractor the file's converter; given only the syntax, the extractor builds one. `MutationExclusion` declares both forms, the `ParsedSource` one defaulting to the syntax one. It keeps the default `applies(to:)`, so the shared `filter` removes any `MutationPoint` whose `utf8Offset` (as `AbsolutePosition`) falls within a suppressed range.
 
 ---
 

@@ -26,12 +26,12 @@ struct SchemaGeneration: Sendable {
 
 Rewrites a source file to embed all its schematizable mutations into `switch __swiftMutationTestingID_<hash>` blocks, the hash naming the file. Returns the complete rewritten source as `content`, and as `discarded` the mutations it could not place: a point inside no function body, a body whose statements could not be extracted, or a mutation whose text does not fit inside the body it belongs to. A discarded mutation gets no `case`, so `ApplicationVerifier` finds it missing from the sandbox and stops the run rather than letting a mutant that is not in the build be judged. Every byte splice goes through `UTF8Splice`, which answers `nil` instead of trapping when a range falls outside the text or cuts through a character; a `nil` read or mutation is a discarded mutation, and a body whose replacement fails is left as it was.
 
-`generate` is two steps. `groupByScope` walks the AST with `TypeScopeVisitor`, groups the mutations by the innermost function body holding each — last body in the file first — and discards the ones no body holds. `schemaBody(for:in:edits:path:)` builds one body's `switch`, a case per mutation that fits, or `nil` when none does; `generate` splices each into the content and records the edit.
+`generate` is two steps. `groupByScope` takes the file's `functionScopes` from its `ParsedSource`, groups the mutations by the innermost function body holding each — last body in the file first — and discards the ones no body holds. `schemaBody(for:in:edits:path:)` builds one body's `switch`, a case per mutation that fits, or `nil` when none does; `generate` splices each into the content and records the edit.
 
 ```mermaid
 flowchart TD
     subgraph groupByScope
-        A[walk AST with TypeScopeVisitor] --> B[group mutations by innermost scope]
+        A[read the file's function body scopes] --> B[group mutations by innermost scope]
         B --> C[sort groups by bodyStartOffset DESC]
     end
     C --> D[for each group]
@@ -113,6 +113,8 @@ Walks the AST and records every `FunctionBodyScope`. Records scopes for:
 `isSchematizable(utf8Offset:)` returns `true` if any recorded scope contains the given offset.
 
 `innermostScope(containing:)` returns the tightest scope that contains the offset, enabling correct handling of nested functions and closures.
+
+Both delegate to `FunctionBodyScopes` (`Discovery/Schematization/FunctionBodyScopes.swift`), the `Sendable` value `functionScopes` hands out, so that the scopes of a file can be kept on its `ParsedSource` and asked without the visitor.
 
 ---
 

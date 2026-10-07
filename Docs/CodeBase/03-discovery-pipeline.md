@@ -167,7 +167,7 @@ struct MutantDiscoveryStage: Sendable {
 Applies all active operators concurrently across sources via `withTaskGroup`. For each source:
 
 1. Collects mutation points from every operator
-2. Hands them to each exclusion in turn, which drops the points inside its ranges: by default the suppressed declarations (`SuppressionFilter`), then the `while`/`repeat` bodies for loop-risky operators (`InfiniteLoopFilter`), then the `#if` clauses the host build leaves out (`InactiveRegionFilter`)
+2. Hands them to each exclusion in turn — through `filter(_:in:)` with the whole `ParsedSource`, so `SuppressionFilter` reuses the file's converter — which drops the points inside its ranges: by default the suppressed declarations (`SuppressionFilter`), then the `while`/`repeat` bodies for loop-risky operators (`InfiniteLoopFilter`), then the `#if` clauses the host build leaves out (`InactiveRegionFilter`)
 
 A test can give the stage exclusions of its own.
 
@@ -183,7 +183,7 @@ struct MutantIndexingStage: Sendable {
 }
 ```
 
-Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset) and classifies them as schematizable or incompatible using `TypeScopeVisitor`. The index becomes the mutant ID, `MutantID.make(index:)`.
+Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset) and classifies them as schematizable or incompatible using the file's `functionScopes`. The index becomes the mutant ID, `MutantID.make(index:)`.
 
 It also computes each mutant's `MutantFingerprint`. The index is renumbered by any mutant added earlier in any file, so it cannot identify a mutant across runs of different code; the fingerprint can. Among mutants that share a file, declaration, operator and change, the ordinal is their position in offset order.
 
@@ -333,6 +333,9 @@ struct SourceFile: Sendable {
 struct ParsedSource: Sendable {
     let file: SourceFile
     let syntax: SourceFileSyntax
+    let locationConverter: SourceLocationConverter
+    let functionScopes: FunctionBodyScopes
+    init(file: SourceFile, syntax: SourceFileSyntax)
 }
 ```
 
@@ -340,6 +343,10 @@ struct ParsedSource: Sendable {
 |---|---|
 | `file` | The source file with its raw text |
 | `syntax` | SwiftSyntax AST root node |
+| `locationConverter` | The file's offset-to-line converter, named after its path |
+| `functionScopes` | Every function, initializer, deinitializer and accessor body (`TypeScopeVisitor`) |
+
+`init` builds the last two once per file. Each of the seven operator visitors used to build its own `SourceLocationConverter` over the whole file, and the suppression filter an eighth; `MutantIndexingStage` and `SchemataGenerator` each walked the file again with `TypeScopeVisitor`. They all read these now. The seven operators still walk the file once each.
 
 ---
 
