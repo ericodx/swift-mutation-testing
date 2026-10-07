@@ -155,23 +155,11 @@ struct IncompatibleMutantExecutor: Sendable {
             let result = try await buildAndTest(
                 mutant: mutant, content: content, at: sandboxFilePath, configuration: configuration, sandbox: sandbox
             )
-            try Self.restoreLink(at: sandboxFilePath, to: originalCanonical)
+            try SandboxLink.restore(at: sandboxFilePath, to: originalCanonical)
             return result
         } catch {
-            try? Self.restoreLink(at: sandboxFilePath, to: originalCanonical)
+            try? SandboxLink.restore(at: sandboxFilePath, to: originalCanonical)
             throw error
-        }
-    }
-
-    static func restoreLink(at sandboxPath: String, to originalPath: String) throws {
-        let fileManager = FileManager.default
-        if (try? fileManager.attributesOfItem(atPath: sandboxPath)) != nil {
-            try? fileManager.removeItem(atPath: sandboxPath)
-        }
-        do {
-            try fileManager.createSymbolicLink(atPath: sandboxPath, withDestinationPath: originalPath)
-        } catch {
-            throw IntegrityError.sourceNotRestored(path: originalPath)
         }
     }
 
