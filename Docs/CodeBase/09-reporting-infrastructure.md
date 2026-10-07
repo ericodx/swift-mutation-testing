@@ -629,6 +629,7 @@ struct ProcessRunner: Sendable {
 
     func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
     func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
+    static func checkOwnGroup(_ pid: pid_t, groupOf: (pid_t) -> pid_t = getpgid, warn: (String) -> Void = StandardError.write)
 }
 ```
 
@@ -636,7 +637,7 @@ Low-level process execution engine. Uses `withTaskCancellationHandler` + `withCh
 
 **Reading the capture back:** `readCapturedOutput` defaults to reading the file as bytes and decoding them with `String(decoding:as: UTF8.self)`, which replaces an invalid byte rather than failing — the way `OutputWatcher` reads the same file. A run stopped at its first failure or at a timeout is killed mid-write, and Swift Testing prints multi-byte symbols (`✘`, `✔`); a strict decode would turn the whole log into `""` over one cut character, and the mutant into a crash with no killer test. Only a file that cannot be read at all yields empty output.
 
-Both launch paths share their plumbing: the private `awaitTermination(of:killedByUs:start:)` wraps the continuation and its cancellation handler, and the private `run(_:timeoutTask:continuation:onLaunchFailure:result:)` installs the `terminationHandler`, starts the process, sets its group and tracks it — or, when `process.run()` throws, cancels the timeout task, runs `onLaunchFailure` (for `launchCapturing`, closing and removing the capture file) and resumes with the error. Each path only supplies its timeout task and the `result` closure that turns the terminated process into its return value.
+Both launch paths share their plumbing: the private `awaitTermination(of:killedByUs:start:)` wraps the continuation and its cancellation handler, and the private `run(_:timeoutTask:continuation:onLaunchFailure:result:)` installs the `terminationHandler`, starts the process, checks its group and tracks it — or, when `process.run()` throws, cancels the timeout task, runs `onLaunchFailure` (for `launchCapturing`, closing and removing the capture file) and resumes with the error. Each path only supplies its timeout task and the `result` closure that turns the terminated process into its return value.
 
 **Timeout handling:** a `Task` sleeping for `timeout` seconds marks a `KilledByUsFlag` and calls `onTimeout(pid)`. The `terminationHandler` checks the flag and returns `-1` instead of the actual exit code.
 
@@ -644,13 +645,15 @@ Both launch paths share their plumbing: the private `awaitTermination(of:killedB
 
 This is what makes a killed mutant cheap. A mutant is killed by its *first* failing test, and `TestOutputParser.parse` already reports only that one; running the remaining tests after it changed nothing but the clock. Neither XCTest nor Swift Testing offers a stop-on-first-failure switch, so the runner watches for one. Measured on `swift-cpd` (987 mutants, a suite that runs 14s alone), stopping early took a full run from 38m30s to 25m38s on its own, and 13m46s with the rest of the work in this area — the probe standing in for the baseline, the file's own tests running first, and incompatible mutants spread over warm sandboxes. The first 300 mutants ran three times faster than before; the middle of the run less so, which is where the killing tests are the slow integration ones and the first failure lands late regardless of order. It applies to the SPM test-bundle runs and the `swift test` fallback only; `xcodebuild test-without-building` is left to finish, because its verdict is read from the `.xcresult` bundle it writes at the end.
 
-**Cancellation handling:** `onCancel` marks the flag and calls `onTimeout(pid)` immediately, ensuring the continuation is always resumed via the `terminationHandler`.
+**Cancellation handling:** `onCancel` marks the flag and calls `onTimeout(pid)` immediately, ensuring the continuation is always resumed via the `terminationHandler`. A task that is already cancelled runs `onCancel` before the process exists, with pid 0, which signals nothing; `run` therefore checks for cancellation before `process.run()` and resumes with `CancellationError` without starting anything, and checks again right after, so a cancellation that lands while the process starts still stops it through `onTimeout`.
 
 **Post-termination cleanup:** `postTerminationCleanup` is called after every process termination (success or failure), used by `SPMProcessLauncher` to kill the process group.
 
-`launchCapturing` writes output to a temporary file (UUID-named) and reads it in the `terminationHandler` to avoid pipe buffer limits. Sets process group via `setpgid(pid, pid)` to enable group signaling.
+`launchCapturing` writes output to a temporary file (UUID-named) and reads it in the `terminationHandler` to avoid pipe buffer limits.
 
-**Tracking what is in flight:** both launch paths register the new group in `processGroups` right after `setpgid`, and the `terminationHandler` deregisters it first thing, so the signal handler in `SandboxCleaner` knows exactly which groups to kill if the tool is interrupted. A process that exits before it is registered would otherwise leave its pid behind — and a later `killAll` would signal whatever reused it — so registration is followed by an `isRunning` check that undoes it.
+**Process groups:** Foundation's `Process` starts every child as the leader of a process group of its own, which is what lets `kill(-pid, …)` reach a whole test tree. The runner used to call `setpgid(pid, pid)` after `process.run()`, but by then the child has exec'd and the call always fails with `EACCES`. `checkOwnGroup(_:groupOf:warn:)` instead reads `getpgid(pid)` and, if a live process does not lead its own group, warns once on stderr that a timeout or an interrupt may leave its children running.
+
+**Tracking what is in flight:** both launch paths register the new group in `processGroups` right after the group check, and the `terminationHandler` deregisters it first thing, so the signal handler in `SandboxCleaner` knows exactly which groups to kill if the tool is interrupted. A process that exits before it is registered would otherwise leave its pid behind — and a later `killAll` would signal whatever reused it — so registration is followed by an `isRunning` check that undoes it.
 
 ---
 
@@ -673,7 +676,7 @@ The group is frozen **before** the descendants are collected, and the snapshot i
 
 `SIGKILL` rather than `SIGTERM` for the same reason: a test binary is not owed a chance to clean up after its deadline, and a handler that delays exit is a handler that delays the whole run. The `TimeoutEscalation` is still armed, now as the sweep for anything the snapshot missed rather than as the escalation from a polite signal. Cleanup that instead matched processes by sandbox name could not tell one mutant's run from another's when both ran in the same sandbox: it killed the next mutant's test binary, and the truncated output was read as a crash.
 
-**`TimeoutEscalation`** — owns the SIGKILL that follows SIGTERM, and ties it to the run's lifetime. A process that stops when asked has its descendants cleaned up at once and the pending kill cancelled, rather than a timer firing seconds later when the pid may belong to something else.
+**`TimeoutEscalation`** — owns the SIGKILL that follows the first signals, and ties it to the run's lifetime. A process that stops when asked has its descendants cleaned up at once and the pending kill cancelled, rather than a timer firing seconds later when the pid may belong to something else.
 
 ---
 
@@ -681,14 +684,14 @@ The group is frozen **before** the descendants are collected, and the snapshot i
 
 ```swift
 struct XcodeProcessLauncher: Sendable, ProcessLaunching {
-    static func terminate(pid: pid_t, grace: Duration = .seconds(5), kill: @escaping SystemCalls.Kill = Darwin.kill)
+    static func terminate(pid: pid_t, escalation: TimeoutEscalation, kill: SystemCalls.Kill = Darwin.kill)
 
     func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
     func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
 }
 ```
 
-The default launcher for Xcode projects. Its timeout handler is simpler than the SPM one: `SIGTERM` to the group, then `SIGKILL` after a grace period, with no descendant snapshot — `xcodebuild` reaps its own children, and its results are read from the `.xcresult` bundle rather than from whatever the processes left on stdout.
+The default launcher for Xcode projects. Its timeout handler is simpler than the SPM one: `SIGTERM` to the group, then a `TimeoutEscalation` armed with no descendants for the `SIGKILL` after its grace period. When the process exits first, `postTerminationCleanup` cancels that kill and, if it was pending, kills what is left of the group at once — the delayed kill used to be a detached task that fired five seconds later whatever happened, on every killed mutant, at a pid that might by then lead someone else's group. There is no descendant snapshot — `xcodebuild` reaps its own children, and its results are read from the `.xcresult` bundle rather than from whatever the processes left on stdout.
 
 ---
 
@@ -858,7 +861,7 @@ enum ProcessTree {
 }
 ```
 
-Walks the process table from `sysctl(KERN_PROC_ALL)` and returns every descendant of a pid, at any depth. `SPMProcessLauncher.terminate` snapshots them while the group is frozen, so a test process that spawns children cannot leave one behind. `all()` returns every pid above 1, for `OrphanedProcessReaper` to inspect.
+Walks the process table from `sysctl(KERN_PROC_ALL)` and returns every descendant of a pid, at any depth. Sizing the table and reading it are two calls, and processes started in between make the read fail with `ENOMEM`; the buffer therefore gets an eighth more room plus 16 entries, and a read that still fails with `ENOMEM` is retried from the sizing, up to three times, before the snapshot comes back empty. `SPMProcessLauncher.terminate` snapshots them while the group is frozen, so a test process that spawns children cannot leave one behind. `all()` returns every pid above 1, for `OrphanedProcessReaper` to inspect.
 
 ---
 
@@ -879,14 +882,14 @@ Reads another process's `argv` through `sysctl(KERN_PROCARGS2)`. The buffer hold
 
 ```swift
 final class TimeoutEscalation: @unchecked Sendable {
-    init(gracePeriod: Double = 5)
+    init(gracePeriod: Double = 5, kill: @escaping SystemCalls.Kill = Darwin.kill)
 
     func arm(pid: Int32, descendants: [Int32])
-    func processTerminated()
+    @discardableResult func processTerminated() -> Bool
 }
 ```
 
-Owns the `SIGKILL` that sweeps up whatever the first round of signals missed, and ties it to the run's lifetime: a process that stops when asked has its snapshotted descendants killed at once and the pending task cancelled, rather than a timer firing seconds later when the pid may belong to something else.
+Owns the `SIGKILL` that sweeps up whatever the first round of signals missed, and ties it to the run's lifetime: a process that stops when asked has its snapshotted descendants killed at once and the pending task cancelled, rather than a timer firing seconds later when the pid may belong to something else. Arming again cancels the kill already pending, and an arm after `processTerminated` does nothing. `processTerminated` reports whether a kill was pending, which is how `XcodeProcessLauncher` knows the process ended after a timeout.
 
 ---
 
