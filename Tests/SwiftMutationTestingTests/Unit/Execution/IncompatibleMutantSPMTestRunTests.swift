@@ -57,8 +57,9 @@ struct IncompatibleMutantSPMTestRunTests {
     ) async throws -> [ExecutionResult] {
         let sourceFile = dir.appendingPathComponent("Foo.swift")
         try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
-        var executor = makeIncompatibleMutantExecutorSPM(in: dir, launcher: launcher)
-        executor.targetedSuites = ["FooTests": TargetedSuite(name: "FooTests", testTarget: "AppTests")]
+        var deps = makeExecutionDeps(launcher: launcher, cacheStorePath: dir.appendingPathComponent("c.json").path)
+        deps.targetedSuites = ["FooTests": TargetedSuite(name: "FooTests", testTarget: "AppTests")]
+        let executor = IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
         var configuration = makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, testTarget: testTarget)
         configuration.build.reproduction = reproduction
         let pool = makeSimulatorPool()
