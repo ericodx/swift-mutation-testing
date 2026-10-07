@@ -310,14 +310,16 @@ Represents changes to test files between cache runs. Produced by `CacheStore.cha
 
 ```swift
 struct KillerTestFileResolver: Sendable {
-    init(testFilePaths: [String], projectPath: String)
+    init(testFilePaths: [String], projectPath: String, read: (String) -> String? = …)
     func resolve(testName: String) -> String?
+    static func declaredFunctions(in content: String) -> [String]
+    static func testTitles(in content: String) -> [String]
 }
 ```
 
-Maps killer test names back to their source file paths. Supports both XCTest class names (e.g. `CalculatorTests`) and Swift Testing function names (e.g. `addReturnsSum()`).
+Maps killer test names back to their source file paths. Supports XCTest class names (e.g. `CalculatorTests`), Swift Testing function names (e.g. `addReturnsSum()`) and Swift Testing titles (`@Test("adds two numbers")`).
 
-Resolution strategy: extracts the class or function name from the test name, then searches `testFilePaths` for a file whose name contains the extracted identifier.
+Resolution strategy: an XCTest name (`Class.method` or `Module.Class.method`) names the file called after its class. Anything else is looked up in two tables built once in `init`, each test file read a single time: `func <name>` declarations by name, and `@Test("…")` titles by their exact text. A Swift Testing name is matched by its base name — `aCheck(value:)` by `aCheck` — and failing that as a title. The first file in `testFilePaths` wins a name declared twice. It used to read every test file for each killed mutant and take the first one that had any `@Test` and mentioned the name anywhere — in a call, a comment, another test's title — and a wrong file is a killed verdict that is not invalidated when its real test changes.
 
 Candidates are absolute, since matching a suffix and reading a file both need a real path, but the result is returned **project-relative** via `ProjectRelativePath`. That is the form `TestFilesHasher.hashPerFile` keys its hashes by, and `CacheStore.invalidate` compares the two directly — when they disagreed, no killed verdict was ever invalidated by an edit to the test that killed it.
 
