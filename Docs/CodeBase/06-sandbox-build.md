@@ -77,6 +77,18 @@ A lightweight wrapper around the sandbox root URL.
 
 ---
 
+## Sandbox/SandboxLink.swift
+
+```swift
+enum SandboxLink {
+    static func restore(at sandboxPath: String, to originalPath: String) throws
+}
+```
+
+Puts a sandbox file back as a symlink to the project's original, removing whatever is at the path first — a mutated copy, a schema, or nothing. Throws `IntegrityError.sourceNotRestored` when the link cannot be created, since a sandbox missing that file would fail every later build and have its mutants cached as unviable. `IncompatibleMutantExecutor` restores with it after each mutant, and `SchemaNarrower` when it gives up on a file's schema.
+
+---
+
 ## Sandbox/SandboxName.swift
 
 ```swift

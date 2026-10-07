@@ -92,7 +92,7 @@ struct SchemaNarrower: Sendable {
         errorOutput: String,
         mutantsInFile: [MutantDescriptor],
         importStyle: ImportStyle
-    ) -> [MutantDescriptor]
+    ) throws -> [MutantDescriptor]
 
     static func regeneratedSchema(
         originalPath: String, keeping mutants: [MutantDescriptor], importStyle: ImportStyle = .implicit
@@ -100,7 +100,7 @@ struct SchemaNarrower: Sendable {
 }
 ```
 
-Narrows a schematized SPM build that does not compile. `narrow` reads the sandbox files the compiler blamed (`<sandbox>/….swift:<line>:`), and for each one that maps back to a project file holding schematizable mutants calls `excludeProblematicMutants`: from every error line it walks up to the nearest `case "<mutant id>":` — stopping at `default:` or `switch` — and takes those mutants out. `regeneratedSchema` rebuilds the file's schema from the original source with the mutants kept (reading each one's index with `MutantID.index(of:)`) and writes it over the sandbox copy. When no error line lands in a mutant's `case`, or the schema cannot be regenerated, the sandbox file goes back to a symlink to the original and every mutant of the file is excluded. It then reports `.schemaNarrowed`, builds again and recurses with what it has excluded so far, until a build compiles or no new mutant is blamed — then it answers no artifact, and `MutantExecutor` falls back to `FallbackExecutor`.
+Narrows a schematized SPM build that does not compile. `narrow` reads the sandbox files the compiler blamed (`<sandbox>/….swift:<line>:`), and for each one that maps back to a project file holding schematizable mutants calls `excludeProblematicMutants`: from every error line it walks up to the nearest `case "<mutant id>":` — stopping at `default:` or `switch` — and takes those mutants out. `regeneratedSchema` rebuilds the file's schema from the original source with the mutants kept (reading each one's index with `MutantID.index(of:)`) and writes it over the sandbox copy. When no error line lands in a mutant's `case`, or the schema cannot be regenerated, the sandbox file goes back to a symlink to the original (`SandboxLink.restore`) and every mutant of the file is excluded. A link that cannot be restored throws `IntegrityError.sourceNotRestored`, and a narrowed schema that cannot be written throws its write error: both used to be ignored, leaving the broken schema in the sandbox to fail every later build. It then reports `.schemaNarrowed`, builds again and recurses with what it has excluded so far, until a build compiles or no new mutant is blamed — then it answers no artifact, and `MutantExecutor` falls back to `FallbackExecutor`.
 
 ---
 
@@ -554,7 +554,7 @@ flowchart TD
     WARM -- none built --> ALLUNVIABLE[every mutant .unviable\nwith that build's output]
 ```
 
-**SPM path:** Uses warm sandboxes created via `SandboxFactory.createClean(projectPath:)`, each built once with `swift build --build-tests` (`ToolRequests.swiftBuildTests`) so that every mutant after the first costs an incremental rebuild rather than a cold one. For each mutant, writes the mutated source content directly into its sandbox, rebuilds, runs the tests, and restores the original file — the sandbox's symlink to it — through `restoreLink(at:to:)`. A mutant without `mutatedSourceContent` is reported unviable before any sandbox is touched. The restore used to be a `try?` in a `defer`: when re-linking failed, the file was simply gone from the sandbox and every later mutant of that worker failed to build and was cached `unviable`. A failed restore now throws `IntegrityError.sourceNotRestored` and ends the run.
+**SPM path:** Uses warm sandboxes created via `SandboxFactory.createClean(projectPath:)`, each built once with `swift build --build-tests` (`ToolRequests.swiftBuildTests`) so that every mutant after the first costs an incremental rebuild rather than a cold one. For each mutant, writes the mutated source content directly into its sandbox, rebuilds, runs the tests, and restores the original file — the sandbox's symlink to it — through `SandboxLink.restore(at:to:)`. A mutant without `mutatedSourceContent` is reported unviable before any sandbox is touched. The restore used to be a `try?` in a `defer`: when re-linking failed, the file was simply gone from the sandbox and every later mutant of that worker failed to build and was cached `unviable`. A failed restore now throws `IntegrityError.sourceNotRestored` and ends the run.
 
 The number of sandboxes is a quarter of `--concurrency` (`TestExecutionStage.retryWorkerShare`, never fewer than one, never more than there are mutants), the same share the second test pass uses: a rebuild and a test run each spread over several cores, so four of them is a load the machine notices and eight is not worth it. Mutants are dealt round-robin over the sandboxes that built; a sandbox whose warm build failed is left out, and only when none built are the mutants reported unviable with that build's output. Results come back in input order whatever the completion order. Measured on `swift-cpd`, nine incompatible mutants took 118s of a 176s subset run when they ran one after another in a single sandbox — the first 26s for the cold build, then 9s each — which is what made this worth parallelising.
 
