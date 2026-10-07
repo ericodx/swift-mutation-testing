@@ -202,4 +202,45 @@ struct SimulatorPoolTests {
 
         #expect(mock.deletedUDIDs == ["CLONE-0", "CLONE-1"])
     }
+
+    @Test("Given a device list, when orphaned clones are looked for, then only clones of runs that are gone are named")
+    func orphanedClonesAreFoundInTheDeviceList() {
+        let list = """
+            {"devices":{"com.apple.runtime.iOS":[
+              {"udid":"A","name":"XMR-111-1a2b3c4d-0","state":"Booted"},
+              {"udid":"B","name":"XMR-222-1a2b3c4d-0","state":"Shutdown"},
+              {"udid":"C","name":"iPhone 16","state":"Shutdown"},
+              {"udid":"D","name":"XMR-9f8e7d6c-1","state":"Shutdown"}
+            ]}}
+            """
+
+        let orphans = SimulatorPool.orphanedClones(in: list, isAlive: { $0 == 222 })
+
+        #expect(orphans == ["A", "D"])
+    }
+
+    @Test("Given output that is not a device list, when orphaned clones are looked for, then none are named")
+    func unreadableListNamesNoOrphan() {
+        #expect(SimulatorPool.orphanedClones(in: "not json").isEmpty)
+    }
+
+    @Test("Given a clone left by a run that is gone, when a pool is set up, then that clone is deleted")
+    func setUpDeletesTheClonesOfDeadRuns() async throws {
+        let list = """
+            {"devices":{"com.apple.runtime.iOS":[{"udid":"ORPHAN","name":"XMR-1a2b3c4d-0","state":"Shutdown"}]}}
+            """
+        let mock = SimulatorCloneFailureMock(bootFails: true, listOutput: list)
+        let pool = SimulatorPool(
+            baseUDID: "BASE-UDID",
+            size: 1,
+            destination: "platform=iOS Simulator,name=iPhone 15",
+            launcher: mock
+        )
+
+        await #expect(throws: SimulatorError.self) {
+            try await pool.setUp()
+        }
+
+        #expect(mock.deletedUDIDs == ["CLONE-0", "ORPHAN"])
+    }
 }

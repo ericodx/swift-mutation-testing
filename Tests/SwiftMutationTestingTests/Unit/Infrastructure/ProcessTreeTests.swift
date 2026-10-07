@@ -174,4 +174,15 @@ struct ProcessTreeTests {
         #expect(ProcessTree.descendants(of: 2, sysctl: alwaysGrowing).isEmpty)
         #expect(reads == 3)
     }
+
+    @Test("Given this process and one that has exited, when asked whether they are alive, then only this one is")
+    func liveAndExitedProcessesAreTold() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try process.run()
+        process.waitUntilExit()
+
+        #expect(ProcessTree.isAlive(getpid()))
+        #expect(!ProcessTree.isAlive(process.processIdentifier))
+    }
 }

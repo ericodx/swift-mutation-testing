@@ -5,9 +5,10 @@ import Synchronization
 
 final class SimulatorCloneFailureMock: ProcessLaunching, Sendable {
 
-    init(failingCloneIndices: Set<Int> = [], bootFails: Bool = false) {
+    init(failingCloneIndices: Set<Int> = [], bootFails: Bool = false, listOutput: String = "") {
         self.failingCloneIndices = failingCloneIndices
         self.bootFails = bootFails
+        self.listOutput = listOutput
     }
 
     var deletedUDIDs: [String] {
@@ -33,6 +34,9 @@ final class SimulatorCloneFailureMock: ProcessLaunching, Sendable {
         _ request: ProcessRequest
     ) async throws -> (exitCode: Int32, output: String) {
         request.recordActivation()
+        if request.arguments.contains("list") {
+            return (0, listOutput)
+        }
         guard
             request.arguments.contains("clone"),
             let name = request.arguments.last,
@@ -50,5 +54,6 @@ final class SimulatorCloneFailureMock: ProcessLaunching, Sendable {
 
     private let failingCloneIndices: Set<Int>
     private let bootFails: Bool
+    private let listOutput: String
     private let deleted = Mutex<[String]>([])
 }
