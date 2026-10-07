@@ -310,6 +310,36 @@ struct JsonReporterTests {
         #expect(endColumn == startColumn + "+".count)
     }
 
+    @Test("Given original text with a multi-byte character, when report called, then the end column counts UTF-8 bytes")
+    func endColumnCountsUTF8Bytes() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let outputPath = dir.appendingPathComponent("mutation.json").path
+        let reporter = JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
+        let descriptor = makeMutantDescriptor(
+            filePath: "/abs/MyApp/Sources/Calc.swift", line: 3, column: 24,
+            originalText: "\"café\"", mutatedText: "\"\""
+        )
+
+        try reporter.report(
+            RunnerSummary(
+                results: [ExecutionResult(descriptor: descriptor, status: .survived, testDuration: 0)],
+                totalDuration: 0
+            )
+        )
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: outputPath))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let files = json?["files"] as? [String: Any]
+        let file = files?["/Sources/Calc.swift"] as? [String: Any]
+        let mutants = file?["mutants"] as? [[String: Any]]
+        let location = mutants?.first?["location"] as? [String: Any]
+        let end = location?["end"] as? [String: Any]
+
+        #expect(end?["column"] as? Int == 24 + 7)
+    }
+
     @Test("Given a mutant whose tests took 1.2345 seconds, when report called, then its duration is 1235 milliseconds")
     func durationIsWrittenInMilliseconds() throws {
         let mutant = try reportedMutant(status: .killed(by: "t"), testDuration: 1.2345)
