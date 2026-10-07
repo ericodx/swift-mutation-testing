@@ -14,7 +14,7 @@ struct SandboxFactory: Sendable {
     ) async throws -> Sandbox
 
     func createClean(
-        projectPath: String
+        projectPath: String, disablingSwiftLint: Bool = false
     ) async throws -> Sandbox
 
     func create(
@@ -34,8 +34,8 @@ Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<
 | Method | Used by | Description |
 |---|---|---|
 | `create(projectPath:schematizedFiles:)` | `MutantExecutor` for schematizable path | Embeds all schematized files; disables SwiftLint phases |
-| `createClean(projectPath:)` | `IncompatibleMutantExecutor` for SPM shared sandbox | Clean sandbox without mutations; mutated files are written directly later |
-| `create(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor` for Xcode path | Writes a single mutated file |
+| `createClean(projectPath:disablingSwiftLint:)` | `IncompatibleMutantExecutor` warm sandboxes, SPM and Xcode | Clean sandbox without mutations; mutated files are written directly later. The Xcode workers pass `disablingSwiftLint: true` |
+| `create(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor` for an Xcode reproduction | Writes a single mutated file |
 
 **Copy strategy:**
 
@@ -260,6 +260,7 @@ Both requests come from `ToolRequests` (`buildForTesting(in:scheme:destination:c
 
 ```swift
 enum ToolRequests {
+    static let noTestDiagnostics: [String]   // ["-collect-test-diagnostics", "never"]
     static func swiftBuildTests(in sandbox: Sandbox, timeout: Double) -> ProcessRequest
     static func swiftTest(
         in sandbox: Sandbox, filter: String?, environment: [String: String], timeout: Double

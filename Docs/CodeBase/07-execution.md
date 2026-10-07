@@ -532,7 +532,25 @@ Handles mutants that cannot be schematized. Behaviour differs by project type.
 
 **Activation.** Both paths first build the copy `ActivationInstrumenter(importStyle:)` returns, and test it with an activation marker: the environment variable on the SPM path, the same name behind `TEST_RUNNER_` (`testRunnerPrefix`) on the Xcode path, since `xcodebuild` hands those to the test runner without the prefix. The result is classified like a schematized mutant's (`TestExecutionStage.classify`), and a kill without activation is tested once more, without a rebuild, and judged by that run. When the instrumented copy fails to build — not a timeout — the plain `mutatedSourceContent` is built and tested instead, unmeasured (`activated == nil`); the same holds when the instrumenter returns `nil`. `MutantExecutor` passes the input's `importStyle`, so the import the instrumenter adds matches the project's. The activation is cached with the verdict.
 
-**Xcode path:** Each mutant creates its own sandbox via `SandboxFactory.create(projectPath:mutatedFilePath:mutatedContent:)`, with a full build + test cycle per mutant. The mutants run in a task group `xcodeWidth(concurrency:poolSize:mutantCount:)` wide — a quarter of `--concurrency` (`TestExecutionStage.retryWorkerShare`, as for the SPM sandboxes, since each one is a cold `build-for-testing`), never more than the pool has slots nor than there are mutants, never fewer than one — refilled as each finishes, the results put back in input order. They used to run one after another, holding at most one of the pool's slots; a cold Xcode build is the slowest step a run has, so that is where an Xcode run with incompatible mutants spent its time. Reusing warm sandboxes with incremental builds, as the SPM path does, is not done yet. The build and the `test-without-building` run come from `ToolRequests` and share its derived data directory, `.xmr-derived-data` (this path used `.derived-data` before).
+**Xcode path (`IncompatibleMutantExecutor+Xcode.swift`):** warm sandboxes, as on the SPM path. `xcodeWidth(concurrency:poolSize:mutantCount:)` workers — a quarter of `--concurrency` (`TestExecutionStage.retryWorkerShare`), never more than the pool has slots nor than there are mutants, never fewer than one — each take a pool slot for the whole pass, make a clean sandbox with its SwiftLint phases off (`SandboxFactory.createClean(projectPath:disablingSwiftLint:)`) and run one cold `build-for-testing` for that slot's destination. The mutants are dealt round-robin over the workers whose warm build passed; for each, the worker writes the instrumented copy over the sandbox's link to the file, rebuilds incrementally and runs `test-without-building` (the plain copy and a second incremental build when the instrumented one does not compile), then puts the link back with `SandboxLink.restore` and removes the result bundle. When no warm build passes, every mutant is unviable with that build's output, as on SPM. Results come back in input order. A mutant whose file lies outside the project is unviable before anything is written: the path would otherwise land on the sandbox root.
+
+Restoring the link is what makes reuse correct, and it was checked before relying on it: Xcode's build system notices that the path now resolves to an older file and recompiles it, so the next mutant — in that file or another — does not run against the previous mutant's object. `XcodeWarmSandboxIntegrationTests` pins it on `CalcApp`: a killed mutant of `Calculator.swift`, then a mutant of `Validator.swift` that survives only if `Calculator.swift` is back to the original, then another killed one; without the restore the second is killed.
+
+A reproduction keeps the earlier path (`runXcodeCold`): a sandbox of its own per attempt, kept for inspection, with a cold build each — run in the same bounded group.
+
+**Measured.** On a benchmark copy of `CalcApp` — 300 generated source files added to the framework so that a build has something to do (a cold `build-for-testing` about 6 s on a 16-core machine, an incremental one after a one-file change about 2.8 s), Swift Testing tests, and 11 incompatible mutants in one file of `static let` initialisers, the other files excluded from mutation — each version ran three times end to end with `--operator-tier experimental --timeout 300 --no-cache`, every run reaching the same 7 killed, 2 survived and 2 no-coverage verdicts. "Phase" is the time from the first worker ready to the last verdict; medians of three:
+
+| Destination | Version | Incompatible phase | Whole run |
+|---|---|---|---|
+| macOS (concurrency resolves to 1) | one cold sandbox per mutant, in turn | 129.3 s | 140.2 s |
+| macOS | warm sandbox | 57.7 s (−55%) | 66.8 s (−52%) |
+| iOS Simulator, `--concurrency 8` (2 workers) | one cold sandbox per mutant, in turn | 177.6 s | 229.7 s |
+| iOS Simulator | cold sandboxes, 2 at a time | 105.0 s (−41%) | 128.1 s |
+| iOS Simulator | warm sandboxes, 2 workers | 76.8 s (−57%) | 100.5 s (−56%) |
+
+All three versions had `-collect-test-diagnostics never` for the comparison. The fixture's cold build is short; on a project whose build takes minutes the cold build each mutant used to pay dominates even more, while the incremental rebuild grows only with the mutated file and what depends on it.
+
+The build and the `test-without-building` run come from `ToolRequests` and share its derived data directory, `.xmr-derived-data` (this path used `.derived-data` before). Every `test-without-building`, here and in `TestExecutionStage`, passes `-collect-test-diagnostics never` (`ToolRequests.noTestDiagnostics`): by default `xcodebuild` collects a sysdiagnose-like report whenever a test fails, which the tool never reads. On the iOS Simulator that made each failing run take twice as long (about 20 s against 9 s on the benchmark fixture) and, with several runs at once, now and then never finish, so that killed mutants came back as timeouts after the full limit.
 
 Cache hits come from `ResultRecorder.cached(_:)`, and every verdict — including a mutation that could not be applied and a failed build — is recorded through `ResultRecorder.record`.
 
@@ -541,14 +559,14 @@ flowchart TD
     MUTANT[MutantDescriptor\nisSchematizable = false] --> PT{ProjectType?}
     PT -- .xcode --> CACHE{cache hit?}
     CACHE -- yes --> CACHED[return cached result]
-    CACHE -- no --> SF[SandboxFactory.create\nmutatedFilePath mutatedContent]
-    SF --> BS[BuildStage.build]
-    BS -- compilationFailed --> UNVIABLE[.unviable]
-    BS -- success --> SLOT[pool.acquire]
-    SLOT --> LAUNCH[xcodebuild test-without-building]
-    LAUNCH --> RELEASE[pool.release]
-    RELEASE --> PARSE[TestResultResolver]
-    PARSE --> STORE[ResultRecorder.record]
+    CACHE -- no --> XWARM[workers: pool slot + clean sandbox\none cold build-for-testing each]
+    XWARM --> XDEAL[deal mutants round-robin\nover the workers that built]
+    XDEAL --> XWRITE[write mutated file\nincremental build-for-testing]
+    XWRITE --> LAUNCH[xcodebuild test-without-building]
+    LAUNCH --> PARSE[TestResultResolver]
+    PARSE --> RESTORE[SandboxLink.restore]
+    RESTORE --> STORE[ResultRecorder.record]
+    XWARM -- none built --> XUNVIABLE[every mutant .unviable\nwith that build's output]
     PT -- .spm --> WARM[warmSandboxes\nconcurrency ÷ 4 clean sandboxes\nbuilt in parallel, once]
     WARM --> DEAL[deal mutants round-robin\nover the sandboxes that built]
     DEAL --> WRITE[write mutated file\nincremental rebuild → tests]
