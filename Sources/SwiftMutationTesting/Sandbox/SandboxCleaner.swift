@@ -2,8 +2,11 @@ import Foundation
 import Synchronization
 
 private let signalTarget = Mutex(SandboxCleaner.SignalTarget.process)
+private let signalSources = Mutex<[any DispatchSourceSignal]>([])
 
-private func handleSignal(_: Int32) {
+private func catchSignal(_: Int32) {}
+
+private func handleSignal() {
     signalTarget.withLock {
         SandboxCleaner.terminate(registry: $0.registry, processGroups: $0.processGroups, exit: $0.exit)
     }
@@ -64,9 +67,20 @@ enum SandboxCleaner {
         registry.deregister()
     }
 
+    static let handledSignals: [Int32] = [SIGINT, SIGTERM, SIGHUP]
+
     static func installSignalHandlers() {
-        signal(SIGINT, handleSignal)
-        signal(SIGTERM, handleSignal)
-        signal(SIGHUP, handleSignal)
+        signalSources.withLock { sources in
+            for number in handledSignals {
+                signal(number, catchSignal)
+            }
+            guard sources.isEmpty else { return }
+            for number in handledSignals {
+                let source = DispatchSource.makeSignalSource(signal: number, queue: .global(qos: .userInitiated))
+                source.setEventHandler(handler: handleSignal)
+                source.resume()
+                sources.append(source)
+            }
+        }
     }
 }
