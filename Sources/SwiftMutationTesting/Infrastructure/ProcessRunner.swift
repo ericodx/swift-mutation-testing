@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 struct ProcessRunner: Sendable {
     var postTerminationCleanup: (@Sendable (Int32) -> Void)?
@@ -192,7 +193,7 @@ struct ProcessRunner: Sendable {
 
         do {
             try process.run()
-            setpgid(process.processIdentifier, process.processIdentifier)
+            Self.checkOwnGroup(process.processIdentifier)
             track(process)
         } catch {
             timeoutTask.cancel()
@@ -204,6 +205,21 @@ struct ProcessRunner: Sendable {
     private func track(_ process: Process) {
         Self.track(process.processIdentifier, isRunning: { process.isRunning }, in: processGroups)
     }
+
+    static func checkOwnGroup(
+        _ pid: pid_t,
+        groupOf: (pid_t) -> pid_t = getpgid,
+        warn: (String) -> Void = StandardError.write
+    ) {
+        let group = groupOf(pid)
+        guard group >= 0, group != pid, !groupWarningShown.exchange(true, ordering: .relaxed) else { return }
+        warn(
+            "Warning: process \(pid) does not lead its own process group, "
+                + "so a timeout or an interrupt may leave its child processes running"
+        )
+    }
+
+    private static let groupWarningShown = Atomic<Bool>(false)
 
     static func track(_ pid: pid_t, isRunning: () -> Bool, in processGroups: ProcessGroupRegistry) {
         processGroups.register(pid)
