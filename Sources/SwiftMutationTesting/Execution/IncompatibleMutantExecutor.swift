@@ -4,6 +4,7 @@ struct IncompatibleMutantExecutor: Sendable {
     let deps: ExecutionDeps
     let sandboxFactory: SandboxFactory
     var importStyle: ImportStyle = .implicit
+    var targetedSuites: [String: TargetedSuite] = [:]
 
     func execute(
         _ mutants: [MutantDescriptor],
@@ -254,20 +255,46 @@ struct IncompatibleMutantExecutor: Sendable {
     ) async throws -> Verdict {
         let marker = measured ? ActivationMarker(for: mutant.id, in: sandbox) : nil
         let start = Date()
-        let test = try await deps.launcher.launchCapturing(
-            ToolRequests.swiftTest(
-                in: sandbox,
-                filter: configuration.build.testTarget,
-                environment: marker.map { [ActivationMarker.environmentVariable: $0.path] } ?? [:],
-                timeout: configuration.build.timeout
-            )
-        )
+
+        if !configuration.build.reproducing,
+            let suite = TargetedSuites.suite(for: mutant.filePath, among: targetedSuites)
+        {
+            let targeted = try await swiftTest(
+                filter: suite.name, marker: marker, configuration: configuration, sandbox: sandbox)
+            let status = SPMResultParser().parse(exitCode: targeted.exitCode, output: targeted.output)
+                .asExecutionStatus
+            if status.isKill {
+                return Verdict(
+                    raw: status, output: targeted.output, duration: Date().timeIntervalSince(start), marker: marker
+                )
+            }
+        }
+
+        let test = try await swiftTest(
+            filter: configuration.build.testTarget, marker: marker, configuration: configuration, sandbox: sandbox)
 
         return Verdict(
             raw: SPMResultParser().parse(exitCode: test.exitCode, output: test.output).asExecutionStatus,
             output: test.output,
             duration: Date().timeIntervalSince(start),
             marker: marker
+        )
+    }
+
+    private func swiftTest(
+        filter: String?,
+        marker: ActivationMarker?,
+        configuration: RunnerConfiguration,
+        sandbox: Sandbox
+    ) async throws -> (exitCode: Int32, output: String) {
+        let request = ToolRequests.swiftTest(
+            in: sandbox,
+            filter: filter,
+            environment: marker.map { [ActivationMarker.environmentVariable: $0.path] } ?? [:],
+            timeout: configuration.build.timeout
+        )
+        return try await deps.launcher.launchCapturing(
+            configuration.build.reproducing ? request : request.stopping(at: .firstTestFailure)
         )
     }
 

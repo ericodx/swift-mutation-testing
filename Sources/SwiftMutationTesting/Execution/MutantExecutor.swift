@@ -183,6 +183,7 @@ struct MutantExecutor: Sendable {
 
         let excludedIDs = Set(schemaBuildExcluded.map(\.id))
         let testableSchematizable = schematizable.filter { !excludedIDs.contains($0.id) }
+        let targetedSuites = TargetedSuites.declared(in: deps.killerTestFileResolver.testFilePaths)
 
         if let artifact {
             var bundles: [TestBundle] = []
@@ -196,7 +197,7 @@ struct MutantExecutor: Sendable {
                 configuration: configuration,
                 bundles: bundles,
                 testFilter: testFilter,
-                targetedSuites: TargetedSuites.declared(in: deps.killerTestFileResolver.testFilePaths)
+                targetedSuites: targetedSuites
             )
             results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
         } else if !testableSchematizable.isEmpty {
@@ -204,7 +205,8 @@ struct MutantExecutor: Sendable {
         }
 
         results += try await runIncompatible(
-            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool, importStyle: input.importStyle
+            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool,
+            importStyle: input.importStyle, targetedSuites: targetedSuites
         )
 
         return results
@@ -296,10 +298,12 @@ struct MutantExecutor: Sendable {
         deps: ExecutionDeps,
         mutants: [MutantDescriptor],
         pool: SimulatorPool,
-        importStyle: ImportStyle
+        importStyle: ImportStyle,
+        targetedSuites: [String: TargetedSuite]
     ) async throws -> [ExecutionResult] {
         try await IncompatibleMutantExecutor(
-            deps: deps, sandboxFactory: environment.sandboxFactory, importStyle: importStyle
+            deps: deps, sandboxFactory: environment.sandboxFactory, importStyle: importStyle,
+            targetedSuites: targetedSuites
         )
         .execute(mutants, configuration: configuration, pool: pool)
     }
