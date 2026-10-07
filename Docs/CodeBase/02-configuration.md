@@ -217,7 +217,10 @@ Detected automatically by `ProjectDetector` via source file scanning. Influences
 
 ```swift
 struct ConfigurationResolver: Sendable {
+    static let fileName: String            // ".swift-mutation-testing.yml"
+    static let fileKeys: Set<String>
     var fileSystem = FileSystem()
+    var warn: @Sendable (String) -> Void = StandardError.write
 
     func resolve(cliArguments: ParsedArguments, fileValues: [String: String]) throws -> RunnerConfiguration
 }
@@ -225,7 +228,9 @@ struct ConfigurationResolver: Sendable {
 
 Merges `ParsedArguments` (CLI, higher priority) with `[String: String]` from the YAML parser (lower priority). CLI values always win. The project path is made absolute with `fileSystem.projectPath(_:)` (`.` or empty is the current directory), and the `Package.swift` and baseline existence checks go through the same `FileSystem`.
 
-For Xcode projects, throws `UsageError` if `scheme` or `destination` is absent in both sources. SPM projects are auto-detected when a `Package.swift` exists and no `.xcodeproj`/`.xcworkspace` is found.
+For Xcode projects, throws `UsageError` if `scheme` or `destination` is absent in both sources.
+
+**File values are checked, not dropped.** A value the file gets wrong used to fall back to the default without a word: `timeout: 0` was accepted, `timeout: soon` became the default, `quiet: yes` was false, and a misspelled key did nothing. Now `timeout` and `build-timeout` must be positive numbers and `concurrency` an integer of at least 1 — the same rules as their flags, in an error that names the file rather than the flag — and `quiet` and `no-cache` accept `true`/`yes`/`on` and `false`/`no`/`off` in any case and reject anything else. Every key outside `fileKeys` is reported through `warn` as `Warning: unknown key '<key>' in .swift-mutation-testing.yml is ignored`; it is a warning rather than an error so that a file written for a newer version still runs. SPM projects are auto-detected when a `Package.swift` exists and no `.xcodeproj`/`.xcworkspace` is found.
 
 **Operator resolution** (`resolveOperators`), which always yields the full list of identifiers to run:
 
@@ -246,7 +251,9 @@ struct ConfigurationFileParser: Sendable {
 
 Reads `.swift-mutation-testing.yml` from `<projectPath>/.swift-mutation-testing.yml`. Returns an empty dictionary if the file does not exist.
 
-Parses YAML line-by-line. Handles top-level scalar values and a `mutators:` block where each entry can have an `active: false` sub-key. Disabled mutator names are collected under the key `"disabledMutators"` (comma-separated) in the returned dictionary.
+Parses YAML line-by-line. Handles top-level scalar values and a `mutators:` block where each entry can have an `active: false` sub-key. Disabled mutator names are collected under the key `"disabled-mutators"` (comma-separated) in the returned dictionary.
+
+Every line first goes through `strippingComment(_:)`, which cuts it at a `#` that starts the line or follows whitespace, outside single or double quotes — so `timeout: 60 # seconds` reads `60`, while `"My #App"` and `Sources/C#Bridge` keep theirs.
 
 ---
 
