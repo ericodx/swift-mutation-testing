@@ -87,20 +87,24 @@ struct RunnerSummary: Sendable {
     let unviable: [ExecutionResult]
     let timeouts: [ExecutionResult]
     let noCoverage: [ExecutionResult]
+    let score: Double
+    let resultsByFile: [String: [ExecutionResult]]
+    let fromCache: [ExecutionResult]
+    let integrityWarnings: [ExecutionResult]
+    let activationNotMeasured: [ExecutionResult]
 
     init(results: [ExecutionResult], totalDuration: Double)
 
     var detected: [ExecutionResult]
     var undetected: [ExecutionResult]
-    var score: Double
-    var resultsByFile: [String: [ExecutionResult]]
     var files: [(path: String, summary: RunnerSummary)]
+    var cacheLine: String?
 
     static func byLocation(_ results: [ExecutionResult]) -> [ExecutionResult]
 }
 ```
 
-Aggregates all `ExecutionResult` values and computes the mutation score. `init` sorts the results into the five status buckets in one pass, so every report reads the same counts instead of filtering again. `killed` includes `.killedByCrash`.
+Aggregates all `ExecutionResult` values and computes the mutation score. `init` sorts the results into the five status buckets in one pass, and in the same pass works out the score, groups the results by file and collects the cached results, the integrity warnings and the results with no activation measured — so every report reads stored values, where each property used to filter `results` again on every access (`score` alone ran four filters). `files` is still built on demand from the stored `resultsByFile`, since storing it would make each per-file summary build its own. `killed` includes `.killedByCrash`.
 
 **Score formula:**
 
@@ -114,14 +118,7 @@ score      = detected / (detected + undetected) × 100
 
 `resultsByFile` groups results by `descriptor.filePath`. `files` turns that into one `RunnerSummary` per file, in path order — the per-file tables of `TextReporter`, `HtmlReporter` and `MarkdownReporter` iterate it. `byLocation(_:)` sorts results by file, line and column; every report that lists mutants — the survived and integrity lists, the Markdown tables, the SARIF results — sorts through it.
 
-### Reporting/RunnerSummary+Integrity.swift
-
-```swift
-extension RunnerSummary {
-    var integrityWarnings: [ExecutionResult]
-    var activationNotMeasured: [ExecutionResult]
-}
-```
+### Integrity lists
 
 `integrityWarnings` are the kills and timeouts whose mutated code never ran (`activated == false`); `activationNotMeasured` are the results with no measurement at all, which are the incompatible mutants that could not be instrumented. `TextReporter` and `MarkdownReporter` print both.
 
@@ -952,10 +949,15 @@ Wraps the raw plist `Data` from the `.xctestrun` file.
 ```swift
 enum ProjectRelativePath {
     static func make(for path: String, in projectPath: String) -> String
+
+    struct Resolver: Sendable {
+        init(projectPath: String)
+        func make(for path: String) -> String
+    }
 }
 ```
 
-Turns an absolute path into one relative to the project root, resolving symlinks on both sides first so a sandbox path and a project path can be compared at all. A path outside the root is returned unchanged. Every reporter uses it, which is why a mutant's file reads the same in the console, the JSON and the Sonar report no matter which sandbox produced it.
+Turns an absolute path into one relative to the project root, resolving symlinks on both sides first so a sandbox path and a project path can be compared at all. A path outside the root is returned unchanged. `Resolver` resolves the root once and relativizes any number of paths against it; the reports, `MutantIndexingStage`, `Baseline` and `TestFilesHasher` take one per call instead of resolving the root again for every mutant. Every reporter uses it, which is why a mutant's file reads the same in the console, the JSON and the Sonar report no matter which sandbox produced it.
 
 ---
 
