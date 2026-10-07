@@ -7,12 +7,15 @@ struct MutantIndexingStage: Sendable {
             return $0.utf8Offset < $1.utf8Offset
         }
 
-        let visitors = buildVisitors(for: sources)
+        let scopesByPath = Dictionary(
+            sources.map { ($0.file.path, $0.functionScopes) }, uniquingKeysWith: { first, _ in first }
+        )
         let syntaxByPath = Dictionary(uniqueKeysWithValues: sources.map { ($0.file.path, $0.syntax) })
         var ordinals: [[String]: Int] = [:]
 
         return sorted.enumerated().map { index, mutation in
-            let schematizable = visitors[mutation.filePath]?.isSchematizable(utf8Offset: mutation.utf8Offset) ?? false
+            let schematizable =
+                scopesByPath[mutation.filePath]?.isSchematizable(utf8Offset: mutation.utf8Offset) ?? false
             let relativePath = ProjectRelativePath.make(for: mutation.filePath, in: projectPath)
             let declarationPath =
                 syntaxByPath[mutation.filePath].map {
@@ -36,15 +39,5 @@ struct MutantIndexingStage: Sendable {
                 )
             )
         }
-    }
-
-    private func buildVisitors(for sources: [ParsedSource]) -> [String: TypeScopeVisitor] {
-        var visitors: [String: TypeScopeVisitor] = [:]
-        for source in sources {
-            let visitor = TypeScopeVisitor()
-            visitor.walk(source.syntax)
-            visitors[source.file.path] = visitor
-        }
-        return visitors
     }
 }

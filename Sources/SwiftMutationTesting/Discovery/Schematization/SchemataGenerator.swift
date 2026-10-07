@@ -7,7 +7,7 @@ struct SchemataGenerator: Sendable {
     func generate(
         source: ParsedSource, mutations: [(index: Int, point: MutationPoint)], importStyle: ImportStyle = .implicit
     ) -> SchemaGeneration {
-        var (groups, discarded) = groupByScope(mutations, in: source.syntax)
+        var (groups, discarded) = groupByScope(mutations, in: source.functionScopes)
 
         var content = source.file.content
         var edits = Edits()
@@ -44,16 +44,13 @@ struct SchemataGenerator: Sendable {
     }
 
     private func groupByScope(
-        _ mutations: [Entry], in syntax: SourceFileSyntax
+        _ mutations: [Entry], in scopes: FunctionBodyScopes
     ) -> (groups: [ScopeGroup], discarded: [MutationPoint]) {
-        let visitor = TypeScopeVisitor()
-        visitor.walk(syntax)
-
         var groupedByScope: [Int: ScopeGroup] = [:]
         var discarded: [MutationPoint] = []
 
         for entry in mutations {
-            guard let scope = visitor.innermostScope(containing: entry.point.utf8Offset) else {
+            guard let scope = scopes.innermostScope(containing: entry.point.utf8Offset) else {
                 discarded.append(entry.point)
                 continue
             }

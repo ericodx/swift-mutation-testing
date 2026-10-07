@@ -39,7 +39,7 @@ struct MutantDiscoveryStage: Sendable {
 
     private func mutationPoints(for source: ParsedSource) -> [MutationPoint] {
         exclusions.reduce(operators.flatMap { $0.mutations(in: source) }) { points, exclusion in
-            exclusion.filter(points, in: source.syntax)
+            exclusion.filter(points, in: source)
         }
     }
 }
