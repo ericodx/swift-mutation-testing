@@ -168,6 +168,46 @@ struct ProcessRunnerTests {
         #expect(recorder.recorded.isEmpty)
     }
 
+    @Test("Given a capturing run whose task is already cancelled, when it launches, then the process never runs")
+    func aCancelledCapturingRunStartsNoProcess() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let marker = dir.appendingPathComponent("ran").path
+        let runner = ProcessRunner(onTimeout: { _ in })
+        let request = shell("touch '\(marker)'", timeout: 10)
+
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await runner.launchCapturing(request)
+        }
+
+        await #expect(throws: CancellationError.self) { try await task.value }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(!FileManager.default.fileExists(atPath: marker))
+    }
+
+    @Test("Given a run whose task is already cancelled, when it launches, then the process never runs")
+    func aCancelledRunStartsNoProcess() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let marker = dir.appendingPathComponent("ran").path
+        let runner = ProcessRunner(onTimeout: { _ in })
+
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await runner.launch(
+                executableURL: URL(fileURLWithPath: "/usr/bin/touch"),
+                arguments: [marker],
+                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                timeout: 10
+            )
+        }
+
+        await #expect(throws: CancellationError.self) { try await task.value }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(!FileManager.default.fileExists(atPath: marker))
+    }
+
     @Test("Given a launched process, when it runs, then it leads a process group of its own")
     func aLaunchedProcessLeadsItsOwnGroup() async throws {
         let runner = ProcessRunner(onTimeout: { _ in })
