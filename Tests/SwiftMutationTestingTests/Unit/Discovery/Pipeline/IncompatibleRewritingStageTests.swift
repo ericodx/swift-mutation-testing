@@ -48,4 +48,20 @@ struct IncompatibleRewritingStageTests {
         #expect(descriptors.isEmpty)
     }
 
+
+    @Test("Given several incompatible mutants in two files, when run, then each carries the hash of its own file")
+    func everyMutantCarriesItsFilesHash() {
+        let first = makeParsedSource("let a = true\nlet b = false", path: "a.swift")
+        let second = makeParsedSource("let c = true", path: "b.swift")
+        let indexed =
+            makeIndexedMutationPoints(source: first, operators: [BooleanLiteralReplacement()])
+            + makeIndexedMutationPoints(source: second, operators: [BooleanLiteralReplacement()])
+
+        let descriptors = stage.run(indexed: indexed, sources: [first, second])
+
+        let hashes = Dictionary(grouping: descriptors, by: \.filePath).mapValues { Set($0.map(\.sourceContentHash)) }
+        #expect(descriptors.count == 3)
+        #expect(hashes["a.swift"] == [MutantCacheKey.hash(of: first.file.content)])
+        #expect(hashes["b.swift"] == [MutantCacheKey.hash(of: second.file.content)])
+    }
 }
