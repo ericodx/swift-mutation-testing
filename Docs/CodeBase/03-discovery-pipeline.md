@@ -171,7 +171,7 @@ Applies all active operators concurrently across sources via `withTaskGroup`. Fo
 
 A test can give the stage exclusions of its own.
 
-Results are sorted by `filePath` then `utf8Offset`.
+Results are sorted by `filePath` then `utf8Offset` (`MutationPoint.inSourceOrder`).
 
 ---
 
@@ -183,7 +183,7 @@ struct MutantIndexingStage: Sendable {
 }
 ```
 
-Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset) and classifies them as schematizable or incompatible using the file's `functionScopes`. The index becomes the mutant ID, `MutantID.make(index:)`.
+Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset, with `MutationPoint.inSourceOrder` — the order `MutantDiscoveryStage` already returns them in, so the stage checks the order and sorts only points that come out of it) and classifies them as schematizable or incompatible using the file's `functionScopes`. The index becomes the mutant ID, `MutantID.make(index:)`.
 
 It also computes each mutant's `MutantFingerprint`. The index is renumbered by any mutant added earlier in any file, so it cannot identify a mutant across runs of different code; the fingerprint can. Among mutants that share a file, declaration, operator and change, the ordinal is their position in offset order.
 
