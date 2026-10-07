@@ -28,13 +28,7 @@ struct MutantDiscoveryStage: Sendable {
             return collected
         }
 
-        return allMutations.sorted {
-            if $0.filePath != $1.filePath {
-                return $0.filePath < $1.filePath
-            }
-
-            return $0.utf8Offset < $1.utf8Offset
-        }
+        return allMutations.sorted(by: MutationPoint.inSourceOrder)
     }
 
     private func mutationPoints(for source: ParsedSource) -> [MutationPoint] {

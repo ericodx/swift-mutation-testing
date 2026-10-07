@@ -2,10 +2,10 @@ import SwiftSyntax
 
 struct MutantIndexingStage: Sendable {
     func run(mutationPoints: [MutationPoint], sources: [ParsedSource], projectPath: String) -> [IndexedMutationPoint] {
-        let sorted = mutationPoints.sorted {
-            if $0.filePath != $1.filePath { return $0.filePath < $1.filePath }
-            return $0.utf8Offset < $1.utf8Offset
+        let inOrder = zip(mutationPoints, mutationPoints.dropFirst()).allSatisfy {
+            !MutationPoint.inSourceOrder($1, $0)
         }
+        let sorted = inOrder ? mutationPoints : mutationPoints.sorted(by: MutationPoint.inSourceOrder)
 
         let scopesByPath = Dictionary(
             sources.map { ($0.file.path, $0.functionScopes) }, uniquingKeysWith: { first, _ in first }
