@@ -2,39 +2,50 @@ import Foundation
 
 final class TimeoutEscalation: @unchecked Sendable {
 
-    init(gracePeriod: Double = 5) {
+    init(gracePeriod: Double = 5, kill: @escaping SystemCalls.Kill = Darwin.kill) {
         self.gracePeriod = gracePeriod
+        self.kill = kill
     }
 
     private let gracePeriod: Double
+    private let kill: SystemCalls.Kill
     private let lock = NSLock()
     private var pending: Task<Void, Never>?
     private var descendants: [Int32] = []
+    private var terminated = false
 
     func arm(pid: Int32, descendants: [Int32]) {
         let grace = gracePeriod
+        let kill = self.kill
 
         lock.lock()
+        defer { lock.unlock() }
+
+        guard !terminated else { return }
+
+        pending?.cancel()
         self.descendants = descendants
         pending = Task { [weak self] in
             try? await Task.sleep(for: .seconds(grace))
 
             guard !Task.isCancelled else { return }
 
-            kill(-pid, SIGKILL)
+            _ = kill(-pid, SIGKILL)
             self?.killSnapshottedDescendants()
         }
-        lock.unlock()
     }
 
-    func processTerminated() {
+    @discardableResult
+    func processTerminated() -> Bool {
         lock.lock()
         let task = pending
         pending = nil
+        terminated = true
         lock.unlock()
 
         task?.cancel()
         killSnapshottedDescendants()
+        return task != nil
     }
 
     // MARK: - Private
@@ -46,7 +57,7 @@ final class TimeoutEscalation: @unchecked Sendable {
         lock.unlock()
 
         for pid in targets {
-            kill(pid, SIGKILL)
+            _ = kill(pid, SIGKILL)
         }
     }
 }
