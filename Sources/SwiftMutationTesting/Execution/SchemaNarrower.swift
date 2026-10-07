@@ -34,7 +34,7 @@ struct SchemaNarrower: Sendable {
 
             guard !mutantsInFile.isEmpty else { continue }
 
-            newlyExcluded += Self.excludeProblematicMutants(
+            newlyExcluded += try Self.excludeProblematicMutants(
                 sandboxPath: sandboxPath,
                 originalPath: originalPath,
                 errorOutput: output,
@@ -88,7 +88,7 @@ struct SchemaNarrower: Sendable {
         errorOutput: String,
         mutantsInFile: [MutantDescriptor],
         importStyle: ImportStyle
-    ) -> [MutantDescriptor] {
+    ) throws -> [MutantDescriptor] {
         let errorLines = Set(
             errorLocations(in: errorOutput, under: sandboxPath)
                 .filter { $0.path == sandboxPath }
@@ -99,7 +99,7 @@ struct SchemaNarrower: Sendable {
             !errorLines.isEmpty,
             let content = try? String(contentsOfFile: sandboxPath, encoding: .utf8)
         else {
-            restoreOriginal(sandboxPath: sandboxPath, originalPath: originalPath)
+            try SandboxLink.restore(at: sandboxPath, to: originalPath)
             return mutantsInFile
         }
 
@@ -123,7 +123,7 @@ struct SchemaNarrower: Sendable {
         }
 
         guard !problematicIDs.isEmpty else {
-            restoreOriginal(sandboxPath: sandboxPath, originalPath: originalPath)
+            try SandboxLink.restore(at: sandboxPath, to: originalPath)
             return mutantsInFile
         }
 
@@ -131,11 +131,11 @@ struct SchemaNarrower: Sendable {
 
         guard let narrowed = regeneratedSchema(originalPath: originalPath, keeping: kept, importStyle: importStyle)
         else {
-            restoreOriginal(sandboxPath: sandboxPath, originalPath: originalPath)
+            try SandboxLink.restore(at: sandboxPath, to: originalPath)
             return mutantsInFile
         }
 
-        try? narrowed.write(toFile: sandboxPath, atomically: true, encoding: .utf8)
+        try narrowed.write(toFile: sandboxPath, atomically: true, encoding: .utf8)
 
         return mutantsInFile.filter { problematicIDs.contains($0.id) }
     }
@@ -158,11 +158,6 @@ struct SchemaNarrower: Sendable {
         }
 
         return SchemataGenerator().generate(source: source, mutations: entries, importStyle: importStyle).content
-    }
-
-    private static func restoreOriginal(sandboxPath: String, originalPath: String) {
-        try? FileManager.default.removeItem(atPath: sandboxPath)
-        try? FileManager.default.createSymbolicLink(atPath: sandboxPath, withDestinationPath: originalPath)
     }
 
     private static func mutantCaseID(from trimmedLine: String) -> String? {
