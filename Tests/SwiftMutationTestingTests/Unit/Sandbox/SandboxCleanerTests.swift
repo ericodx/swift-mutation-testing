@@ -258,7 +258,6 @@ struct SandboxCleanerTests {
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["30"]
         try process.run()
-        setpgid(process.processIdentifier, process.processIdentifier)
         defer { if process.isRunning { process.terminate() } }
 
         let processGroups = ProcessGroupRegistry()

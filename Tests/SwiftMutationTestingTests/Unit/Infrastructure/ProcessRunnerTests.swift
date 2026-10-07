@@ -168,6 +168,38 @@ struct ProcessRunnerTests {
         #expect(recorder.recorded.isEmpty)
     }
 
+    @Test("Given a launched process, when it runs, then it leads a process group of its own")
+    func aLaunchedProcessLeadsItsOwnGroup() async throws {
+        let runner = ProcessRunner(onTimeout: { _ in })
+
+        let result = try await runner.launchCapturing(shell("echo $$ $(ps -o pgid= -p $$)", timeout: 10))
+        let ids = result.output.split(whereSeparator: \.isWhitespace)
+
+        #expect(ids.count == 2)
+        #expect(ids.first == ids.last)
+    }
+
+    @Test("Given a process that leads its own group or has exited, when its group is checked, then nothing is reported")
+    func aGroupLeaderOrAnExitedProcessIsNotReported() {
+        var warnings: [String] = []
+
+        ProcessRunner.checkOwnGroup(4242, groupOf: { $0 }, warn: { warnings.append($0) })
+        ProcessRunner.checkOwnGroup(4242, groupOf: { _ in -1 }, warn: { warnings.append($0) })
+
+        #expect(warnings.isEmpty)
+    }
+
+    @Test("Given processes that share their parent's group, when their groups are checked, then one warning is shown")
+    func aProcessOutsideItsOwnGroupIsReportedOnce() {
+        var warnings: [String] = []
+
+        ProcessRunner.checkOwnGroup(4242, groupOf: { _ in 1 }, warn: { warnings.append($0) })
+        ProcessRunner.checkOwnGroup(4243, groupOf: { _ in 1 }, warn: { warnings.append($0) })
+
+        #expect(warnings.count == 1)
+        #expect(warnings.first?.contains("does not lead its own process group") == true)
+    }
+
     private func shell(_ script: String, timeout: Double) -> ProcessRequest {
         ProcessRequest(
             executableURL: URL(fileURLWithPath: "/bin/sh"),

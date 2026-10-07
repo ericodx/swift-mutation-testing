@@ -113,7 +113,6 @@ struct TimeoutEscalationTests {
 
     private func spawnGroupLeader() throws -> Sleeper {
         let sleeper = try spawnSleeper()
-        setpgid(sleeper.pid, sleeper.pid)
 
         try #require(
             getpgid(sleeper.pid) == sleeper.pid,
