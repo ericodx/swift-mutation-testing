@@ -103,9 +103,12 @@ struct IncompatibleMutantExecutorTests {
         let storePath = dir.appendingPathComponent("cache.json").path
         let pool = makeSimulatorPool()
         try await pool.setUp()
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 0".write(to: sourceFile, atomically: true, encoding: .utf8)
 
         let mutant = makeMutantDescriptor(
             id: "m0",
+            filePath: sourceFile.path,
             originalText: "a + b",
             mutatedText: "a - b",
             operatorIdentifier: "binaryOperator",
