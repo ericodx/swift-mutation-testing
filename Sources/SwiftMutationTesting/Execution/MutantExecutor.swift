@@ -64,6 +64,19 @@ struct MutantExecutor: Sendable {
             SandboxCleaner.deregister()
         }
 
+        let results = try await run(input, in: sandbox, deps: deps, reporter: reporter)
+        try await cacheStore.persist()
+        try await cacheStore.persistMetadata(metadata)
+
+        return results
+    }
+
+    private func run(
+        _ input: RunnerInput,
+        in sandbox: Sandbox,
+        deps: ExecutionDeps,
+        reporter: any ProgressReporter
+    ) async throws -> [ExecutionResult] {
         try environment.verifier.verify(
             schematizedFiles: input.schematizedFiles, mutants: input.mutants,
             sandbox: sandbox, projectPath: input.projectPath
@@ -93,9 +106,6 @@ struct MutantExecutor: Sendable {
         }
 
         await pool.tearDown()
-        try await cacheStore.persist()
-        try await cacheStore.persistMetadata(metadata)
-
         return results
     }
 
