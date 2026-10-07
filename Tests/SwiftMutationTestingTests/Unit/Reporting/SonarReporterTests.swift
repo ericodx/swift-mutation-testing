@@ -108,6 +108,34 @@ struct SonarReporterTests {
         let issues = json?["issues"] as? [[String: Any]]
         let location = issues?.first?["primaryLocation"] as? [String: Any]
 
-        #expect(location?["filePath"] as? String == "/Sources/Calc.swift")
+        #expect(location?["filePath"] as? String == "Sources/Calc.swift")
+    }
+
+    @Test("Given a project root reached through a symlink, when report called, then filePath is relative")
+    func aSymlinkedProjectRootStillGivesARelativeFilePath() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let link = dir.appendingPathComponent("link")
+        let real = dir.appendingPathComponent("real")
+        try FileManager.default.createDirectory(
+            at: real.appendingPathComponent("Sources"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        let resolvedFile = real.resolvingSymlinksInPath().appendingPathComponent("Sources/Calc.swift").path
+        let outputPath = dir.appendingPathComponent("sonar.json").path
+        let reporter = SonarReporter(outputPath: outputPath, projectRoot: link.path)
+
+        try reporter.report(
+            RunnerSummary(
+                results: [makeExecutionResult(filePath: resolvedFile, status: .survived)],
+                totalDuration: 0
+            )
+        )
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: outputPath))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let issues = json?["issues"] as? [[String: Any]]
+        let location = issues?.first?["primaryLocation"] as? [String: Any]
+
+        #expect(location?["filePath"] as? String == "Sources/Calc.swift")
     }
 }

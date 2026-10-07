@@ -28,8 +28,8 @@ struct HtmlReporterTests {
         #expect(html.contains("Mutation Testing Report"))
     }
 
-    @Test("Given a mutant, when report called, then file path uses leading slash relative to project root")
-    func filePathIncludesLeadingSlashRelativeToProjectRoot() throws {
+    @Test("Given a mutant, when report called, then file path is relative to project root")
+    func filePathIsRelativeToProjectRoot() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -47,7 +47,7 @@ struct HtmlReporterTests {
         try reporter.report(summary)
 
         let html = try String(contentsOfFile: outputPath, encoding: .utf8)
-        #expect(html.contains("/Sources/Calc.swift"))
+        #expect(html.contains("<td>Sources/Calc.swift<details>"))
         #expect(!html.contains("/abs/MyApp/Sources/Calc.swift"))
     }
 
@@ -237,5 +237,72 @@ struct HtmlReporterTests {
 
         #expect(html.contains("<!DOCTYPE html>"))
         #expect(!html.contains("<tr class="))
+    }
+
+    @Test("Given a relational and a logical mutation, when report called, then their operators are escaped")
+    func operatorTextIsEscaped() throws {
+        let html = try reportedHtml(
+            survived: [
+                makeMutantDescriptor(id: "1", filePath: "/abs/MyApp/Sources/Calc.swift", description: "< → <="),
+                makeMutantDescriptor(id: "2", filePath: "/abs/MyApp/Sources/Calc.swift", description: "&& → ||"),
+            ]
+        )
+
+        #expect(html.contains("<td>&lt; → &lt;=</td>"))
+        #expect(html.contains("<td>&amp;&amp; → ||</td>"))
+        #expect(!html.contains("<td>< → <=</td>"))
+    }
+
+    @Test("Given a string literal mutation with markup, when report called, then the markup is not injected")
+    func literalMarkupIsNotInjected() throws {
+        let html = try reportedHtml(
+            survived: [
+                makeMutantDescriptor(
+                    filePath: "/abs/MyApp/Sources/Calc.swift",
+                    description: "\"<script>alert('x')</script>\" → \"\""
+                )
+            ]
+        )
+
+        #expect(!html.contains("<script>"))
+        #expect(html.contains("&quot;&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;&quot; → &quot;&quot;"))
+    }
+
+    @Test("Given a project root reached through a symlink, when report called, then the file path is relative")
+    func aSymlinkedProjectRootStillGivesARelativePath() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let link = dir.appendingPathComponent("link")
+        let real = dir.appendingPathComponent("real")
+        try FileManager.default.createDirectory(
+            at: real.appendingPathComponent("Sources"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        let resolvedFile = real.resolvingSymlinksInPath().appendingPathComponent("Sources/Calc.swift").path
+        let outputPath = dir.appendingPathComponent("report.html").path
+        let reporter = HtmlReporter(outputPath: outputPath, projectRoot: link.path)
+
+        try reporter.report(
+            RunnerSummary(
+                results: [makeExecutionResult(filePath: resolvedFile, status: .survived)],
+                totalDuration: 0
+            )
+        )
+
+        let html = try String(contentsOfFile: outputPath, encoding: .utf8)
+        #expect(html.contains("<td>Sources/Calc.swift<details>"))
+    }
+
+    private func reportedHtml(survived descriptors: [MutantDescriptor]) throws -> String {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let outputPath = dir.appendingPathComponent("report.html").path
+        let reporter = HtmlReporter(outputPath: outputPath, projectRoot: "/abs/MyApp")
+        let results = descriptors.map {
+            ExecutionResult(descriptor: $0, status: .survived, testDuration: 0)
+        }
+
+        try reporter.report(RunnerSummary(results: results, totalDuration: 0))
+
+        return try String(contentsOfFile: outputPath, encoding: .utf8)
     }
 }
