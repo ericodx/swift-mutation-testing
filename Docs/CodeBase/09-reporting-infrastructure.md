@@ -629,7 +629,7 @@ struct ProcessRunner: Sendable {
 
     func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
     func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
-    static func checkOwnGroup(_ pid: pid_t, groupOf: (pid_t) -> pid_t = getpgid, warn: (String) -> Void = StandardError.write)
+    static func checkOwnGroup(_ pid: pid_t, groupOf: (pid_t) -> pid_t = getpgid, warning: OnceWarning = groupWarning)
 }
 ```
 
@@ -651,7 +651,7 @@ This is what makes a killed mutant cheap. A mutant is killed by its *first* fail
 
 `launchCapturing` writes output to a temporary file (UUID-named) and reads it in the `terminationHandler` to avoid pipe buffer limits.
 
-**Process groups:** Foundation's `Process` starts every child as the leader of a process group of its own, which is what lets `kill(-pid, …)` reach a whole test tree. The runner used to call `setpgid(pid, pid)` after `process.run()`, but by then the child has exec'd and the call always fails with `EACCES`. `checkOwnGroup(_:groupOf:warn:)` instead reads `getpgid(pid)` and, if a live process does not lead its own group, warns once on stderr that a timeout or an interrupt may leave its children running.
+**Process groups:** Foundation's `Process` starts every child as the leader of a process group of its own, which is what lets `kill(-pid, …)` reach a whole test tree. The runner used to call `setpgid(pid, pid)` after `process.run()`, but by then the child has exec'd and the call always fails with `EACCES`. `checkOwnGroup(_:groupOf:warning:)` instead reads `getpgid(pid)` and, if a live process does not lead its own group, warns once on stderr through an `OnceWarning` that a timeout or an interrupt may leave its children running.
 
 **Tracking what is in flight:** both launch paths register the new group in `processGroups` right after the group check, and the `terminationHandler` deregisters it first thing, so the signal handler in `SandboxCleaner` knows exactly which groups to kill if the tool is interrupted. A process that exits before it is registered would otherwise leave its pid behind — and a later `killAll` would signal whatever reused it — so registration is followed by an `isRunning` check that undoes it.
 
