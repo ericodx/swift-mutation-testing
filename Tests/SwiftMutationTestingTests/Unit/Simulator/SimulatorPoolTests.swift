@@ -168,4 +168,38 @@ struct SimulatorPoolTests {
         let slot = try await pool.acquire()
         await pool.release(slot)
     }
+
+    @Test("Given the second of three clones fails, when setUp called, then the clones that succeeded are deleted")
+    func aFailedCloneDeletesTheClonesThatSucceeded() async throws {
+        let mock = SimulatorCloneFailureMock(failingCloneIndices: [1])
+        let pool = SimulatorPool(
+            baseUDID: "BASE-UDID",
+            size: 3,
+            destination: "platform=iOS Simulator,name=iPhone 15",
+            launcher: mock
+        )
+
+        await #expect(throws: SimulatorError.self) {
+            try await pool.setUp()
+        }
+
+        #expect(mock.deletedUDIDs == ["CLONE-0", "CLONE-2"])
+    }
+
+    @Test("Given every clone succeeds but booting fails, when setUp called, then every clone is deleted")
+    func aFailedBootDeletesEveryClone() async throws {
+        let mock = SimulatorCloneFailureMock(bootFails: true)
+        let pool = SimulatorPool(
+            baseUDID: "BASE-UDID",
+            size: 2,
+            destination: "platform=iOS Simulator,name=iPhone 15",
+            launcher: mock
+        )
+
+        await #expect(throws: SimulatorError.self) {
+            try await pool.setUp()
+        }
+
+        #expect(mock.deletedUDIDs == ["CLONE-0", "CLONE-1"])
+    }
 }
