@@ -40,4 +40,34 @@ struct ImportStyleTests {
         #expect(ImportStyle.importsFoundation(Parser.parse(source: "import Foundation.NSDate\nfunc f() {}")))
         #expect(!ImportStyle.importsFoundation(Parser.parse(source: "import SwiftSyntax\nfunc f() {}")))
     }
+
+    @Test("Given an access-level Foundation import inside an active #if, when read, then it is seen")
+    func anImportInsideAnActiveConditionIsSeen() {
+        let syntax = Parser.parse(
+            source: "#if canImport(Foundation)\ninternal import Foundation\n#endif\nfunc f() {}"
+        )
+
+        #expect(ImportStyle.importsFoundation(syntax))
+        #expect(ImportStyle.of(syntax) == .explicit)
+    }
+
+    @Test("Given an import nested in two active #if blocks, when read, then it is seen")
+    func anImportInsideNestedConditionsIsSeen() {
+        let syntax = Parser.parse(
+            source: "#if canImport(Darwin)\n#if DEBUG\ninternal import Foundation\n#endif\n#endif\nfunc f() {}"
+        )
+
+        #expect(ImportStyle.importsFoundation(syntax))
+        #expect(ImportStyle.of(syntax) == .explicit)
+    }
+
+    @Test("Given a Foundation import only in an inactive #if clause, when read, then it is not seen")
+    func anImportInsideAnInactiveClauseIsIgnored() {
+        let syntax = Parser.parse(
+            source: "#if os(Linux)\ninternal import Foundation\n#else\nimport Darwin\n#endif\nfunc f() {}"
+        )
+
+        #expect(!ImportStyle.importsFoundation(syntax))
+        #expect(ImportStyle.of(syntax) == .implicit)
+    }
 }
