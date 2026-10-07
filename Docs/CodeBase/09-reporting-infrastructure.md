@@ -200,7 +200,19 @@ struct HtmlReporter: Sendable {
 }
 ```
 
-Writes a self-contained HTML dashboard to `outputPath`. Shows the overall score, the detection line and the totals, then a per-file score table with `<details>` elements listing survived mutants inline. Score cells are colour-coded: green (100%), yellow (≥ 50%), red (< 50%).
+Writes a self-contained HTML dashboard to `outputPath`. Shows the overall score, the detection line and the totals, then a per-file score table with `<details>` elements listing survived mutants inline. Score cells are colour-coded: green (100%), yellow (≥ 50%), red (< 50%). Every interpolated value — the file path, the operator, the mutation description and the detection line — goes through `String.htmlEscaped` (`&`, `<`, `>`, `"`, `'`), so a `<` or `&&` mutation keeps the table intact and a string literal cannot inject markup. File paths are relative to `projectRoot`, computed by `ProjectRelativePath`, with no leading `/`.
+
+---
+
+## Reporting/String+HtmlEscaped.swift
+
+```swift
+extension String {
+    var htmlEscaped: String
+}
+```
+
+Replaces `&`, `<`, `>`, `"` and `'` with their character references, so that any text can be placed in an HTML element or attribute value. `HtmlReporter` applies it to every value it interpolates.
 
 ---
 
@@ -214,7 +226,7 @@ struct SonarReporter: Sendable {
 }
 ```
 
-Writes a SonarQube Generic Issue Import Format JSON file to `outputPath`. Reports survived mutants as `MAJOR` issues and `noCoverage` mutants as `MINOR` issues.
+Writes a SonarQube Generic Issue Import Format JSON file to `outputPath`. Reports survived mutants as `MAJOR` issues and `noCoverage` mutants as `MINOR` issues. Each issue's `filePath` is relative to `projectRoot`, computed by `ProjectRelativePath`, with no leading `/`, as the generic issue import expects.
 
 `engineId` is always `"swift-mutation-testing"`. `ruleId` is the operator identifier. `type` is `"CODE_SMELL"`.
 
