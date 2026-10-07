@@ -500,10 +500,12 @@ flowchart TD
     LOOP --> SF[SandboxFactory\nsingle-file sandbox]
     SF --> BS[BuildStage]
     BS -- success --> TES[TestExecutionStage\ntest mutants in this file]
-    BS -- failed --> UNVIABLE[Mark all mutants in file as .unviable]
+    BS -- compilationFailed --> UNVIABLE[Mark all mutants in file as .unviable]
+    BS -- timedOut --> TIMEOUT[Mark all mutants in file as .timeout]
+    BS -- any other error --> THROW[Rethrow: the run stops, nothing recorded]
 ```
 
-For each schematized file, creates a sandbox containing only that file's schematization, builds it (Xcode or SPM), and runs the test suite against its mutants. Files whose builds fail have all their mutants marked as `.unviable`, each with a mutant log carrying the build error's description. Cached verdicts are read through `CacheStore.cachedResult(for:)` and every verdict is recorded through `ResultRecorder`.
+For each schematized file, creates a sandbox containing only that file's schematization, builds it (Xcode or SPM), and runs the test suite against its mutants. Only the two build errors that say something about the mutants become their verdict: `BuildError.compilationFailed` marks every mutant of the file `.unviable` and `BuildError.timedOut` marks them `.timeout`, each with a mutant log carrying the error's description. Every other error — a `CancellationError` from Ctrl-C, a launcher that could not start the build, `BuildError.xctestrunNotFound`, a failed read — is rethrown, so it ends the run instead of being recorded: verdicts reach the cache and the plan journal as soon as they are known, and a run resumed after an interruption would otherwise reuse `unviable` verdicts no build ever gave. Cached verdicts are read through `CacheStore.cachedResult(for:)` and every verdict is recorded through `ResultRecorder`.
 
 ---
 
