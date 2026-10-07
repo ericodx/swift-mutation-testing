@@ -18,12 +18,13 @@ struct TestFilesHasher: Sendable {
         let paths = collectTestFilePaths(under: URL(fileURLWithPath: projectPath), enumerate: enumerate)
         var contents: [String: String] = [:]
         var hashes: [String: String] = [:]
+        let relativePaths = ProjectRelativePath.Resolver(projectPath: projectPath)
 
         for path in paths.sorted() {
             guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
 
             contents[path] = content
-            hashes[ProjectRelativePath.make(for: path, in: projectPath)] = MutantCacheKey.hash(of: content)
+            hashes[relativePaths.make(for: path)] = MutantCacheKey.hash(of: content)
         }
 
         return Snapshot(paths: paths, contents: contents, hashes: hashes)

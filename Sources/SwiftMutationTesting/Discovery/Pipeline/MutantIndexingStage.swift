@@ -12,11 +12,12 @@ struct MutantIndexingStage: Sendable {
         )
         let syntaxByPath = Dictionary(uniqueKeysWithValues: sources.map { ($0.file.path, $0.syntax) })
         var ordinals: [[String]: Int] = [:]
+        let paths = ProjectRelativePath.Resolver(projectPath: projectPath)
 
         return sorted.enumerated().map { index, mutation in
             let schematizable =
                 scopesByPath[mutation.filePath]?.isSchematizable(utf8Offset: mutation.utf8Offset) ?? false
-            let relativePath = ProjectRelativePath.make(for: mutation.filePath, in: projectPath)
+            let relativePath = paths.make(for: mutation.filePath)
             let declarationPath =
                 syntaxByPath[mutation.filePath].map {
                     DeclarationPath.of(utf8Offset: mutation.utf8Offset, in: $0)

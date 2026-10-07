@@ -15,8 +15,9 @@ struct JsonReporter: Sendable {
     private func buildPayload(_ summary: RunnerSummary, identity: RunIdentity?) -> MutationReportPayload {
         var fileEntries: [String: MutationReportFile] = [:]
 
+        let paths = ProjectRelativePath.Resolver(projectPath: projectRoot)
         for (filePath, results) in summary.resultsByFile {
-            let relative = ProjectRelativePath.make(for: filePath, in: projectRoot)
+            let relative = paths.make(for: filePath)
             let relativePath = relative == filePath ? filePath : "/" + relative
             let source = (try? String(contentsOfFile: filePath, encoding: .utf8)) ?? ""
             let mutants = results.map { mutationReportMutant(from: $0) }

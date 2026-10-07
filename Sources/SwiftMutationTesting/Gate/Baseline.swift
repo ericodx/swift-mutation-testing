@@ -29,6 +29,7 @@ struct Baseline: Sendable, Codable, Equatable {
     }
 
     init(summary: RunnerSummary, scope: BaselineScope, projectPath: String, toolVersion: String, createdAt: Date) {
+        let paths = ProjectRelativePath.Resolver(projectPath: projectPath)
         self.init(
             toolVersion: toolVersion,
             createdAt: createdAt,
@@ -38,7 +39,7 @@ struct Baseline: Sendable, Codable, Equatable {
                 let descriptor = result.descriptor
                 return BaselineEntry(
                     fingerprint: descriptor.fingerprint,
-                    file: ProjectRelativePath.make(for: descriptor.filePath, in: projectPath),
+                    file: paths.make(for: descriptor.filePath),
                     line: descriptor.line,
                     operatorIdentifier: descriptor.operatorIdentifier,
                     original: descriptor.originalText,
