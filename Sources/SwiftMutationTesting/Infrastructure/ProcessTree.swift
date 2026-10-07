@@ -23,6 +23,10 @@ enum ProcessTree {
         return found
     }
 
+    static func isAlive(_ pid: pid_t) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
+    }
+
     static func all(sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32] {
         snapshot(sysctl: sysctl).map(\.pid).filter { $0 > 1 }
     }

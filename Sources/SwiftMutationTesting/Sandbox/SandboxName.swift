@@ -29,6 +29,6 @@ enum SandboxName {
 
     static func isOwnerAlive(of name: String) -> Bool {
         guard let pid = ownerPID(of: name) else { return false }
-        return kill(pid, 0) == 0 || errno == EPERM
+        return ProcessTree.isAlive(pid)
     }
 }
