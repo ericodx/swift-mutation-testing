@@ -17,6 +17,9 @@ struct IncompatibleMutantXcodeWarmTests {
         #expect(results.map(\.descriptor.id) == (0 ..< 6).map { "m\($0)" })
         #expect(Set(builds.map(\.workingDirectoryURL)).count == 2)
         #expect(builds.count > 2, "every mutant is rebuilt in its worker's sandbox")
+        let tests = await launcher.requests.filter { $0.arguments.first == "test-without-building" }
+        #expect(!tests.isEmpty)
+        #expect(tests.allSatisfy { $0.arguments.contains("-collect-test-diagnostics") })
     }
 
     @Test("Given a project whose clean build fails, when executed, then every mutant is unviable with that output")
