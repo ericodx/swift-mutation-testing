@@ -192,9 +192,13 @@ struct ProcessRunner: Sendable {
         }
 
         do {
+            try Task.checkCancellation()
             try process.run()
             Self.checkOwnGroup(process.processIdentifier)
             track(process)
+            if Task.isCancelled {
+                onTimeout(process.processIdentifier)
+            }
         } catch {
             timeoutTask.cancel()
             onLaunchFailure()
