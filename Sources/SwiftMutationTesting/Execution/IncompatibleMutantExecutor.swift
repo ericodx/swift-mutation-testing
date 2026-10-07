@@ -29,12 +29,7 @@ struct IncompatibleMutantExecutor: Sendable {
             results += try await runSPMShared(
                 mutants: pending, configuration: configuration)
         } else if case .xcode(let scheme, _) = configuration.build.projectType {
-            for mutant in pending {
-                results.append(
-                    try await run(
-                        mutant: mutant, scheme: scheme,
-                        configuration: configuration, pool: pool))
-            }
+            results += try await runXcode(pending, scheme: scheme, configuration: configuration, pool: pool)
         }
 
         return results
@@ -307,6 +302,48 @@ struct IncompatibleMutantExecutor: Sendable {
             mutant, status: verdict.status, duration: verdict.duration, output: verdict.output,
             activated: verdict.activated
         )
+    }
+
+    static func xcodeWidth(concurrency: Int, poolSize: Int, mutantCount: Int) -> Int {
+        max(1, min(concurrency / TestExecutionStage.retryWorkerShare, poolSize, mutantCount))
+    }
+
+    private func runXcode(
+        _ mutants: [MutantDescriptor],
+        scheme: String,
+        configuration: RunnerConfiguration,
+        pool: SimulatorPool
+    ) async throws -> [ExecutionResult] {
+        guard !mutants.isEmpty else { return [] }
+
+        let width = Self.xcodeWidth(
+            concurrency: configuration.build.concurrency, poolSize: pool.size, mutantCount: mutants.count
+        )
+
+        let runOne: @Sendable (Int) async throws -> (Int, ExecutionResult) = { index in
+            (index, try await run(mutant: mutants[index], scheme: scheme, configuration: configuration, pool: pool))
+        }
+
+        return try await withThrowingTaskGroup(of: (Int, ExecutionResult).self) { group in
+            var next = 0
+            var finished: [(Int, ExecutionResult)] = []
+
+            while next < width {
+                let index = next
+                group.addTask { try await runOne(index) }
+                next += 1
+            }
+
+            while let done = try await group.next() {
+                finished.append(done)
+                guard next < mutants.count else { continue }
+                let index = next
+                group.addTask { try await runOne(index) }
+                next += 1
+            }
+
+            return finished.sorted { $0.0 < $1.0 }.map(\.1)
+        }
     }
 
     private func run(
