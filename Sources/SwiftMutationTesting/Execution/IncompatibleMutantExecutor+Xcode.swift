@@ -144,6 +144,12 @@ extension IncompatibleMutantExecutor {
     ) async throws -> ExecutionResult {
         let projectRoot = URL(fileURLWithPath: configuration.projectPath).resolvingSymlinksInPath().path
         let originalPath = URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path
+        guard originalPath.hasPrefix(projectRoot + "/") else {
+            return await storeAndReport(
+                mutant: mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
+                buildOutput: Self.outsideProjectMessage
+            )
+        }
         let sandboxPath =
             worker.sandbox.rootURL.resolvingSymlinksInPath().path + originalPath.dropFirst(projectRoot.count)
 

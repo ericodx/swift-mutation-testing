@@ -151,6 +151,13 @@ struct IncompatibleMutantExecutor: Sendable {
                 buildOutput: "The mutation could not be applied to the source file."
             )
         }
+        guard originalCanonical.hasPrefix(projectRoot + "/") else {
+            return await storeAndReport(
+                mutant: mutant, sandbox: nil,
+                keepLogsPath: configuration.reporting.keepLogsPath,
+                buildOutput: Self.outsideProjectMessage
+            )
+        }
         let relative = String(originalCanonical.dropFirst(projectRoot.count))
         let sandboxFilePath = sandboxRoot + relative
 
@@ -302,6 +309,8 @@ struct IncompatibleMutantExecutor: Sendable {
             activated: verdict.activated
         )
     }
+
+    static let outsideProjectMessage = "The mutated file lies outside the project, so no sandbox holds it."
 
     func storeAndReport(
         mutant: MutantDescriptor,
