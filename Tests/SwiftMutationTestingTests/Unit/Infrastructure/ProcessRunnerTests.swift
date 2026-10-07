@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import SwiftMutationTesting
@@ -221,23 +222,25 @@ struct ProcessRunnerTests {
 
     @Test("Given a process that leads its own group or has exited, when its group is checked, then nothing is reported")
     func aGroupLeaderOrAnExitedProcessIsNotReported() {
-        var warnings: [String] = []
+        let warnings = Mutex<[String]>([])
+        let warning = OnceWarning { line in warnings.withLock { $0.append(line) } }
 
-        ProcessRunner.checkOwnGroup(4242, groupOf: { $0 }, warn: { warnings.append($0) })
-        ProcessRunner.checkOwnGroup(4242, groupOf: { _ in -1 }, warn: { warnings.append($0) })
+        ProcessRunner.checkOwnGroup(4242, groupOf: { $0 }, warning: warning)
+        ProcessRunner.checkOwnGroup(4242, groupOf: { _ in -1 }, warning: warning)
 
-        #expect(warnings.isEmpty)
+        #expect(warnings.withLock { $0 }.isEmpty)
     }
 
     @Test("Given processes that share their parent's group, when their groups are checked, then one warning is shown")
     func aProcessOutsideItsOwnGroupIsReportedOnce() {
-        var warnings: [String] = []
+        let warnings = Mutex<[String]>([])
+        let warning = OnceWarning { line in warnings.withLock { $0.append(line) } }
 
-        ProcessRunner.checkOwnGroup(4242, groupOf: { _ in 1 }, warn: { warnings.append($0) })
-        ProcessRunner.checkOwnGroup(4243, groupOf: { _ in 1 }, warn: { warnings.append($0) })
+        ProcessRunner.checkOwnGroup(4242, groupOf: { _ in 1 }, warning: warning)
+        ProcessRunner.checkOwnGroup(4243, groupOf: { _ in 1 }, warning: warning)
 
-        #expect(warnings.count == 1)
-        #expect(warnings.first?.contains("does not lead its own process group") == true)
+        #expect(warnings.withLock { $0 }.count == 1)
+        #expect(warnings.withLock { $0 }.first?.contains("does not lead its own process group") == true)
     }
 
     private func shell(_ script: String, timeout: Double) -> ProcessRequest {
