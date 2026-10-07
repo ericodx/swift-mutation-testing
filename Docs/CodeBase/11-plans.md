@@ -38,7 +38,7 @@ struct PlanStore: Sendable {
 
 ## Plan/PlanError.swift
 
-`notFound`, `unreadable`, `unsupportedVersion`, `unknownProjectType`, `stale(file:)`, `missingFile(file:)`, `corrupt(fingerprint:file:)`, `invalidShard`, `unknownMutant` — each with a message that says what to do.
+`notFound`, `unreadable`, `unsupportedVersion`, `unknownProjectType`, `stale(file:)`, `missingFile(file:)`, `unreadableFile(file:reason:)`, `corrupt(fingerprint:file:)`, `invalidShard`, `unknownMutant` — each with a message that says what to do.
 
 ## Plan/Planner.swift
 
@@ -66,7 +66,7 @@ struct PlanMaterializer: Sendable {
 }
 ```
 
-The first form reads the plan's files from disk through `load` — which throws `stale` or `missingFile` on any hash that differs and `corrupt` on a mutant whose text is not at its range — parses them and calls the second. The second rebuilds an `IndexedMutationPoint` per selected mutant (index = position in the plan; the file path taken from the matching source, matched by relative path, so later lookups by path agree), runs `SchematizationStage` and `IncompatibleRewritingStage`, and assembles the `RunnerInput` with `ImportStyle.of(sources)`, its descriptors in id order (`MutantID.ordered`). `absolute` uses the root's real path (`CanonicalPath`), the way the file enumerator reports paths.
+The first form reads the plan's files from disk through `load` — which throws `missingFile` for a file that is gone, `unreadableFile` with the reason for one that is there but cannot be read as UTF-8 text, `stale` on any hash that differs and `corrupt` on a mutant whose text is not at its range — parses them and calls the second. The second rebuilds an `IndexedMutationPoint` per selected mutant (index = position in the plan; the file path taken from the matching source, matched by relative path, so later lookups by path agree), runs `SchematizationStage` and `IncompatibleRewritingStage`, and assembles the `RunnerInput` with `ImportStyle.of(sources)`, its descriptors in id order (`MutantID.ordered`). `absolute` uses the root's real path (`CanonicalPath`), the way the file enumerator reports paths.
 
 `DiscoveryPipeline.run` and a plain `run` are `Planner` then the second form; `run --plan` is `PlanStore.read` then the first, through `PlanResumer`. `ExecutionOptions(_ configuration:)` in `CLI/CommandSupport.swift` builds the options from a configuration.
 
