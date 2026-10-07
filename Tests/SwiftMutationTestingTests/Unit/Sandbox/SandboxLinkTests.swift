@@ -3,8 +3,8 @@ import Testing
 
 @testable import SwiftMutationTesting
 
-@Suite("IncompatibleMutantExecutor — restoring the sandbox link")
-struct IncompatibleMutantExecutorRestoreTests {
+@Suite("SandboxLink")
+struct SandboxLinkTests {
     @Test("Given a mutated file in the sandbox, when its link is restored, then it points at the original again")
     func restoringReplacesTheMutatedFileWithALink() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
@@ -14,12 +14,12 @@ struct IncompatibleMutantExecutorRestoreTests {
         try "let a = 1".write(toFile: original, atomically: true, encoding: .utf8)
         try "let a = 2".write(toFile: copy, atomically: true, encoding: .utf8)
 
-        try IncompatibleMutantExecutor.restoreLink(at: copy, to: original)
+        try SandboxLink.restore(at: copy, to: original)
 
         #expect(try FileManager.default.destinationOfSymbolicLink(atPath: copy) == original)
     }
 
-    @Test("Given a sandbox directory that cannot be written, when the link is restored, then the run is stopped")
+    @Test("Given a sandbox directory that cannot be written, when the link is restored, then it throws")
     func aLinkThatCannotBeRestoredStopsTheRun() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         let locked = dir.appendingPathComponent("Locked")
@@ -33,7 +33,7 @@ struct IncompatibleMutantExecutorRestoreTests {
         }
 
         #expect(throws: IntegrityError.sourceNotRestored(path: "/p/Calc.swift")) {
-            try IncompatibleMutantExecutor.restoreLink(at: copy, to: "/p/Calc.swift")
+            try SandboxLink.restore(at: copy, to: "/p/Calc.swift")
         }
     }
 }
