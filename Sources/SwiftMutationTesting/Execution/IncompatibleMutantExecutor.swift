@@ -141,15 +141,47 @@ struct IncompatibleMutantExecutor: Sendable {
         let sandboxRoot = sandbox.rootURL.resolvingSymlinksInPath().path
 
         let originalCanonical = URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path
-        let content = mutant.mutatedSourceContent!
+        guard let content = mutant.mutatedSourceContent else {
+            return await storeAndReport(
+                mutant: mutant, sandbox: nil,
+                keepLogsPath: configuration.reporting.keepLogsPath,
+                buildOutput: "The mutation could not be applied to the source file."
+            )
+        }
         let relative = String(originalCanonical.dropFirst(projectRoot.count))
         let sandboxFilePath = sandboxRoot + relative
 
-        defer {
-            try? FileManager.default.removeItem(atPath: sandboxFilePath)
-            try? FileManager.default.createSymbolicLink(atPath: sandboxFilePath, withDestinationPath: originalCanonical)
+        do {
+            let result = try await buildAndTest(
+                mutant: mutant, content: content, at: sandboxFilePath, configuration: configuration, sandbox: sandbox
+            )
+            try Self.restoreLink(at: sandboxFilePath, to: originalCanonical)
+            return result
+        } catch {
+            try? Self.restoreLink(at: sandboxFilePath, to: originalCanonical)
+            throw error
         }
+    }
 
+    static func restoreLink(at sandboxPath: String, to originalPath: String) throws {
+        let fileManager = FileManager.default
+        if (try? fileManager.attributesOfItem(atPath: sandboxPath)) != nil {
+            try? fileManager.removeItem(atPath: sandboxPath)
+        }
+        do {
+            try fileManager.createSymbolicLink(atPath: sandboxPath, withDestinationPath: originalPath)
+        } catch {
+            throw IntegrityError.sourceNotRestored(path: originalPath)
+        }
+    }
+
+    private func buildAndTest(
+        mutant: MutantDescriptor,
+        content: String,
+        at sandboxFilePath: String,
+        configuration: RunnerConfiguration,
+        sandbox: Sandbox
+    ) async throws -> ExecutionResult {
         let instrumented = ActivationInstrumenter(importStyle: importStyle).instrument(mutant)
         var measured = instrumented != nil
         var build = try await buildSPM(
