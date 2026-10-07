@@ -184,7 +184,7 @@ flowchart TD
     BS -- failed --> UNVIABLE[Mark all mutants in file as .unviable]
 ```
 
-For each schematized file, `FallbackExecutor` creates a sandbox containing only that file's schematization, builds it, and runs the test suite against its mutants. Files whose builds fail have all their mutants marked as `.unviable`, each with a mutant log holding the build error. Verdicts are recorded through `ResultRecorder`.
+For each schematized file, `FallbackExecutor` creates a sandbox containing only that file's schematization, builds it, and runs the test suite against its mutants. Files whose builds fail to compile have all their mutants marked as `.unviable` (`.timeout` when the build timed out), each with a mutant log holding the build error; any other error — cancellation included — is rethrown and recorded as no verdict, since the journal would carry it into a resumed run. Verdicts are recorded through `ResultRecorder`.
 
 ## IncompatibleMutantExecutor
 
