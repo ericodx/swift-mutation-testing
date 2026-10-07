@@ -7,7 +7,7 @@ struct ProcessRequest: Sendable {
     let additionalEnvironment: [String: String]
     let workingDirectoryURL: URL
     var timeout: Double
-    var stopRule: OutputStopRule? = nil
+    var stopRule: OutputStopRule?
 
     func withTimeout(_ timeout: Double) -> ProcessRequest {
         var copy = self
