@@ -29,19 +29,29 @@ enum ProcessTree {
 
     // MARK: - Private
 
+    private static let snapshotAttempts = 3
+
     private static func snapshot(sysctl: SystemCalls.Sysctl) -> [(pid: Int32, parentPID: Int32)] {
-        var size = 0
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
-
-        guard sysctl(&mib, 4, nil, &size, nil, 0) == 0, size > 0 else { return [] }
-
         let stride = MemoryLayout<kinfo_proc>.stride
-        var procs = [kinfo_proc](repeating: kinfo_proc(), count: size / stride)
 
-        guard sysctl(&mib, 4, &procs, &size, nil, 0) == 0 else { return [] }
+        for _ in 0 ..< snapshotAttempts {
+            var size = 0
+            guard sysctl(&mib, 4, nil, &size, nil, 0) == 0, size > 0 else { return [] }
 
-        return (0 ..< size / stride).map {
-            (pid: procs[$0].kp_proc.p_pid, parentPID: procs[$0].kp_eproc.e_ppid)
+            let capacity = size / stride + size / stride / 8 + 16
+            var procs = [kinfo_proc](repeating: kinfo_proc(), count: capacity)
+            size = capacity * stride
+
+            if sysctl(&mib, 4, &procs, &size, nil, 0) == 0 {
+                return (0 ..< size / stride).map {
+                    (pid: procs[$0].kp_proc.p_pid, parentPID: procs[$0].kp_eproc.e_ppid)
+                }
+            }
+
+            guard errno == ENOMEM else { return [] }
         }
+
+        return []
     }
 }
