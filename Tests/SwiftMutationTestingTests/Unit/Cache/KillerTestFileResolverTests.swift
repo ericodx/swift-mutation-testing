@@ -127,8 +127,22 @@ struct KillerTestFileResolverTests {
         #expect(resolver.resolve(testName: "") == nil)
     }
 
-    @Test("Given the name appears only inside a @Test title, when resolved, then that file is named")
-    func aNameThatAppearsOnlyInATestTitleStillNamesTheFile() throws {
+    @Test("Given a test reported by its title, when resolved, then the file whose @Test has that title is named")
+    func aTestTitleNamesItsFile() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let filePath = dir.appendingPathComponent("TitleTests.swift").path
+        try #"@Test("adds \"two\" numbers") func somethingElse() {}"#
+            .write(toFile: filePath, atomically: true, encoding: .utf8)
+
+        let resolver = KillerTestFileResolver(testFilePaths: [filePath], projectPath: dir.path)
+
+        #expect(resolver.resolve(testName: #"adds \"two\" numbers"#) == "TitleTests.swift")
+    }
+
+    @Test("Given the name appears only inside another test's title, when resolved, then no file is named")
+    func aNameInsideAnotherTitleNamesNothing() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -138,7 +152,39 @@ struct KillerTestFileResolverTests {
 
         let resolver = KillerTestFileResolver(testFilePaths: [filePath], projectPath: dir.path)
 
-        #expect(resolver.resolve(testName: "TitleTests/aCheck") == "TitleTests.swift")
+        #expect(resolver.resolve(testName: "TitleTests/aCheck") == nil)
+    }
+
+    @Test("Given one file that calls a test function and one that declares it, when resolved, then the declaring one")
+    func theDeclaringFileWinsOverACaller() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let caller = dir.appendingPathComponent("ACallerTests.swift").path
+        let declarer = dir.appendingPathComponent("ZDeclarerTests.swift").path
+        try "@Test func other() { aCheck(value: 1) }".write(toFile: caller, atomically: true, encoding: .utf8)
+        try "@Test func aCheck(value: Int) {}".write(toFile: declarer, atomically: true, encoding: .utf8)
+
+        let resolver = KillerTestFileResolver(testFilePaths: [caller, declarer], projectPath: dir.path)
+
+        #expect(resolver.resolve(testName: "aCheck(value:)") == "ZDeclarerTests.swift")
+    }
+
+    @Test("Given many kills, when they are resolved, then each test file is read only once")
+    func everyFileIsReadOnce() {
+        let reads = ReadCounter()
+        let resolver = KillerTestFileResolver(
+            testFilePaths: ["/p/ATests.swift", "/p/BTests.swift"], projectPath: "/p",
+            read: { path in reads.count(path) }
+        )
+
+        for _ in 0 ..< 50 {
+            _ = resolver.resolve(testName: "bCheck()")
+            _ = resolver.resolve(testName: "missing()")
+        }
+
+        #expect(resolver.resolve(testName: "bCheck()") == "BTests.swift")
+        #expect(reads.paths == ["/p/ATests.swift", "/p/BTests.swift"])
     }
 
     @Test("Given no test file mentions the name, when resolved, then no file is named")
@@ -152,5 +198,14 @@ struct KillerTestFileResolverTests {
         let resolver = KillerTestFileResolver(testFilePaths: [filePath], projectPath: dir.path)
 
         #expect(resolver.resolve(testName: "OtherTests/missingCheck") == nil)
+    }
+}
+
+private final class ReadCounter: @unchecked Sendable {
+    private(set) var paths: [String] = []
+
+    func count(_ path: String) -> String {
+        paths.append(path)
+        return path.hasSuffix("BTests.swift") ? "@Test func bCheck() {}" : "@Test func aCheck() {}"
     }
 }
