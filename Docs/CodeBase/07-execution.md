@@ -204,6 +204,7 @@ struct ExecutionDeps: Sendable {
     let reporter: any ProgressReporter
     let counter: MutationCounter
     let killerTestFileResolver: KillerTestFileResolver
+    var targetedSuites: [String: TargetedSuite] = [:]
 }
 ```
 
@@ -216,6 +217,7 @@ Bundle of shared collaborators passed between `MutantExecutor` and the stage typ
 | `reporter` | Progress events sink (console or silent) |
 | `counter` | Shared actor tracking the current mutant index |
 | `killerTestFileResolver` | Maps killer test names to source file paths for granular cache invalidation |
+| `targetedSuites` | The suites named after source files (`TargetedSuites.declared`), run first for a mutant of that file |
 
 ---
 
@@ -467,13 +469,13 @@ enum TargetedSuites {
     static let suffix = "Tests"
     static let testsDirectory = "Tests"
 
-    static func declared(in testFilePaths: [String]) -> [String: TargetedSuite]
+    static func declared(in testFilePaths: [String], read: (String) -> String? = …) -> [String: TargetedSuite]
     static func suite(for sourcePath: String, among suites: [String: TargetedSuite]) -> TargetedSuite?
     static func testTarget(of testFilePath: String) -> String?
 }
 ```
 
-Answers "which test suite is named after this source file, if any, and which test target declares it". `declared(in:)` reads the project's test files once, before the test pass, and keeps the name of each file that *declares a type of its own name* — `struct FooTests`, `final class FooTests: XCTestCase`, `actor FooTests`, `enum FooTests`. A file named `FooTests.swift` that declares `FooSpecs` does not count, and neither does a file that cannot be read as text. `testTarget(of:)` is the directory right under the last `Tests` component of the path — `CoreATests` for `Tests/CoreATests/FooTests.swift` — and `nil` for a test file that is not laid out that way.
+Answers "which test suite is named after this source file, if any, and which test target declares it". `declared(in:read:)` reads the project's test files once, before the test pass — from the run's `TestFilesHasher.Snapshot`, through `read`, so not from disk again — and the result travels in `ExecutionDeps.targetedSuites` to both the test pass and the incompatible SPM path, and keeps the name of each file that *declares a type of its own name* — `struct FooTests`, `final class FooTests: XCTestCase`, `actor FooTests`, `enum FooTests`. A file named `FooTests.swift` that declares `FooSpecs` does not count, and neither does a file that cannot be read as text. `testTarget(of:)` is the directory right under the last `Tests` component of the path — `CoreATests` for `Tests/CoreATests/FooTests.swift` — and `nil` for a test file that is not laid out that way.
 
 That check is what makes the feature free for projects that do not follow the convention: `suite(for:among:)` returns `nil`, no targeted run is attempted, and no mutant pays the test helper's start-up to run zero tests.
 

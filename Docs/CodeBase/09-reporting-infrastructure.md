@@ -965,6 +965,9 @@ Turns an absolute path into one relative to the project root, resolving symlinks
 struct TestFilesHasher: Sendable {
     static func defaultEnumerator(_ directory: URL) -> FileManager.DirectoryEnumerator?
 
+    struct Snapshot: Sendable { let paths: [String]; let contents: [String: String]; let hashes: [String: String] }
+
+    func snapshot(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> Snapshot
     func hashPerFile(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> [String: String]
     func testFilePaths(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> [String]
 }
@@ -974,6 +977,7 @@ Provides per-file test hashing and test file path enumeration for granular cache
 
 | Method | Description |
 |---|---|
+| `snapshot(projectPath:)` | Lists the test files once and reads each once: `paths` in enumeration order, `contents` by absolute path for the files that read as text, `hashes` as `hashPerFile` returns them. `MutantExecutor` takes one per run and builds the cache invalidation, the `KillerTestFileResolver` index and the targeted suites from it; it used to list the tree twice and read every test file three times |
 | `hashPerFile(projectPath:)` | Returns a dictionary mapping relative test file paths to their SHA256 content hashes. Symlinks pointing outside the project root use absolute paths as keys to avoid collisions |
 | `testFilePaths(projectPath:)` | Returns all test file paths in the project |
 
