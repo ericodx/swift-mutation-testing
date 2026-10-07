@@ -27,11 +27,11 @@ struct HtmlReporter: Sendable {
         for (filePath, file) in summary.files {
             let fileScore = String(format: "%.1f", file.score)
             let colorClass = scoreColorClass(file.score)
-            let relativePath = String(filePath.dropFirst(projectRoot.count))
+            let relativePath = ProjectRelativePath.make(for: filePath, in: projectRoot)
             let details = buildSurvivedDetails(file.survived)
             rows +=
                 "<tr>"
-                + "<td>\(relativePath)\(details)</td><td class=\"\(colorClass)\">\(fileScore)%</td>"
+                + "<td>\(relativePath.htmlEscaped)\(details)</td><td class=\"\(colorClass)\">\(fileScore)%</td>"
                 + "<td>\(file.killed.count)</td><td>\(file.survived.count)</td>"
                 + "<td>\(file.timeouts.count)</td><td>\(file.unviable.count)</td>"
                 + "<td>\(file.noCoverage.count)</td>"
@@ -45,7 +45,8 @@ struct HtmlReporter: Sendable {
         let mutantRows = survived.sorted { $0.descriptor.line < $1.descriptor.line }.map { result in
             let descriptor = result.descriptor
             return "<tr><td>\(descriptor.line)</td><td>\(descriptor.column)</td>"
-                + "<td>\(descriptor.operatorIdentifier)</td><td>\(descriptor.description)</td></tr>"
+                + "<td>\(descriptor.operatorIdentifier.htmlEscaped)</td>"
+                + "<td>\(descriptor.description.htmlEscaped)</td></tr>"
         }.joined()
         return "<details><summary>Survived mutants (\(survived.count))</summary>"
             + "<table class=\"mutant-table\"><thead><tr>"
@@ -92,7 +93,7 @@ struct HtmlReporter: Sendable {
         <body>
             <h1>Mutation Testing Report</h1>
             <p class="score">Score: \(score)%</p>
-            <p>\(detection)</p>
+            <p>\(detection.htmlEscaped)</p>
             <p>\(totals)</p>
             <table>
                 <thead>
