@@ -92,7 +92,7 @@ Files in path order, each to the shard with the fewest mutants so far, ties to t
 struct PlanJournal: Sendable {
     struct Entry: Codable, Equatable { let fingerprint: String; let status: ExecutionStatus
                                        let killerTestFile: String?; let activated: Bool?; let duration: Double }
-    init(path: String, mutants: [MutantDescriptor])
+    init(path: String, mutants: [MutantDescriptor], warning: OnceWarning = OnceWarning())
     static func path(projectPath: String, planSha256: String, shard: Shard?) -> String
     func record(status:for:killerTestFile:activated:duration:)
     static func entries(at path: String) -> [String: Entry]
@@ -100,7 +100,7 @@ struct PlanJournal: Sendable {
 }
 ```
 
-The progress of one run of a plan or shard. `record` maps the cache key to the mutant's fingerprint and appends one line with `JSONLines.append`; `entries` reads them back with `JSONLines.read`, the last line winning and a cut-short line skipped. `MutantExecutor(configuration:launcher:planJournal:)` hands it to `CacheStore`, whose `store(…, duration:)` records into it before its `noCache` and timeout guards. `PlanResumer` reads it for `run --plan`; `RunCommand` removes it when it has its results.
+The progress of one run of a plan or shard. `record` maps the cache key to the mutant's fingerprint and appends one line with `JSONLines.append`, warning once through `warning` if the line cannot be written; `entries` reads them back with `JSONLines.read`, the last line winning and a cut-short line skipped. `MutantExecutor(configuration:launcher:planJournal:)` hands it to `CacheStore`, whose `store(…, duration:)` records into it before its `noCache` and timeout guards. `PlanResumer` reads it for `run --plan`; `RunCommand` removes it when it has its results.
 
 ## Plan/PlanResumer.swift
 

@@ -190,7 +190,11 @@ actor CacheStore {
     static let formatVersion: Int
     static let journalName: String           // "journal.jsonl"
     init(
-        storePath: String, noCache: Bool = false, planJournal: PlanJournal? = nil, fileSystem: FileSystem = FileSystem()
+        storePath: String,
+        noCache: Bool = false,
+        planJournal: PlanJournal? = nil,
+        fileSystem: FileSystem = FileSystem(),
+        journalWarning: OnceWarning = OnceWarning()
     )
     func result(for key: MutantCacheKey) -> ExecutionStatus?
     func killerTestFile(for key: MutantCacheKey) -> String?
@@ -219,7 +223,7 @@ Persists execution results across runs with granular per-file invalidation. All 
 
 Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of `CacheEntry` values (key + status + killerTestFile + activated).
 
-**The journal.** `store(…)` also appends the entry as one JSON line to `journal.jsonl` (`JSONLines.append`, the helper `PlanJournal` shares), next to `results.json`, the moment it is called — before any report, before `persist()`. `load()` reads `results.json` and then replays the journal over it, the journal's verdicts winning, and does the replay even when `results.json` does not exist yet; a line cut short by a crash is skipped (`JSONLines.read`). `persist()` writes `results.json` and removes the journal. So a run that ends before `persist()` — `Ctrl+C`, a crash, a lost machine — leaves every verdict it reached, and the next `load()` starts from them. `MutantExecutor` writes the cache's metadata at the start of the run for the same reason: the journal must be read back against the test files it ran with. Under `noCache` nothing is journaled here; a `PlanJournal` given at init still records every verdict, timeouts included, since it is the progress of a planned run rather than a cache (see [11 — Plans](11-plans.md)). `store` takes the mutant's test `duration` for it.
+**The journal.** `store(…)` also appends the entry as one JSON line to `journal.jsonl` (`JSONLines.append`, the helper `PlanJournal` shares), next to `results.json`, the moment it is called — before any report, before `persist()`; a line that cannot be written is reported once through `journalWarning`. `load()` reads `results.json` and then replays the journal over it, the journal's verdicts winning, and does the replay even when `results.json` does not exist yet; a line cut short by a crash is skipped (`JSONLines.read`). `persist()` writes `results.json` and removes the journal. So a run that ends before `persist()` — `Ctrl+C`, a crash, a lost machine — leaves every verdict it reached, and the next `load()` starts from them. `MutantExecutor` writes the cache's metadata at the start of the run for the same reason: the journal must be read back against the test files it ran with. Under `noCache` nothing is journaled here; a `PlanJournal` given at init still records every verdict, timeouts included, since it is the progress of a planned run rather than a cache (see [11 — Plans](11-plans.md)). `store` takes the mutant's test `duration` for it.
 
 `load()` on a missing cache file replays only the journal. `persist()` creates the directory if needed and writes atomically.
 

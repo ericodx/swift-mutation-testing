@@ -783,12 +783,26 @@ The format shared by `PlanStore` and `BaselineStore`. `read` decodes a document 
 
 ```swift
 enum JSONLines {
-    static func append(_ value: some Encodable, to path: String)
+    static func append(_ value: some Encodable, to path: String) throws
+    static func failureWarning(for path: String, error: any Error) -> String
     static func read<Value: Decodable>(_ type: Value.Type, from path: String) -> [Value]
 }
 ```
 
-A file of one JSON value per line, shared by `CacheStore`'s journal and `PlanJournal`. `append` encodes one value, creates the parent directory if needed and appends the line, so a run cut short keeps every line it wrote; failures are swallowed. `read` returns the values in order, skipping a line an interruption left incomplete, and an empty array when the file does not exist.
+A file of one JSON value per line, shared by `CacheStore`'s journal and `PlanJournal`. `append` encodes one value, creates the parent directory if needed and appends the line, so a run cut short keeps every line it wrote. It throws when any step fails — a full disk, a parent that is a file — and each journal reports that through an `OnceWarning` with `failureWarning(for:error:)`, once per journal, and goes on: the verdict is still in memory and reaches `results.json` and the reports, but would be lost to an interruption. Every step used to be a `try?`, so a full disk dropped entries without a word. `read` returns the values in order, skipping a line an interruption left incomplete, and an empty array when the file does not exist.
+
+---
+
+## Infrastructure/OnceWarning.swift
+
+```swift
+final class OnceWarning: Sendable {
+    init(warn: @escaping @Sendable (String) -> Void = StandardError.write)
+    func callAsFunction(_ message: @autoclosure () -> String)
+}
+```
+
+Writes its first message through `warn` and ignores every later one, with an `Atomic<Bool>` so concurrent callers agree on which was first. Used for a warning that would otherwise repeat once per mutant.
 
 ---
 
