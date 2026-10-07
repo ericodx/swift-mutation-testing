@@ -167,4 +167,24 @@ struct TestFilesHasherTests {
 
         #expect(result.keys.sorted() == ["Tests/AppTests/Helpers.swift"])
     }
+
+    @Test("Given test files, when a snapshot is taken, then it lists every one and holds the readable ones")
+    func aSnapshotListsEveryFileAndHoldsTheReadableOnes() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let tests = dir.appendingPathComponent("Tests")
+        try FileManager.default.createDirectory(at: tests, withIntermediateDirectories: true)
+        let good = tests.appendingPathComponent("GoodTests.swift")
+        let bad = tests.appendingPathComponent("BadTests.swift")
+        try "import Testing".write(to: good, atomically: true, encoding: .utf8)
+        try Data([0xFF, 0xFE, 0x00, 0x80]).write(to: bad)
+
+        let snapshot = TestFilesHasher().snapshot(projectPath: dir.path)
+
+        #expect(snapshot.paths.count == 2)
+        #expect(snapshot.contents.values.sorted() == ["import Testing"])
+        #expect(snapshot.contents.keys.allSatisfy { $0.hasSuffix("GoodTests.swift") })
+        #expect(snapshot.hashes == TestFilesHasher().hashPerFile(projectPath: dir.path))
+        #expect(snapshot.hashes.keys.sorted() == ["Tests/GoodTests.swift"])
+    }
 }

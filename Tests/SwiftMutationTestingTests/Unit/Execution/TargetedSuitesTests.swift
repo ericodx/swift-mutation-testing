@@ -59,4 +59,14 @@ struct TargetedSuitesTests {
     func testTargetIsTheDirectoryUnderTests(path: String, expected: String?) {
         #expect(TargetedSuites.testTarget(of: path) == expected)
     }
+
+    @Test("Given contents handed in, when suites are declared, then they are read from them and not from disk")
+    func suitesAreReadFromTheContentsGiven() {
+        let suites = TargetedSuites.declared(
+            in: ["/nowhere/Tests/AppTests/CalcTests.swift", "/nowhere/Tests/AppTests/OtherTests.swift"],
+            read: { $0.hasSuffix("CalcTests.swift") ? "struct CalcTests {}" : nil }
+        )
+
+        #expect(suites == ["CalcTests": TargetedSuite(name: "CalcTests", testTarget: "AppTests")])
+    }
 }
