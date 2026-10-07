@@ -91,10 +91,11 @@ struct PlanMaterializer: Sendable {
             sources.append(SourceFile(path: path, content: content))
         }
 
-        let contentByFile = Dictionary(uniqueKeysWithValues: zip(plan.files.map(\.path), sources.map(\.content)))
+        let bytesByFile = Dictionary(
+            uniqueKeysWithValues: zip(plan.files.map(\.path), sources.map { Array($0.content.utf8) })
+        )
         for mutant in plan.mutants {
-            guard let content = contentByFile[mutant.file] else { throw PlanError.missingFile(file: mutant.file) }
-            let bytes = Array(content.utf8)
+            guard let bytes = bytesByFile[mutant.file] else { throw PlanError.missingFile(file: mutant.file) }
             guard
                 mutant.utf8Start >= 0, mutant.utf8End <= bytes.count, mutant.utf8Start <= mutant.utf8End,
                 Array(mutant.original.utf8) == Array(bytes[mutant.utf8Start ..< mutant.utf8End])
@@ -106,8 +107,18 @@ struct PlanMaterializer: Sendable {
         return sources
     }
 
+    static func fileHashes(of plan: Plan) -> [String: String] {
+        Dictionary(plan.files.map { ($0.path, $0.sha256) }, uniquingKeysWith: { first, _ in first })
+    }
+
     static func descriptor(
         of mutant: Plan.Mutant, at index: Int, in plan: Plan, projectPath: String
+    ) -> MutantDescriptor {
+        descriptor(of: mutant, at: index, fileHashes: fileHashes(of: plan), projectPath: projectPath)
+    }
+
+    static func descriptor(
+        of mutant: Plan.Mutant, at index: Int, fileHashes: [String: String], projectPath: String
     ) -> MutantDescriptor {
         MutantDescriptor(
             id: MutantID.make(index: index),
@@ -122,7 +133,7 @@ struct PlanMaterializer: Sendable {
             description: mutant.description,
             isSchematizable: mutant.schematizable,
             mutatedSourceContent: nil,
-            sourceContentHash: plan.files.first { $0.path == mutant.file }?.sha256 ?? "",
+            sourceContentHash: fileHashes[mutant.file] ?? "",
             fingerprint: mutant.fingerprint
         )
     }

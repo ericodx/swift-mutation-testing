@@ -4,6 +4,7 @@ struct ResultMerger: Sendable {
     struct Merged: Sendable {
         let results: [ExecutionResult]
         let totalDuration: Double
+        let planSha256: String
     }
 
     private struct Verdict {
@@ -36,9 +37,11 @@ struct ResultMerger: Sendable {
         }
 
         var results: [ExecutionResult] = []
+        let fileHashes = PlanMaterializer.fileHashes(of: plan)
         for (index, mutant) in plan.mutants.enumerated() {
             guard let verdict = verdicts[mutant.fingerprint] else { continue }
-            let descriptor = PlanMaterializer.descriptor(of: mutant, at: index, in: plan, projectPath: projectPath)
+            let descriptor = PlanMaterializer.descriptor(
+                of: mutant, at: index, fileHashes: fileHashes, projectPath: projectPath)
             results.append(
                 ExecutionResult(
                     descriptor: descriptor,
@@ -49,7 +52,9 @@ struct ResultMerger: Sendable {
             )
         }
 
-        return Merged(results: results, totalDuration: results.reduce(0) { $0 + $1.testDuration })
+        return Merged(
+            results: results, totalDuration: results.reduce(0) { $0 + $1.testDuration }, planSha256: planSha256
+        )
     }
 
     private func read(_ path: String) throws -> MutationReportPayload {

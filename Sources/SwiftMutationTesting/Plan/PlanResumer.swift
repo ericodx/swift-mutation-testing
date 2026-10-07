@@ -39,10 +39,12 @@ struct PlanResumer: Sendable {
         from journaled: [String: PlanJournal.Entry], in selection: [Plan.Mutant], projectPath: String
     ) -> [ExecutionResult] {
         let selected = Set(selection.map(\.fingerprint))
+        let fileHashes = PlanMaterializer.fileHashes(of: plan)
         return plan.mutants.enumerated().compactMap { index, mutant in
             guard let entry = journaled[mutant.fingerprint], selected.contains(mutant.fingerprint) else { return nil }
             return ExecutionResult(
-                descriptor: PlanMaterializer.descriptor(of: mutant, at: index, in: plan, projectPath: projectPath),
+                descriptor: PlanMaterializer.descriptor(
+                    of: mutant, at: index, fileHashes: fileHashes, projectPath: projectPath),
                 status: entry.status, testDuration: entry.duration, killerTestFile: entry.killerTestFile,
                 activated: entry.activated
             )

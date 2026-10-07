@@ -18,7 +18,7 @@ struct MergeCommand: Command {
             "  ✓ Merged \(options.results.count) results of \(planPath): \(summary.results.count) mutants"
         )
         return try conclusion.conclude(
-            summary, identity: RunIdentity(planSha256: try PlanStore.sha256(of: plan), shard: nil)
+            summary, identity: RunIdentity(planSha256: merged.planSha256, shard: nil)
         )
     }
 }
