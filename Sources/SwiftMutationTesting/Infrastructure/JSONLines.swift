@@ -1,19 +1,31 @@
 import Foundation
 
 enum JSONLines {
-    static func append(_ value: some Encodable, to path: String) {
-        guard var line = try? JSONEncoder().encode(value) else { return }
+    static func append(_ value: some Encodable, to path: String) throws {
+        var line = try JSONEncoder().encode(value)
         line.append(UInt8(ascii: "\n"))
 
         let url = URL(fileURLWithPath: path)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let handle = try? FileHandle(forWritingTo: url) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: line)
-        } else {
-            try? line.write(to: url)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard FileManager.default.fileExists(atPath: path) else {
+            try line.write(to: url)
+            return
         }
+
+        let handle = try FileHandle(forWritingTo: url)
+        do {
+            try handle.seekToEnd()
+            try handle.write(contentsOf: line)
+        } catch {
+            try? handle.close()
+            throw error
+        }
+        try handle.close()
+    }
+
+    static func failureWarning(for path: String, error: any Error) -> String {
+        "Warning: could not write to '\(path)' (\(error.localizedDescription)); "
+            + "verdicts reached from now on may be lost if the run is interrupted"
     }
 
     static func read<Value: Decodable>(_ type: Value.Type, from path: String) -> [Value] {
