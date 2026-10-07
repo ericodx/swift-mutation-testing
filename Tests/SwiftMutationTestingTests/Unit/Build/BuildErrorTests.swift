@@ -11,7 +11,7 @@ struct BuildErrorTests {
         #expect(error.errorDescription?.contains("Build failed") == true)
     }
 
-    @Test("Given compilationFailed with empty output, when errorDescription accessed, then returns build failed message")
+    @Test("Given compilationFailed with empty output, when errorDescription accessed, then it says the build failed")
     func compilationFailedEmptyOutput() {
         let error = BuildError.compilationFailed(output: "")
         #expect(error.errorDescription == "Build failed. The schematized source could not be compiled.")

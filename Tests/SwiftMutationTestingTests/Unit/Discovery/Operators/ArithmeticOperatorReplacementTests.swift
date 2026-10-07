@@ -15,7 +15,9 @@ struct ArithmeticOperatorReplacementTests {
 
     @Test("Given a product next to an availability check, when visited, then only the product is mutated")
     func aProductNextToAnAvailabilityCheckIsStillMutated() {
-        let source = makeParsedSource("func f(_ a: Int) -> Int { if #available(macOS 10.15, *) { return a * 2 }; return a }")
+        let source = makeParsedSource(
+            "func f(_ a: Int) -> Int { if #available(macOS 10.15, *) { return a * 2 }; return a }"
+        )
         let result = op.mutations(in: source)
 
         #expect(result.count == 1)

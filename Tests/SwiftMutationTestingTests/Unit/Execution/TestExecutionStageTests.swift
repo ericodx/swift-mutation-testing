@@ -435,7 +435,7 @@ struct TestExecutionStageTests {
         (0 ..< 4).map { makeMutantDescriptor(id: "m\($0)", isSchematizable: true) }
     }
 
-    @Test("Given a mutant that times out under load, when the pass ends, then it is run again alone and takes its real verdict")
+    @Test("Given a mutant that times out under load, when the pass ends, then it runs again alone for its real verdict")
     func timedOutMutantIsRetriedAloneAndTakesItsRealVerdict() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -464,7 +464,8 @@ struct TestExecutionStageTests {
         defer { FileHelpers.cleanup(dir) }
 
         let launcher = TimeoutUnderLoadLauncher(timesOutFirst: ["m0", "m2"])
-        let (stage, context, _) = try await makeLoadFixture(in: dir, launcher: launcher, reporter: MockProgressReporter())
+        let (stage, context, _) = try await makeLoadFixture(
+            in: dir, launcher: launcher, reporter: MockProgressReporter())
 
         _ = try await stage.execute(mutants: fourMutants(), in: context)
 
@@ -476,13 +477,14 @@ struct TestExecutionStageTests {
         #expect(await launcher.inFlightDuringRetry == ["m0": 1, "m2": 1])
     }
 
-    @Test("Given a mutant under load, when it runs, then its limit is twice the timeout and the run again uses the timeout")
+    @Test("Given a mutant under load, when it runs, then its limit is twice the timeout and the rerun uses the timeout")
     func loadedPassDoublesTheLimitAndTheRunAgainRestoresIt() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
         let launcher = TimeoutUnderLoadLauncher(timesOutFirst: ["m1"])
-        let (stage, context, _) = try await makeLoadFixture(in: dir, launcher: launcher, reporter: MockProgressReporter())
+        let (stage, context, _) = try await makeLoadFixture(
+            in: dir, launcher: launcher, reporter: MockProgressReporter())
 
         _ = try await stage.execute(mutants: fourMutants(), in: context)
 
@@ -544,7 +546,8 @@ struct TestExecutionStageTests {
         defer { FileHelpers.cleanup(dir) }
 
         let launcher = TimeoutUnderLoadLauncher(timesOutFirst: ["m0"])
-        let (stage, context, deps) = try await makeLoadFixture(in: dir, launcher: launcher, reporter: MockProgressReporter())
+        let (stage, context, deps) = try await makeLoadFixture(
+            in: dir, launcher: launcher, reporter: MockProgressReporter())
         let mutants = fourMutants()
         await deps.cacheStore.store(status: .survived, for: MutantCacheKey.make(for: mutants[0]))
 

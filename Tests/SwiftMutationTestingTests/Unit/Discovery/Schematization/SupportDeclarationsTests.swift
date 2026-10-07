@@ -72,7 +72,9 @@ struct SupportDeclarationsTests {
 
         #expect(block.contains("@usableFromInline nonisolated static let id: String ="))
         #expect(block.contains(#"environment["__SWIFT_MUTATION_TESTING_ACTIVE"]"#))
-        #expect(block.contains("@usableFromInline nonisolated internal var __swiftMutationTestingID_\(suffix): String {"))
+        #expect(
+            block.contains("@usableFromInline nonisolated internal var __swiftMutationTestingID_\(suffix): String {")
+        )
         #expect(block.contains("__SwiftMutationTesting_\(suffix).id"))
     }
 
