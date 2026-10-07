@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import SwiftMutationTesting
@@ -761,5 +762,25 @@ struct CacheStoreTests {
     @Test("Given incompatible mutants now carry their activation, when checked, then the format version is 3")
     func formatVersionIsThree() {
         #expect(CacheStore.formatVersion == 3)
+    }
+
+    @Test("Given a cache journal that cannot be written, when verdicts are stored, then one warning names the file")
+    func anUnwritableJournalWarnsOnce() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        try FileHelpers.write("", named: "blocker", in: dir)
+        let storePath = dir.appendingPathComponent("blocker/cache/results.json").path
+        let written = Mutex<[String]>([])
+        let store = CacheStore(
+            storePath: storePath, journalWarning: OnceWarning { line in written.withLock { $0.append(line) } }
+        )
+
+        await store.store(status: .survived, for: makeMutantCacheKey(utf8Offset: 1))
+        await store.store(status: .killed(by: "t"), for: makeMutantCacheKey(utf8Offset: 2))
+
+        let warnings = written.withLock { $0 }
+        #expect(warnings.count == 1)
+        #expect(warnings.first?.contains(CacheStore.journalName) == true)
+        #expect(await store.result(for: makeMutantCacheKey(utf8Offset: 1)) == .survived)
     }
 }

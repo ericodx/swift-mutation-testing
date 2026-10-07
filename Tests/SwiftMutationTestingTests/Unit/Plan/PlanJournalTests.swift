@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import SwiftMutationTesting
@@ -97,5 +98,32 @@ struct PlanJournalTests {
 
         #expect(PlanJournal.entries(at: path)["f0"]?.status == .timeout)
         #expect(await store.result(for: MutantCacheKey.make(for: mutant)) == nil)
+    }
+
+    @Test("Given a journal that cannot be written, when verdicts are recorded, then one warning names the file")
+    func anUnwritableJournalWarnsOnce() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        try FileHelpers.write("", named: "blocker", in: dir)
+        let path = dir.appendingPathComponent("blocker/j.jsonl").path
+        let mutants = [
+            makeMutantDescriptor(id: "m0", utf8Offset: 1, fingerprint: "f0"),
+            makeMutantDescriptor(id: "m1", utf8Offset: 2, fingerprint: "f1"),
+        ]
+        let written = Mutex<[String]>([])
+        let journal = PlanJournal(
+            path: path, mutants: mutants, warning: OnceWarning { line in written.withLock { $0.append(line) } }
+        )
+
+        for mutant in mutants {
+            journal.record(
+                status: .survived, for: MutantCacheKey.make(for: mutant), killerTestFile: nil, activated: true,
+                duration: 1
+            )
+        }
+
+        let warnings = written.withLock { $0 }
+        #expect(warnings.count == 1)
+        #expect(warnings.first?.hasPrefix("Warning: could not write to '\(path)'") == true)
     }
 }
