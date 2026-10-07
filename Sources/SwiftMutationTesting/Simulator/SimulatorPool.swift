@@ -27,6 +27,8 @@ actor SimulatorPool {
             return
         }
 
+        await removeOrphanedClones()
+
         do {
             try await cloneBase(baseUDID)
             try await bootClones(clonedUDIDs)
@@ -60,7 +62,7 @@ actor SimulatorPool {
                     let result = try await launcher.launchCapturing(
                         ProcessRequest(
                             executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-                            arguments: ["simctl", "clone", base, "XMR-\(session)-\(index)"],
+                            arguments: ["simctl", "clone", base, CloneName.make(session: session, index: index)],
                             environment: nil,
                             additionalEnvironment: [:],
                             workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
@@ -133,8 +135,46 @@ actor SimulatorPool {
     func tearDown() async {
         guard baseUDID != nil else { return }
 
+        await remove(clonedUDIDs)
+    }
+
+    static func orphanedClones(in listOutput: String, isAlive: (pid_t) -> Bool = ProcessTree.isAlive) -> [String] {
+        guard
+            let data = listOutput.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let devices = json["devices"] as? [String: [[String: Any]]]
+        else { return [] }
+
+        return devices.values.flatMap { $0 }.compactMap { device in
+            guard
+                let name = device["name"] as? String,
+                let udid = device["udid"] as? String,
+                CloneName.isOrphaned(name, isAlive: isAlive)
+            else { return nil }
+            return udid
+        }.sorted()
+    }
+
+    private func removeOrphanedClones() async {
+        guard
+            let listed = try? await launcher.launchCapturing(
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                    arguments: ["simctl", "list", "devices", "--json"],
+                    environment: nil,
+                    additionalEnvironment: [:],
+                    workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                    timeout: 30
+                )
+            ),
+            listed.exitCode == 0
+        else { return }
+
+        await remove(Self.orphanedClones(in: listed.output))
+    }
+
+    private func remove(_ udids: [String]) async {
         let launcher = self.launcher
-        let udids = clonedUDIDs
 
         await withTaskGroup(of: Void.self) { group in
             for udid in udids {
