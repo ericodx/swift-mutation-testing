@@ -42,33 +42,12 @@ struct FallbackExecutor: Sendable {
         await deps.reporter.report(.fallbackBuildStarted(filePath: file.originalPath))
 
         let artifact: BuildArtifact
-        switch configuration.build.projectType {
-        case .xcode(let scheme, let destination):
-            do {
-                artifact = try await BuildStage(launcher: deps.launcher).build(
-                    sandbox: sandbox,
-                    container: configuration.build.xcodeContainer,
-                    scheme: scheme,
-                    destination: destination,
-                    timeout: configuration.build.buildTimeout
-                )
-                await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
-            } catch {
-                await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
-                return await markBuildFailure(error, mutants: fileMutants)
-            }
-
-        case .spm:
-            do {
-                artifact = try await BuildStage(launcher: deps.launcher).buildSPM(
-                    sandbox: sandbox,
-                    timeout: configuration.build.buildTimeout
-                )
-                await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
-            } catch {
-                await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
-                return await markBuildFailure(error, mutants: fileMutants)
-            }
+        do {
+            artifact = try await build(sandbox)
+            await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
+        } catch let error as BuildError where Self.isVerdict(error) {
+            await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
+            return await markBuildFailure(error, mutants: fileMutants)
         }
 
         let selection = TestTargetSelection.make(
@@ -98,16 +77,35 @@ struct FallbackExecutor: Sendable {
         return results
     }
 
-    private func isTimeout(_ error: any Error) -> Bool {
-        guard case BuildError.timedOut = error else { return false }
-        return true
+    private func build(_ sandbox: Sandbox) async throws -> BuildArtifact {
+        let stage = BuildStage(launcher: deps.launcher)
+        switch configuration.build.projectType {
+        case .xcode(let scheme, let destination):
+            return try await stage.build(
+                sandbox: sandbox,
+                container: configuration.build.xcodeContainer,
+                scheme: scheme,
+                destination: destination,
+                timeout: configuration.build.buildTimeout
+            )
+
+        case .spm:
+            return try await stage.buildSPM(sandbox: sandbox, timeout: configuration.build.buildTimeout)
+        }
+    }
+
+    private static func isVerdict(_ error: BuildError) -> Bool {
+        switch error {
+        case .compilationFailed, .timedOut: true
+        case .xctestrunNotFound: false
+        }
     }
 
     private func markBuildFailure(
-        _ error: any Error,
+        _ error: BuildError,
         mutants: [MutantDescriptor]
     ) async -> [ExecutionResult] {
-        let status: ExecutionStatus = isTimeout(error) ? .timeout : .unviable
+        let status: ExecutionStatus = if case .timedOut = error { .timeout } else { .unviable }
 
         var results: [ExecutionResult] = []
         for mutant in mutants {
