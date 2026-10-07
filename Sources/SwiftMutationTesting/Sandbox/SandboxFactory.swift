@@ -5,39 +5,23 @@ struct SandboxFactory: Sendable {
         projectPath: String,
         schematizedFiles: [SchematizedFile]
     ) async throws -> Sandbox {
-        let sandboxURL = try makeSandboxRoot()
-        let projectURL = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath()
-
         let schematizedPaths = Dictionary(
             uniqueKeysWithValues: schematizedFiles.map {
                 (URL(fileURLWithPath: $0.originalPath).resolvingSymlinksInPath().path, $0.schematizedContent)
             }
         )
 
-        try populateDirectory(
-            source: projectURL,
-            destination: sandboxURL,
-            schematizedPaths: schematizedPaths,
-            mutatedMapping: nil
-        )
-
-        try disableSwiftLintBuildPhases(in: sandboxURL)
-
-        return Sandbox(rootURL: sandboxURL)
+        return try await Self.offCooperativePool {
+            let sandbox = try populate(projectPath: projectPath, replacing: schematizedPaths)
+            try disableSwiftLintBuildPhases(in: sandbox.rootURL)
+            return sandbox
+        }
     }
 
     func createClean(projectPath: String) async throws -> Sandbox {
-        let sandboxURL = try makeSandboxRoot()
-        let projectURL = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath()
-
-        try populateDirectory(
-            source: projectURL,
-            destination: sandboxURL,
-            schematizedPaths: [:],
-            mutatedMapping: nil
-        )
-
-        return Sandbox(rootURL: sandboxURL)
+        try await Self.offCooperativePool {
+            try populate(projectPath: projectPath, replacing: [:])
+        }
     }
 
     func create(
@@ -45,31 +29,69 @@ struct SandboxFactory: Sendable {
         mutatedFilePath: String,
         mutatedContent: String
     ) async throws -> Sandbox {
-        let sandboxURL = try makeSandboxRoot()
-        let projectURL = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath()
         let mutatedCanonical = URL(fileURLWithPath: mutatedFilePath).resolvingSymlinksInPath().path
+
+        return try await Self.offCooperativePool {
+            try populate(projectPath: projectPath, replacing: [mutatedCanonical: mutatedContent])
+        }
+    }
+
+    static func offCooperativePool<Value: Sendable>(
+        _ work: @escaping @Sendable () throws -> Value
+    ) async throws -> Value {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(with: Result { try work() })
+            }
+        }
+    }
+
+    private func populate(projectPath: String, replacing replacements: [String: String]) throws -> Sandbox {
+        let sandboxURL = SandboxName.directory.appendingPathComponent(SandboxName.make())
+        try FileManager.default.createDirectory(at: sandboxURL, withIntermediateDirectories: true)
+        let projectURL = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath()
 
         try populateDirectory(
             source: projectURL,
             destination: sandboxURL,
-            schematizedPaths: [:],
-            mutatedMapping: (path: mutatedCanonical, content: mutatedContent)
+            replacements: Replacements(replacements, under: projectURL.path),
+            relativePath: "",
+            copiesFiles: false
         )
 
         return Sandbox(rootURL: sandboxURL)
     }
 
-    private func makeSandboxRoot() throws -> URL {
-        let url = SandboxName.directory.appendingPathComponent(SandboxName.make())
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
+    private struct Replacements {
+        let byCanonicalPath: [String: String]
+        let byRelativePath: [String: String]
+
+        init(_ byCanonicalPath: [String: String], under root: String) {
+            self.byCanonicalPath = byCanonicalPath
+            let prefix = root.hasSuffix("/") ? root : root + "/"
+            byRelativePath = Dictionary(
+                byCanonicalPath.compactMap { path, content in
+                    path.hasPrefix(prefix) ? (String(path.dropFirst(prefix.count)), content) : nil
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+
+        var isEmpty: Bool { byCanonicalPath.isEmpty }
+
+        func content(for source: URL, relativePath: String, isSymlink: Bool) -> String? {
+            if let content = byRelativePath[relativePath] { return content }
+            guard isSymlink else { return nil }
+            return byCanonicalPath[source.resolvingSymlinksInPath().path]
+        }
     }
 
     private func populateDirectory(
         source: URL,
         destination: URL,
-        schematizedPaths: [String: String],
-        mutatedMapping: (path: String, content: String)?
+        replacements: Replacements,
+        relativePath: String,
+        copiesFiles: Bool
     ) throws {
         let items = try FileManager.default.contentsOfDirectory(
             at: source,
@@ -79,6 +101,7 @@ struct SandboxFactory: Sendable {
         for item in items {
             let name = item.lastPathComponent
             let dest = destination.appendingPathComponent(name)
+            let itemRelativePath = relativePath.isEmpty ? name : relativePath + "/" + name
             let values = try item.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
             let isDirectory = values.isDirectory == true
             let isSymlink = values.isSymbolicLink == true
@@ -97,16 +120,16 @@ struct SandboxFactory: Sendable {
                 try populateDirectory(
                     source: item,
                     destination: dest,
-                    schematizedPaths: schematizedPaths,
-                    mutatedMapping: mutatedMapping
+                    replacements: replacements,
+                    relativePath: itemRelativePath,
+                    copiesFiles: copiesFiles || (name == "xcshareddata" && source.pathExtension == "xcworkspace")
                 )
+            } else if !replacements.isEmpty,
+                let content = replacements.content(for: item, relativePath: itemRelativePath, isSymlink: isSymlink)
+            {
+                try content.write(to: dest, atomically: true, encoding: .utf8)
             } else {
-                try writeFile(
-                    source: item,
-                    destination: dest,
-                    schematizedPaths: schematizedPaths,
-                    mutatedMapping: mutatedMapping
-                )
+                try writeFile(source: item, destination: dest, copiesFiles: copiesFiles)
             }
         }
     }
@@ -140,25 +163,8 @@ struct SandboxFactory: Sendable {
         }
     }
 
-    private func writeFile(
-        source: URL,
-        destination: URL,
-        schematizedPaths: [String: String],
-        mutatedMapping: (path: String, content: String)?
-    ) throws {
-        let canonicalPath = source.resolvingSymlinksInPath().path
-
-        if let content = schematizedPaths[canonicalPath] {
-            try content.write(to: destination, atomically: true, encoding: .utf8)
-            return
-        }
-
-        if let mapping = mutatedMapping, canonicalPath == mapping.path {
-            try mapping.content.write(to: destination, atomically: true, encoding: .utf8)
-            return
-        }
-
-        if source.path.contains(".xcworkspace/xcshareddata/") {
+    private func writeFile(source: URL, destination: URL, copiesFiles: Bool) throws {
+        if copiesFiles {
             try FileManager.default.copyItem(at: source, to: destination)
             return
         }
