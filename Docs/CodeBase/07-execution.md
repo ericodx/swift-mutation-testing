@@ -581,6 +581,8 @@ Manages a fixed-size pool of simulator slots for parallel test execution.
 | `platform=macOS` and SPM | Creates one no-op slot (no UDID) | No-op |
 | iOS / tvOS / watchOS | Clones the base simulator `size` times; boots each clone | Shuts down and deletes each clone |
 
+Each clone's UDID is recorded as soon as its `simctl clone` returns, and every clone call is waited for even after one fails. If any clone or boot fails, `setUp` runs `tearDown` before rethrowing, so a pool that fails part-way leaves no `XMR-<session>-<n>` device behind — the caller only tears down a pool whose `setUp` succeeded.
+
 `usesSimulators` reports whether slots are simulator clones. One no-op slot means a run is effectively sequential regardless of `size`, which is why `ConfigurationResolver` resolves concurrency down to 1 for those destinations.
 
 `acquire()` returns an available slot immediately or suspends the caller until one is released. The suspension is wrapped with `withTaskCancellationHandler` — if the owning task is cancelled, the slot is released to prevent permanent deadlock.
