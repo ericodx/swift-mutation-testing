@@ -26,6 +26,9 @@ struct ResultMergerTests {
         #expect(merged.results.map(\.descriptor.fingerprint) == Self.mutants.map(\.fingerprint))
         #expect(merged.results[0].descriptor.filePath.hasSuffix("/Sources/A.swift"))
         #expect(abs(merged.totalDuration - 0.3) < 0.000_001)
+        #expect(merged.planSha256 == (try PlanStore.sha256(of: plan)))
+        let hashes = PlanMaterializer.fileHashes(of: plan)
+        #expect(merged.results.map(\.descriptor.sourceContentHash) == Self.mutants.map { hashes[$0.file] })
     }
 
     @Test("Given a result of another plan, when merged, then it is refused by name")
