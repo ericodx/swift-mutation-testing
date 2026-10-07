@@ -46,7 +46,7 @@ struct JsonReporter: Sendable {
             location: MutationReportLocation(
                 start: MutationReportPosition(line: descriptor.line, column: descriptor.column),
                 end: MutationReportPosition(
-                    line: descriptor.line, column: descriptor.column + descriptor.originalText.count)
+                    line: descriptor.line, column: descriptor.column + descriptor.originalText.utf8.count)
             ),
             status: result.status.mutationReportStatus,
             statusReason: result.reportStatusReason,

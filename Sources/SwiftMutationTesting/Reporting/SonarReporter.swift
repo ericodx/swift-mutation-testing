@@ -29,7 +29,7 @@ struct SonarReporter: Sendable {
                         startLine: descriptor.line,
                         endLine: descriptor.line,
                         startColumn: descriptor.column,
-                        endColumn: descriptor.column + descriptor.originalText.count
+                        endColumn: descriptor.column + descriptor.originalText.utf8.count
                     )
                 )
             )
