@@ -149,4 +149,22 @@ struct TestFilesHasherTests {
         #expect(hasher.testFilePaths(projectPath: dir.path, enumerate: { _ in nil }).isEmpty)
         #expect(hasher.hashPerFile(projectPath: dir.path, enumerate: { _ in nil }).isEmpty)
     }
+
+    @Test("Given a project inside a directory named like a test target, when listing test files, then sources stay out")
+    func aParentNamedLikeATestTargetIsIgnored() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let project = dir.appendingPathComponent("IntegrationTests/App")
+        let sources = project.appendingPathComponent("Sources")
+        let tests = project.appendingPathComponent("Tests/AppTests")
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tests, withIntermediateDirectories: true)
+        try FileHelpers.write("let a = 1", named: "Calc.swift", in: sources)
+        try FileHelpers.write("let b = 2", named: "Helpers.swift", in: tests)
+
+        let result = TestFilesHasher().hashPerFile(projectPath: project.path)
+
+        #expect(result.keys.sorted() == ["Tests/AppTests/Helpers.swift"])
+    }
 }
