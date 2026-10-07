@@ -783,4 +783,23 @@ struct CacheStoreTests {
         #expect(warnings.first?.contains(CacheStore.journalName) == true)
         #expect(await store.result(for: makeMutantCacheKey(utf8Offset: 1)) == .survived)
     }
+
+    @Test("Given activations in memory and a cache it cannot read, when loaded, then the activations are forgotten too")
+    func anUnreadableCacheForgetsTheActivations() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let storePath = dir.appendingPathComponent("results.json").path
+        let store = CacheStore(storePath: storePath)
+        let key = makeMutantCacheKey()
+        await store.store(status: .killed(by: "t"), for: key, killerTestFile: "Tests/T.swift", activated: true)
+        try "not json".write(toFile: storePath, atomically: true, encoding: .utf8)
+
+        try await StandardError.$capture.withValue(StandardOutput.Capture()) {
+            try await store.load()
+        }
+
+        #expect(await store.result(for: key) == nil)
+        #expect(await store.killerTestFile(for: key) == nil)
+        #expect(await store.activated(for: key) == nil)
+    }
 }
