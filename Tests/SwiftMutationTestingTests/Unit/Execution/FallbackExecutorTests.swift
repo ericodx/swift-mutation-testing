@@ -209,4 +209,103 @@ struct FallbackExecutorTests {
 
         #expect(results.map(\.descriptor.id) == ["m0"])
     }
+
+    @Test(
+        "Given the fallback build is cancelled, when execute called, then the cancellation ends it and nothing is recorded"
+    )
+    func aCancelledFallbackBuildRecordsNothing() async throws {
+        let fixture = try FailingBuildFixture(launcher: CancellingLauncher())
+        defer { fixture.cleanUp() }
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await fixture.execute()
+        }
+        #expect(await fixture.cachedResult() == nil)
+    }
+
+    @Test(
+        "Given the fallback build cannot be started, when execute called, then the error ends it and nothing is recorded"
+    )
+    func aBuildThatCannotStartRecordsNothing() async throws {
+        let fixture = try FailingBuildFixture(launcher: MockProcessLauncher(exitCode: 0, throwsOnCapture: true))
+        defer { fixture.cleanUp() }
+
+        await #expect(throws: CocoaError.self) {
+            _ = try await fixture.execute()
+        }
+        #expect(await fixture.cachedResult() == nil)
+    }
+
+    @Test(
+        "Given an Xcode fallback build that leaves no xctestrun, when execute called, then it fails instead of judging"
+    )
+    func aMissingXctestrunRecordsNothing() async throws {
+        let fixture = try FailingBuildFixture(
+            launcher: MockProcessLauncher(exitCode: 0),
+            projectType: .xcode(scheme: "App", destination: "platform=macOS")
+        )
+        defer { fixture.cleanUp() }
+
+        await #expect(throws: BuildError.xctestrunNotFound) {
+            _ = try await fixture.execute()
+        }
+        #expect(await fixture.cachedResult() == nil)
+    }
+
+    // MARK: - Private
+
+    private struct CancellingLauncher: ProcessLaunching {
+        func launch(
+            executableURL: URL, arguments: [String], workingDirectoryURL: URL, timeout: Double
+        ) async throws -> Int32 {
+            throw CancellationError()
+        }
+
+        func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String) {
+            throw CancellationError()
+        }
+    }
+
+    private struct FailingBuildFixture {
+        let directory: URL
+        let deps: ExecutionDeps
+        let configuration: RunnerConfiguration
+        let mutant: MutantDescriptor
+        let sourceFile: URL
+
+        init(launcher: any ProcessLaunching, projectType: ProjectType = .spm) throws {
+            directory = try FileHelpers.makeTemporaryDirectory()
+            sourceFile = directory.appendingPathComponent("Foo.swift")
+            try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+            configuration = makeRunnerConfiguration(projectPath: directory.path, projectType: projectType)
+            deps = makeExecutionDeps(
+                launcher: launcher, cacheStorePath: directory.appendingPathComponent("cache.json").path
+            )
+            mutant = makeMutantDescriptor(id: "m0", filePath: sourceFile.path, isSchematizable: true)
+        }
+
+        func execute() async throws -> [ExecutionResult] {
+            let pool = makeSimulatorPool()
+            try await pool.setUp()
+            return try await FallbackExecutor(deps: deps, configuration: configuration).execute(
+                input: makeRunnerInput(
+                    projectPath: directory.path,
+                    projectType: configuration.build.projectType,
+                    schematizedFiles: [
+                        SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")
+                    ],
+                    mutants: [mutant]
+                ),
+                pool: pool
+            )
+        }
+
+        func cachedResult() async -> ExecutionResult? {
+            await deps.cacheStore.cachedResult(for: mutant)
+        }
+
+        func cleanUp() {
+            FileHelpers.cleanup(directory)
+        }
+    }
 }
