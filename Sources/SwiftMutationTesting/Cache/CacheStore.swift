@@ -269,6 +269,7 @@ actor CacheStore {
     private func discardUnreadable() {
         entries = [:]
         killerTestFiles = [:]
+        activations = [:]
         let directory = URL(fileURLWithPath: storePath).deletingLastPathComponent().path
         StandardError.write(
             "Warning: ignoring the cache at '\(directory)', which this version cannot read; "
