@@ -28,7 +28,8 @@ struct ApplicationVerifier: Sendable {
             written[original] = content
         }
 
-        let missing = mutants.filter { !isApplied($0, written: written) }.map(Self.label)
+        var files = OriginalFiles()
+        let missing = mutants.filter { !isApplied($0, written: written, files: &files) }.map(Self.label)
 
         guard missing.isEmpty else { throw IntegrityError.mutantsNotApplied(mutants: missing) }
     }
@@ -39,13 +40,31 @@ struct ApplicationVerifier: Sendable {
         "\(mutant.id) (\(URL(fileURLWithPath: mutant.filePath).lastPathComponent):\(mutant.line))"
     }
 
-    private func isApplied(_ mutant: MutantDescriptor, written: [String: String]) -> Bool {
-        guard mutant.isSchematizable else {
-            guard let mutated = mutant.mutatedSourceContent else { return false }
-            return mutated != (try? String(contentsOfFile: mutant.filePath, encoding: .utf8))
+    private struct OriginalFiles {
+        private var contents: [String: String?] = [:]
+        private var canonicalPaths: [String: String] = [:]
+
+        mutating func content(of path: String) -> String? {
+            if let cached = contents[path] { return cached }
+            let content = try? String(contentsOfFile: path, encoding: .utf8)
+            contents[path] = content
+            return content
         }
 
-        let path = URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path
-        return written[path]?.contains("case \"\(mutant.id)\":") == true
+        mutating func canonicalPath(of path: String) -> String {
+            if let cached = canonicalPaths[path] { return cached }
+            let canonical = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+            canonicalPaths[path] = canonical
+            return canonical
+        }
+    }
+
+    private func isApplied(_ mutant: MutantDescriptor, written: [String: String], files: inout OriginalFiles) -> Bool {
+        guard mutant.isSchematizable else {
+            guard let mutated = mutant.mutatedSourceContent else { return false }
+            return mutated != files.content(of: mutant.filePath)
+        }
+
+        return written[files.canonicalPath(of: mutant.filePath)]?.contains("case \"\(mutant.id)\":") == true
     }
 }
