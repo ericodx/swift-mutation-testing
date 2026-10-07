@@ -765,17 +765,22 @@ The file-system calls that `ConfigurationResolver`, `ProjectDetector`, `XcodeCon
 
 ```swift
 enum VersionedJSON {
+    struct Failures {
+        let notFound: any Error
+        let unreadable: any Error
+        let unsupported: (Int) -> any Error
+    }
+
     static func read<Document: Decodable>(
         _ type: Document.Type, from path: String, version: Int, decoder: JSONDecoder = JSONDecoder(),
-        notFound: @autoclosure () -> any Error, unreadable: @autoclosure () -> any Error,
-        unsupported: (Int) -> any Error
+        failures: Failures
     ) throws -> Document
     static func encode(_ document: some Encodable, dates: JSONEncoder.DateEncodingStrategy = .deferredToDate) throws -> Data
     static func sha256(of data: Data) -> String
 }
 ```
 
-The format shared by `PlanStore` and `BaselineStore`. `read` decodes a document carrying a `formatVersion` in two steps — the version first, then the whole document — so a file written by another version is refused with the caller's `unsupported` error rather than as unreadable; a missing file throws `notFound`. `encode` produces the same bytes wherever it runs: pretty-printed, sorted keys, no escaped slashes, one trailing newline. `sha256(of:)` is the lowercase hex digest the stores hash those bytes with.
+The format shared by `PlanStore` and `BaselineStore`. `read` decodes a document carrying a `formatVersion` in two steps — the version first, then the whole document — so a file written by another version is refused with the caller's `failures.unsupported` error rather than as unreadable; a missing file throws `failures.notFound`. `encode` produces the same bytes wherever it runs: pretty-printed, sorted keys, no escaped slashes, one trailing newline. `sha256(of:)` is the lowercase hex digest the stores hash those bytes with.
 
 ---
 
