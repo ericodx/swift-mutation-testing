@@ -48,7 +48,6 @@ struct IncompatibleRewritingStageTests {
         #expect(descriptors.isEmpty)
     }
 
-
     @Test("Given several incompatible mutants in two files, when run, then each carries the hash of its own file")
     func everyMutantCarriesItsFilesHash() {
         let first = makeParsedSource("let a = true\nlet b = false", path: "a.swift")
