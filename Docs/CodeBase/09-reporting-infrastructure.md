@@ -450,7 +450,7 @@ struct MutationReportLocation: Sendable, Encodable {
 }
 ```
 
-`end.column` is computed as `start.column + originalText.count`.
+`end.column` is computed as `start.column + originalText.utf8.count`: `start.column` is the UTF-8 column SwiftSyntax reports, so the length is counted in the same unit — counting characters ended the range early on any text with a multi-byte character.
 
 ---
 
@@ -538,7 +538,7 @@ struct SonarRange: Sendable, Encodable {
 }
 ```
 
-`endColumn` is `startColumn + originalText.count`. `startLine == endLine` (single-line range).
+`endColumn` is `startColumn + originalText.utf8.count`, in UTF-8 columns like `startColumn`. `startLine == endLine` (single-line range).
 
 ---
 
