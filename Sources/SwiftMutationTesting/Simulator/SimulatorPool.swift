@@ -27,17 +27,22 @@ actor SimulatorPool {
             return
         }
 
-        let clones = try await cloneBase(baseUDID)
-        clonedUDIDs = clones
-        try await bootClones(clones)
+        do {
+            try await cloneBase(baseUDID)
+            try await bootClones(clonedUDIDs)
+        } catch {
+            await tearDown()
+            throw error
+        }
 
+        let clones = clonedUDIDs
         let platform =
             destination.components(separatedBy: ",")
             .first(where: { $0.hasPrefix("platform=") }) ?? "platform=iOS Simulator"
         available = clones.map { SimulatorSlot(udid: $0, destination: "\(platform),id=\($0)") }
     }
 
-    private func cloneBase(_ base: String) async throws -> [String] {
+    private func cloneBase(_ base: String) async throws {
         let launcher = self.launcher
         let size = self.size
         let session = self.sessionID
@@ -49,7 +54,7 @@ actor SimulatorPool {
             timeout: 30
         )
 
-        return try await withThrowingTaskGroup(of: String.self) { group in
+        try await withThrowingTaskGroup(of: String.self) { group in
             for index in 0 ..< size {
                 group.addTask {
                     let result = try await launcher.launchCapturing(
@@ -71,9 +76,14 @@ actor SimulatorPool {
                 }
             }
 
-            var results: [String] = []
-            for try await udid in group { results.append(udid) }
-            return results
+            var firstError: (any Error)?
+            while let outcome = await group.nextResult() {
+                switch outcome {
+                case .success(let udid): clonedUDIDs.append(udid)
+                case .failure(let error): firstError = firstError ?? error
+                }
+            }
+            if let firstError { throw firstError }
         }
     }
 
