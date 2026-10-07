@@ -295,14 +295,25 @@ struct SandboxCleanerTests {
 
         let address = { (handler: sig_t?) in unsafeBitCast(handler, to: Int.self) }
         #expect(address(interrupt) != address(SIG_DFL))
+        #expect(address(interrupt) != address(SIG_IGN))
         #expect(address(terminate) == address(interrupt))
         #expect(address(hangUp) == address(interrupt))
 
         let handler = try #require(interrupt)
+        signal(SIGINT, handler)
+        defer { signal(SIGINT, SIG_DFL) }
         SandboxCleaner.withSignalTarget(
             .init(registry: registry, processGroups: ProcessGroupRegistry(), exit: recorder.record)
         ) {
             handler(SIGINT)
+            #expect(FileManager.default.fileExists(atPath: sandboxDir.path), "the C handler must not clean up itself")
+            #expect(recorder.code == nil)
+
+            kill(getpid(), SIGINT)
+            let deadline = ContinuousClock.now + .seconds(5)
+            while recorder.code == nil, ContinuousClock.now < deadline {
+                usleep(10_000)
+            }
         }
 
         #expect(!FileManager.default.fileExists(atPath: sandboxDir.path))
