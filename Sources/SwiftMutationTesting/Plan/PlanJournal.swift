@@ -11,9 +11,11 @@ struct PlanJournal: Sendable {
 
     let path: String
     private let fingerprintByKey: [MutantCacheKey: String]
+    private let warning: OnceWarning
 
-    init(path: String, mutants: [MutantDescriptor]) {
+    init(path: String, mutants: [MutantDescriptor], warning: OnceWarning = OnceWarning()) {
         self.path = path
+        self.warning = warning
         fingerprintByKey = Dictionary(
             mutants.map { (MutantCacheKey.make(for: $0), $0.fingerprint) }, uniquingKeysWith: { first, _ in first }
         )
@@ -35,7 +37,11 @@ struct PlanJournal: Sendable {
             fingerprint: fingerprint, status: status, killerTestFile: killerTestFile, activated: activated,
             duration: duration
         )
-        JSONLines.append(entry, to: path)
+        do {
+            try JSONLines.append(entry, to: path)
+        } catch {
+            warning(JSONLines.failureWarning(for: path, error: error))
+        }
     }
 
     static func entries(at path: String) -> [String: Entry] {

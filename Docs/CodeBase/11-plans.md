@@ -38,7 +38,7 @@ struct PlanStore: Sendable {
 
 ## Plan/PlanError.swift
 
-`notFound`, `unreadable`, `unsupportedVersion`, `unknownProjectType`, `stale(file:)`, `missingFile(file:)`, `corrupt(fingerprint:file:)`, `invalidShard`, `unknownMutant` — each with a message that says what to do.
+`notFound`, `unreadable`, `unsupportedVersion`, `unknownProjectType`, `stale(file:)`, `missingFile(file:)`, `unreadableFile(file:reason:)`, `corrupt(fingerprint:file:)`, `invalidShard`, `unknownMutant` — each with a message that says what to do.
 
 ## Plan/Planner.swift
 
@@ -66,7 +66,7 @@ struct PlanMaterializer: Sendable {
 }
 ```
 
-The first form reads the plan's files from disk through `load` — which throws `stale` or `missingFile` on any hash that differs and `corrupt` on a mutant whose text is not at its range — parses them and calls the second. The second rebuilds an `IndexedMutationPoint` per selected mutant (index = position in the plan; the file path taken from the matching source, matched by relative path, so later lookups by path agree), runs `SchematizationStage` and `IncompatibleRewritingStage`, and assembles the `RunnerInput` with `ImportStyle.of(sources)`, its descriptors in id order (`MutantID.ordered`). `absolute` uses the root's real path (`CanonicalPath`), the way the file enumerator reports paths.
+The first form reads the plan's files from disk through `load` — which throws `missingFile` for a file that is gone, `unreadableFile` with the reason for one that is there but cannot be read as UTF-8 text, `stale` on any hash that differs and `corrupt` on a mutant whose text is not at its range — parses them and calls the second. The second rebuilds an `IndexedMutationPoint` per selected mutant (index = position in the plan; the file path taken from the matching source, matched by relative path, so later lookups by path agree), runs `SchematizationStage` and `IncompatibleRewritingStage`, and assembles the `RunnerInput` with `ImportStyle.of(sources)`, its descriptors in id order (`MutantID.ordered`). `absolute` uses the root's real path (`CanonicalPath`), the way the file enumerator reports paths.
 
 `DiscoveryPipeline.run` and a plain `run` are `Planner` then the second form; `run --plan` is `PlanStore.read` then the first, through `PlanResumer`. `ExecutionOptions(_ configuration:)` in `CLI/CommandSupport.swift` builds the options from a configuration.
 
@@ -92,7 +92,7 @@ Files in path order, each to the shard with the fewest mutants so far, ties to t
 struct PlanJournal: Sendable {
     struct Entry: Codable, Equatable { let fingerprint: String; let status: ExecutionStatus
                                        let killerTestFile: String?; let activated: Bool?; let duration: Double }
-    init(path: String, mutants: [MutantDescriptor])
+    init(path: String, mutants: [MutantDescriptor], warning: OnceWarning = OnceWarning())
     static func path(projectPath: String, planSha256: String, shard: Shard?) -> String
     func record(status:for:killerTestFile:activated:duration:)
     static func entries(at path: String) -> [String: Entry]
@@ -100,7 +100,7 @@ struct PlanJournal: Sendable {
 }
 ```
 
-The progress of one run of a plan or shard. `record` maps the cache key to the mutant's fingerprint and appends one line with `JSONLines.append`; `entries` reads them back with `JSONLines.read`, the last line winning and a cut-short line skipped. `MutantExecutor(configuration:launcher:planJournal:)` hands it to `CacheStore`, whose `store(…, duration:)` records into it before its `noCache` and timeout guards. `PlanResumer` reads it for `run --plan`; `RunCommand` removes it when it has its results.
+The progress of one run of a plan or shard. `record` maps the cache key to the mutant's fingerprint and appends one line with `JSONLines.append`, warning once through `warning` if the line cannot be written; `entries` reads them back with `JSONLines.read`, the last line winning and a cut-short line skipped. `MutantExecutor(configuration:launcher:planJournal:)` hands it to `CacheStore`, whose `store(…, duration:)` records into it before its `noCache` and timeout guards. `PlanResumer` reads it for `run --plan`; `RunCommand` removes it when it has its results.
 
 ## Plan/PlanResumer.swift
 

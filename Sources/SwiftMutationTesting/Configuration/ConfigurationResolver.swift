@@ -1,18 +1,27 @@
 import Foundation
 
 struct ConfigurationResolver: Sendable {
+    static let fileName = ".swift-mutation-testing.yml"
+
+    static let fileKeys: Set<String> = Set(
+        [
+            "scheme", "destination", "workspace", "project", "test-target", "timeout", "build-timeout",
+            "concurrency", "no-cache", "testing-framework", "keep-logs", "quiet", "sources-path", "exclude",
+            "exclude-patterns", "operators", "disabled-mutators", "operator-tier", "min-score", "max-score-drop",
+            "max-new-survivors", "max-integrity-warnings", "baseline",
+        ] + ReportFormat.allCases.map(\.fileKey)
+    )
+
     var fileSystem = FileSystem()
+    var warn: @Sendable (String) -> Void = StandardError.write
 
     func resolve(
         cliArguments: ParsedArguments,
         fileValues: [String: String]
     ) throws -> RunnerConfiguration {
         let projectPath = fileSystem.projectPath(cliArguments.projectPath)
-        let concurrency = resolvedConcurrency(cli: cliArguments, fileValues: fileValues)
-
-        guard concurrency >= 1 else {
-            throw UsageError(message: "--concurrency must be >= 1")
-        }
+        warnAboutUnknownKeys(in: fileValues)
+        let concurrency = try resolvedConcurrency(cli: cliArguments, fileValues: fileValues)
 
         let projectType = try resolveProjectType(
             cliArguments: cliArguments,
@@ -21,8 +30,8 @@ struct ConfigurationResolver: Sendable {
         )
 
         let testingFramework = try resolvedTestingFramework(cli: cliArguments, fileValues: fileValues)
-        let timeout = resolvedTimeout(cli: cliArguments, fileValues: fileValues, projectType: projectType)
-        let buildTimeout = resolvedBuildTimeout(cli: cliArguments, fileValues: fileValues)
+        let timeout = try resolvedTimeout(cli: cliArguments, fileValues: fileValues, projectType: projectType)
+        let buildTimeout = try resolvedBuildTimeout(cli: cliArguments, fileValues: fileValues)
 
         let effectiveConcurrency = Self.effectiveConcurrency(
             requested: concurrency,
@@ -43,7 +52,7 @@ struct ConfigurationResolver: Sendable {
                 timeout: timeout,
                 buildTimeout: buildTimeout,
                 concurrency: effectiveConcurrency,
-                noCache: cliArguments.build.noCache || fileValues["no-cache"]?.lowercased() == "true",
+                noCache: try cliArguments.build.noCache || flag(fileValues["no-cache"], key: "no-cache"),
                 testingFramework: testingFramework
             ),
             reporting: .init(
@@ -51,7 +60,7 @@ struct ConfigurationResolver: Sendable {
                     outputs[format] = cliArguments.reporting.outputs[format] ?? fileValues[format.fileKey]
                 },
                 keepLogsPath: cliArguments.reporting.keepLogsPath ?? fileValues["keep-logs"],
-                quiet: cliArguments.reporting.quiet || fileValues["quiet"]?.lowercased() == "true"
+                quiet: try cliArguments.reporting.quiet || flag(fileValues["quiet"], key: "quiet")
             ),
             filter: .init(
                 sourcesPath: cliArguments.filter.sourcesPath ?? fileValues["sources-path"],
@@ -126,10 +135,11 @@ struct ConfigurationResolver: Sendable {
         return fileSystem.fileExists(packageURL.path)
     }
 
-    private func resolvedTimeout(cli: ParsedArguments, fileValues: [String: String], projectType: ProjectType) -> Double
-    {
+    private func resolvedTimeout(
+        cli: ParsedArguments, fileValues: [String: String], projectType: ProjectType
+    ) throws -> Double {
         if let timeout = cli.build.timeout { return timeout }
-        if let timeout = fileValues["timeout"].flatMap(Double.init) { return timeout }
+        if let timeout = try positiveNumber(fileValues["timeout"], key: "timeout") { return timeout }
 
         return switch projectType {
         case .xcode: RunnerConfiguration.defaultXcodeTimeout
@@ -137,16 +147,32 @@ struct ConfigurationResolver: Sendable {
         }
     }
 
-    private func resolvedBuildTimeout(cli: ParsedArguments, fileValues: [String: String]) -> Double {
+    private func resolvedBuildTimeout(cli: ParsedArguments, fileValues: [String: String]) throws -> Double {
         if let buildTimeout = cli.build.buildTimeout { return buildTimeout }
-        if let buildTimeout = fileValues["build-timeout"].flatMap(Double.init) { return buildTimeout }
+        if let buildTimeout = try positiveNumber(fileValues["build-timeout"], key: "build-timeout") {
+            return buildTimeout
+        }
         return RunnerConfiguration.defaultBuildTimeout
     }
 
-    private func resolvedConcurrency(cli: ParsedArguments, fileValues: [String: String]) -> Int {
-        if let concurrency = cli.build.concurrency { return concurrency }
-        if let concurrency = fileValues["concurrency"].flatMap(Int.init) { return concurrency }
+    private func resolvedConcurrency(cli: ParsedArguments, fileValues: [String: String]) throws -> Int {
+        if let concurrency = cli.build.concurrency {
+            guard concurrency >= 1 else { throw UsageError(message: "--concurrency must be >= 1") }
+            return concurrency
+        }
+        if let concurrency = try number(fileValues["concurrency"], key: "concurrency", as: Int.self) {
+            guard concurrency >= 1 else {
+                throw UsageError(message: "concurrency in \(Self.fileName) must be >= 1")
+            }
+            return concurrency
+        }
         return RunnerConfiguration.defaultConcurrency
+    }
+
+    private func warnAboutUnknownKeys(in fileValues: [String: String]) {
+        for key in fileValues.keys.sorted() where !Self.fileKeys.contains(key) {
+            warn("Warning: unknown key '\(key)' in \(Self.fileName) is ignored")
+        }
     }
 
     private func resolvedTestingFramework(cli: ParsedArguments, fileValues: [String: String]) throws -> TestingFramework
@@ -238,9 +264,26 @@ struct ConfigurationResolver: Sendable {
     ) throws -> Value? {
         guard let raw else { return nil }
         guard let value = Value(raw) else {
-            throw UsageError(message: "\(key) in .swift-mutation-testing.yml must be a number")
+            throw UsageError(message: "\(key) in \(Self.fileName) must be a number")
         }
         return value
+    }
+
+    private func positiveNumber(_ raw: String?, key: String) throws -> Double? {
+        guard let value = try number(raw, key: key, as: Double.self) else { return nil }
+        guard value > 0 else {
+            throw UsageError(message: "\(key) in \(Self.fileName) must be a positive number")
+        }
+        return value
+    }
+
+    private func flag(_ raw: String?, key: String) throws -> Bool {
+        guard let raw else { return false }
+        switch raw.lowercased() {
+        case "true", "yes", "on": return true
+        case "false", "no", "off": return false
+        default: throw UsageError(message: "\(key) in \(Self.fileName) must be true or false")
+        }
     }
 
     private func projectRelative(_ path: String, in projectPath: String) -> String {

@@ -163,7 +163,7 @@ struct RunnerSummaryTests {
         )
     }
 
-    @Test("Given results in several files, when summarised per file, then the files come in path order with their own counts")
+    @Test("Given results in several files, when summarised per file, then they come in path order with own counts")
     func filesComeInPathOrderWithTheirOwnCounts() {
         let summary = RunnerSummary(
             results: [

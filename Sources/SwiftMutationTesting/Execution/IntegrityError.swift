@@ -5,6 +5,7 @@ enum IntegrityError: Error, Equatable, LocalizedError {
     case schemaNotApplied(path: String)
     case supportMissing(path: String)
     case activationNeverObserved(killed: Int)
+    case sourceNotRestored(path: String)
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +25,10 @@ enum IntegrityError: Error, Equatable, LocalizedError {
         case .schemaNotApplied(let path):
             return "the sandbox copy of '\(path)' is identical to the original, "
                 + "so none of its mutants is in the build. The run is stopped"
+
+        case .sourceNotRestored(let path):
+            return "the sandbox copy of '\(path)' could not be linked back to the original after its mutant ran, "
+                + "so every later mutant built in that sandbox would be judged without the file. The run is stopped"
 
         case .supportMissing(let path):
             return "the sandbox copy of '\(path)' does not declare \(SupportDeclarations.identifier(for: path)), "

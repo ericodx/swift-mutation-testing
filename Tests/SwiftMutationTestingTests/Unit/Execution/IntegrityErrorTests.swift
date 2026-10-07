@@ -27,6 +27,7 @@ struct IntegrityErrorTests {
         arguments: [
             (IntegrityError.schemaNotApplied(path: "/p/Foo.swift"), "identical to the original"),
             (.supportMissing(path: "/p/Foo.swift"), "does not declare __swiftMutationTestingID"),
+            (.sourceNotRestored(path: "/p/Foo.swift"), "could not be linked back to the original"),
         ]
     )
     func fileProblemsNameTheFile(error: IntegrityError, fragment: String) {

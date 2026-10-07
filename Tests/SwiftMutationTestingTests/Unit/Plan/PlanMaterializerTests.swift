@@ -60,6 +60,26 @@ struct PlanMaterializerTests {
         }
     }
 
+    @Test("Given a file that is there but is not text, when materialized, then the plan calls it unreadable")
+    func aFileThatCannotBeReadIsUnreadable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        try Self.writeProject(in: dir)
+        let plan = try await Planner().plan(input: Self.discoveryInput(for: dir)).plan
+        try Data([0xFF, 0xFE, 0x00, 0xC3]).write(to: dir.appendingPathComponent("Sources/B.swift"))
+
+        let error = await #expect(throws: PlanError.self) {
+            _ = try await PlanMaterializer().materialize(plan: plan, projectPath: dir.path, execution: Self.execution)
+        }
+
+        guard case .unreadableFile(let file, _) = error else {
+            Issue.record("expected unreadableFile, got \(String(describing: error))")
+            return
+        }
+        #expect(file == "Sources/B.swift")
+        #expect(error?.errorDescription?.hasPrefix("plan file Sources/B.swift is there but could not be read") == true)
+    }
+
     @Test("Given a mutant whose text is not at its position, when materialized, then the plan is corrupt")
     func aMutantOffItsTextIsCorrupt() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

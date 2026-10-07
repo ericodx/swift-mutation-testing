@@ -198,7 +198,8 @@ struct XcodeProcessLauncherTests {
     func aTimeoutWithoutAProcessSignalsNothing() async throws {
         let kill = RecordingKill()
 
-        XcodeProcessLauncher.terminate(pid: 0, grace: .zero, kill: kill.asKill)
+        XcodeProcessLauncher.terminate(
+            pid: 0, escalation: TimeoutEscalation(gracePeriod: 0, kill: kill.asKill), kill: kill.asKill)
         try await Task.sleep(for: .milliseconds(50))
 
         #expect(kill.recorded.isEmpty)
@@ -215,7 +216,8 @@ struct XcodeProcessLauncherTests {
 
         let kill = RecordingKill()
 
-        XcodeProcessLauncher.terminate(pid: pid, grace: .zero, kill: kill.asKill)
+        XcodeProcessLauncher.terminate(
+            pid: pid, escalation: TimeoutEscalation(gracePeriod: 0, kill: kill.asKill), kill: kill.asKill)
 
         #expect(kill.recorded.first == SentSignal(pid: -pid, signal: SIGTERM))
 
@@ -224,5 +226,17 @@ struct XcodeProcessLauncherTests {
         }
 
         #expect(kill.recorded == [SentSignal(pid: -pid, signal: SIGTERM), SentSignal(pid: -pid, signal: SIGKILL)])
+    }
+
+    @Test("Given a timed-out process that exits, when the grace period would elapse, then no SIGKILL follows")
+    func aProcessThatExitsIsNotKilledLater() async throws {
+        let kill = RecordingKill()
+        let escalation = TimeoutEscalation(gracePeriod: 0.1, kill: kill.asKill)
+
+        XcodeProcessLauncher.terminate(pid: 999_999, escalation: escalation, kill: kill.asKill)
+        escalation.processTerminated()
+        try await Task.sleep(for: .milliseconds(300))
+
+        #expect(kill.recorded == [SentSignal(pid: -999_999, signal: SIGTERM)])
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import SwiftMutationTesting
@@ -166,6 +167,80 @@ struct ProcessRunnerTests {
         processGroups.killAll(kill: recorder.asKill)
 
         #expect(recorder.recorded.isEmpty)
+    }
+
+    @Test("Given a capturing run whose task is already cancelled, when it launches, then the process never runs")
+    func aCancelledCapturingRunStartsNoProcess() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let marker = dir.appendingPathComponent("ran").path
+        let runner = ProcessRunner(onTimeout: { _ in })
+        let request = shell("touch '\(marker)'", timeout: 10)
+
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await runner.launchCapturing(request)
+        }
+
+        await #expect(throws: CancellationError.self) { try await task.value }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(!FileManager.default.fileExists(atPath: marker))
+    }
+
+    @Test("Given a run whose task is already cancelled, when it launches, then the process never runs")
+    func aCancelledRunStartsNoProcess() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let marker = dir.appendingPathComponent("ran").path
+        let runner = ProcessRunner(onTimeout: { _ in })
+
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await runner.launch(
+                executableURL: URL(fileURLWithPath: "/usr/bin/touch"),
+                arguments: [marker],
+                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                timeout: 10
+            )
+        }
+
+        await #expect(throws: CancellationError.self) { try await task.value }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(!FileManager.default.fileExists(atPath: marker))
+    }
+
+    @Test("Given a launched process, when it runs, then it leads a process group of its own")
+    func aLaunchedProcessLeadsItsOwnGroup() async throws {
+        let runner = ProcessRunner(onTimeout: { _ in })
+
+        let result = try await runner.launchCapturing(shell("echo $$ $(ps -o pgid= -p $$)", timeout: 10))
+        let ids = result.output.split(whereSeparator: \.isWhitespace)
+
+        #expect(ids.count == 2)
+        #expect(ids.first == ids.last)
+    }
+
+    @Test("Given a process that leads its own group or has exited, when its group is checked, then nothing is reported")
+    func aGroupLeaderOrAnExitedProcessIsNotReported() {
+        let warnings = Mutex<[String]>([])
+        let warning = OnceWarning { line in warnings.withLock { $0.append(line) } }
+
+        ProcessRunner.checkOwnGroup(4242, groupOf: { $0 }, warning: warning)
+        ProcessRunner.checkOwnGroup(4242, groupOf: { _ in -1 }, warning: warning)
+
+        #expect(warnings.withLock { $0 }.isEmpty)
+    }
+
+    @Test("Given processes that share their parent's group, when their groups are checked, then one warning is shown")
+    func aProcessOutsideItsOwnGroupIsReportedOnce() {
+        let warnings = Mutex<[String]>([])
+        let warning = OnceWarning { line in warnings.withLock { $0.append(line) } }
+
+        ProcessRunner.checkOwnGroup(4242, groupOf: { _ in 1 }, warning: warning)
+        ProcessRunner.checkOwnGroup(4243, groupOf: { _ in 1 }, warning: warning)
+
+        #expect(warnings.withLock { $0 }.count == 1)
+        #expect(warnings.withLock { $0 }.first?.contains("does not lead its own process group") == true)
     }
 
     private func shell(_ script: String, timeout: Double) -> ProcessRequest {

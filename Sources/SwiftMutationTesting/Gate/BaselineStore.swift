@@ -10,9 +10,11 @@ struct BaselineStore: Sendable {
             from: path,
             version: Baseline.formatVersion,
             decoder: decoder,
-            notFound: GateError.baselineNotFound(path: path),
-            unreadable: GateError.unreadableBaseline(path: path),
-            unsupported: { GateError.unsupportedBaselineVersion(path: path, version: $0) }
+            failures: .init(
+                notFound: GateError.baselineNotFound(path: path),
+                unreadable: GateError.unreadableBaseline(path: path),
+                unsupported: { GateError.unsupportedBaselineVersion(path: path, version: $0) }
+            )
         )
     }
 

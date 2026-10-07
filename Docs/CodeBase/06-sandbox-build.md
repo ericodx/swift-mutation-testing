@@ -77,6 +77,18 @@ A lightweight wrapper around the sandbox root URL.
 
 ---
 
+## Sandbox/SandboxLink.swift
+
+```swift
+enum SandboxLink {
+    static func restore(at sandboxPath: String, to originalPath: String) throws
+}
+```
+
+Puts a sandbox file back as a symlink to the project's original, removing whatever is at the path first — a mutated copy, a schema, or nothing. Throws `IntegrityError.sourceNotRestored` when the link cannot be created, since a sandbox missing that file would fail every later build and have its mutants cached as unviable. `IncompatibleMutantExecutor` restores with it after each mutant, and `SchemaNarrower` when it gives up on a file's schema.
+
+---
+
 ## Sandbox/SandboxName.swift
 
 ```swift
@@ -127,12 +139,14 @@ Handles cleanup of orphaned and active sandbox directories.
 | `deregister(in:)` | Forgets the active sandbox without touching the directory |
 | `cleanupActiveSandbox(in:)` | Removes the active sandbox directory, if one is registered |
 | `terminate(registry:processGroups:exit:)` | What a signal does: kills every test process group still in flight, removes the active sandbox, then calls `exit(1)` |
-| `installSignalHandlers()` | Installs `SIGINT`, `SIGTERM` and `SIGHUP` handlers that call `terminate` with the current `SignalTarget` |
-| `withSignalTarget(_:_:)` | Points the installed handler at another registry and exit for the length of `body`, then restores `SignalTarget.process` |
+| `installSignalHandlers()` | Installs an empty C handler for `SIGINT`, `SIGTERM` and `SIGHUP`, and once per process a dispatch signal source for each that calls `terminate` with the current `SignalTarget` |
+| `withSignalTarget(_:_:)` | Points the installed signal sources at another registry and exit for the length of `body`, then restores `SignalTarget.process` |
 
-A C signal handler cannot capture anything, so what it cleans and how it exits come from a module-level `Mutex<SignalTarget>`. In a run it always holds `SignalTarget.process` — the shared registry and `_exit` — and nothing but the handler ever takes the lock. `withSignalTarget` exists so a test can invoke the handler that was really installed without removing another test's sandbox or ending the test process; it replaces the mutable exit-handler global the handler used to read, which tests swapped without any synchronisation.
+**The cleanup does not run in the signal handler.** It used to: the C handler took a lock, built a `String` and a `URL`, called `FileManager.removeItem` and freed memory, none of which is async-signal-safe — a signal landing while another thread held the malloc lock could deadlock the tool on its way out. The C handler is now empty, which is safe by definition, and the work runs on a `DispatchSourceSignal`, whose event handler is an ordinary block on a dispatch queue: kqueue records the signal whatever its disposition. The handler is a function rather than `SIG_IGN` because an ignored signal stays ignored across `exec`, and every test process would then ignore the `SIGTERM` a timeout sends; a caught signal is reset to its default in the child.
 
-**Test processes die with the run.** Every test process leads a process group of its own (`setpgid` in `ProcessRunner`), which is what lets a timeout kill a whole test tree at once, but it also takes the process out of the terminal's foreground group: Ctrl-C reaches the tool and nothing else. The handler used to remove the sandbox and `_exit`, so a mutant stuck in a loop kept running with no parent and no deadline, from a bundle that no longer existed — one ran at ~900% CPU for ten hours before anyone looked (#105). `terminate` now kills the groups registered in `ProcessGroupRegistry` first, before the sandbox they run from is deleted. `SIGHUP` joins the handled signals because closing the terminal or the IDE that started the run sends it, and its default action ends the tool just as silently. `SIGKILL` and a crash cannot be handled; the next run's `OrphanedProcessReaper` cleans up after those.
+The sources cannot capture anything that changes per run, so what they clean and how they exit come from a module-level `Mutex<SignalTarget>`. In a run it always holds `SignalTarget.process` — the shared registry and `_exit` — and nothing but the sources ever take the lock. `withSignalTarget` exists so a test can send a real signal to the sources that were really installed without removing another test's sandbox or ending the test process; it replaces the mutable exit-handler global the handler used to read, which tests swapped without any synchronisation.
+
+**Test processes die with the run.** Every test process leads a process group of its own (Foundation's `Process` starts it so, and `ProcessRunner` checks it), which is what lets a timeout kill a whole test tree at once, but it also takes the process out of the terminal's foreground group: Ctrl-C reaches the tool and nothing else. The handler used to remove the sandbox and `_exit`, so a mutant stuck in a loop kept running with no parent and no deadline, from a bundle that no longer existed — one ran at ~900% CPU for ten hours before anyone looked (#105). `terminate` now kills the groups registered in `ProcessGroupRegistry` first, before the sandbox they run from is deleted. `SIGHUP` joins the handled signals because closing the terminal or the IDE that started the run sends it, and its default action ends the tool just as silently. `SIGKILL` and a crash cannot be handled; the next run's `OrphanedProcessReaper` cleans up after those.
 
 **Ownership.** The sweep used to run at startup, before arguments were parsed, and it deleted every `xmr-*` directory in `$TMPDIR` on the grounds that a sandbox found at startup must belong to a run that is over. It does not: a second invocation — `--help` included — destroyed the sandbox of a run already in progress, and that run then reported every remaining mutant as unviable, or died without writing a report (#86, reported by @jwp23 with the mechanism pinned to the line).
 

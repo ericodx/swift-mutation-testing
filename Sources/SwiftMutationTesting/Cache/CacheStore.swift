@@ -3,12 +3,17 @@ import Foundation
 actor CacheStore {
 
     init(
-        storePath: String, noCache: Bool = false, planJournal: PlanJournal? = nil, fileSystem: FileSystem = FileSystem()
+        storePath: String,
+        noCache: Bool = false,
+        planJournal: PlanJournal? = nil,
+        fileSystem: FileSystem = FileSystem(),
+        journalWarning: OnceWarning = OnceWarning()
     ) {
         self.storePath = storePath
         self.noCache = noCache
         self.planJournal = planJournal
         self.fileSystem = fileSystem
+        self.journalWarning = journalWarning
         self.entries = [:]
         self.killerTestFiles = [:]
         self.activations = [:]
@@ -22,6 +27,7 @@ actor CacheStore {
     private let noCache: Bool
     private let planJournal: PlanJournal?
     private let fileSystem: FileSystem
+    private let journalWarning: OnceWarning
     private var entries: [MutantCacheKey: ExecutionStatus]
     private var killerTestFiles: [MutantCacheKey: String]
     private var activations: [MutantCacheKey: Bool]
@@ -146,7 +152,11 @@ actor CacheStore {
     }
 
     private func journal(_ entry: CacheEntry) {
-        JSONLines.append(entry, to: journalPath)
+        do {
+            try JSONLines.append(entry, to: journalPath)
+        } catch {
+            journalWarning(JSONLines.failureWarning(for: journalPath, error: error))
+        }
     }
 
     func persist() throws {
@@ -259,6 +269,7 @@ actor CacheStore {
     private func discardUnreadable() {
         entries = [:]
         killerTestFiles = [:]
+        activations = [:]
         let directory = URL(fileURLWithPath: storePath).deletingLastPathComponent().path
         StandardError.write(
             "Warning: ignoring the cache at '\(directory)', which this version cannot read; "

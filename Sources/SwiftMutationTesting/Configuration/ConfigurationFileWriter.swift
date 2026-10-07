@@ -17,12 +17,7 @@ struct ConfigurationFileWriter: Sendable {
         switch project.kind {
         case .xcode(let scheme, let allSchemes, let destination):
             return generateXcodeContent(
-                scheme: scheme,
-                allSchemes: allSchemes,
-                destination: destination,
-                testTarget: project.testTarget,
-                testingFramework: project.testingFramework,
-                container: containerLines(project)
+                project: project, scheme: scheme, allSchemes: allSchemes, destination: destination
             )
         case .spm(let testTargets):
             return generateSPMContent(testTargets: testTargets, testTarget: project.testTarget)
@@ -30,19 +25,19 @@ struct ConfigurationFileWriter: Sendable {
     }
 
     private func generateXcodeContent(
+        project: DetectedProject,
         scheme: String?,
         allSchemes: [String],
-        destination: String,
-        testTarget: String?,
-        testingFramework: TestingFramework,
-        container: [String]
+        destination: String
     ) -> String {
+        let testTarget = project.testTarget
+        let testingFramework = project.testingFramework
         var lines: [String] = []
 
         lines.append("# swift-mutation-testing configuration")
         lines.append("# All settings are optional. CLI flags override file values.")
         lines.append("")
-        lines.append(contentsOf: container)
+        lines.append(contentsOf: containerLines(project))
 
         if allSchemes.count > 1 {
             lines.append("# Available schemes: \(allSchemes.joined(separator: ", "))")

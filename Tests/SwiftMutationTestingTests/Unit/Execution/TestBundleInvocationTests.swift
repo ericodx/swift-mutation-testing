@@ -193,7 +193,10 @@ struct TestBundleInvocationTests {
         let requests = TestBundleInvocation(
             bundleURL: URL(fileURLWithPath: "/sandbox/.build/out/Products/Debug/PkgTests.xctest"),
             framework: .swiftTesting
-        ).requests(filter: nil, mutantID: "m0", workingDirectory: URL(fileURLWithPath: "/sandbox"), timeout: 30, libraries: libraries)
+        ).requests(
+            filter: nil, mutantID: "m0", workingDirectory: URL(fileURLWithPath: "/sandbox"), timeout: 30,
+            libraries: libraries
+        )
 
         #expect(requests.map { $0.arguments.first } == firstArguments)
     }

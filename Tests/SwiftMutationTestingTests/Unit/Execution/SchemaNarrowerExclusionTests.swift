@@ -20,7 +20,7 @@ struct SchemaNarrowerExclusionTests {
             makeMutantDescriptor(id: "swift-mutation-testing_0", filePath: original.path, isSchematizable: true)
         ]
 
-        let excluded = SchemaNarrower.excludeProblematicMutants(
+        let excluded = try SchemaNarrower.excludeProblematicMutants(
             sandboxPath: sandboxCopy.path,
             originalPath: original.path,
             errorOutput: "\(sandboxCopy.path):1:5: error: cannot find 'y' in scope",
@@ -32,13 +32,41 @@ struct SchemaNarrowerExclusionTests {
         #expect(try String(contentsOf: sandboxCopy, encoding: .utf8) == "let x = true")
     }
 
+    @Test("Given a sandbox directory that cannot be written, when the original cannot be restored, then it throws")
+    func aLinkThatCannotBeRestoredStopsTheNarrowing() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        let original = dir.appendingPathComponent("Foo.swift")
+        let sandbox = dir.appendingPathComponent("sandbox")
+        let sandboxCopy = sandbox.appendingPathComponent("Foo.swift")
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        try "let x = true".write(to: original, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: sandbox.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sandbox.path)
+            FileHelpers.cleanup(dir)
+        }
+        let mutants = [
+            makeMutantDescriptor(id: "swift-mutation-testing_0", filePath: original.path, isSchematizable: true)
+        ]
+
+        #expect(throws: IntegrityError.sourceNotRestored(path: original.path)) {
+            try SchemaNarrower.excludeProblematicMutants(
+                sandboxPath: sandboxCopy.path,
+                originalPath: original.path,
+                errorOutput: "\(sandboxCopy.path):1:5: error: cannot find 'y' in scope",
+                mutantsInFile: mutants,
+                importStyle: .implicit
+            )
+        }
+    }
+
     @Test("Given an error inside a mutant's case, when its mutants are excluded, then only that one goes")
     func anErrorInsideACaseExcludesOnlyThatMutant() throws {
         let fixture = try SchematizedFixture()
         defer { fixture.cleanUp() }
         let blamed = fixture.indexed[1].mutantID
 
-        let excluded = fixture.exclude(errorLine: try fixture.lineAfter("case \"\(blamed)\":"))
+        let excluded = try fixture.exclude(errorLine: try fixture.lineAfter("case \"\(blamed)\":"))
 
         #expect(excluded.map(\.id) == [blamed])
         let narrowed = try String(contentsOf: fixture.sandboxCopy, encoding: .utf8)
@@ -52,7 +80,7 @@ struct SchemaNarrowerExclusionTests {
         let fixture = try SchematizedFixture()
         defer { fixture.cleanUp() }
 
-        let excluded = fixture.exclude(errorLine: try fixture.lineAfter("default:"))
+        let excluded = try fixture.exclude(errorLine: try fixture.lineAfter("default:"))
 
         #expect(excluded.map(\.id) == fixture.indexed.map(\.mutantID))
         #expect(try String(contentsOf: fixture.sandboxCopy, encoding: .utf8) == SchematizedFixture.original)
@@ -114,8 +142,8 @@ struct SchemaNarrowerExclusionTests {
             return index + 2
         }
 
-        func exclude(errorLine: Int) -> [MutantDescriptor] {
-            SchemaNarrower.excludeProblematicMutants(
+        func exclude(errorLine: Int) throws -> [MutantDescriptor] {
+            try SchemaNarrower.excludeProblematicMutants(
                 sandboxPath: sandboxCopy.path,
                 originalPath: originalFile.path,
                 errorOutput: "\(sandboxCopy.path):\(errorLine):5: error: cannot find 'y' in scope",

@@ -13,6 +13,11 @@ struct ProcessRunner: Sendable {
         let tempURL: URL
     }
 
+    private struct StopFlags {
+        let killedByUs: KilledByUsFlag
+        let stoppedByRule: KilledByUsFlag
+    }
+
     private static let pollInterval: Duration = .milliseconds(100)
 
     final class KilledByUsFlag: @unchecked Sendable {
@@ -87,8 +92,8 @@ struct ProcessRunner: Sendable {
 
         return try await awaitTermination(of: process, killedByUs: killedByUs) { continuation in
             self.startCapturingProcess(
-                process, killedByUs: killedByUs, stoppedByRule: stoppedByRule,
-                timeout: request.timeout, stopRule: request.stopRule,
+                process, request: request,
+                flags: StopFlags(killedByUs: killedByUs, stoppedByRule: stoppedByRule),
                 capture: CaptureTarget(fileHandle: fileHandle, tempURL: tempURL),
                 continuation: continuation
             )
@@ -127,13 +132,15 @@ struct ProcessRunner: Sendable {
 
     private func startCapturingProcess(
         _ process: Process,
-        killedByUs: KilledByUsFlag,
-        stoppedByRule: KilledByUsFlag,
-        timeout: Double,
-        stopRule: OutputStopRule?,
+        request: ProcessRequest,
+        flags: StopFlags,
         capture: CaptureTarget,
         continuation: CheckedContinuation<(exitCode: Int32, output: String), any Error>
     ) {
+        let timeout = request.timeout
+        let stopRule = request.stopRule
+        let killedByUs = flags.killedByUs
+        let stoppedByRule = flags.stoppedByRule
         let timeoutTask = Task {
             let deadline = ContinuousClock.now + .seconds(timeout)
 
@@ -161,8 +168,9 @@ struct ProcessRunner: Sendable {
             capture.fileHandle.closeFile()
             try? FileManager.default.removeItem(at: capture.tempURL)
         }
-        run(process, timeoutTask: timeoutTask, continuation: continuation, onLaunchFailure: discardCapture) {
-            terminated in
+        run(
+            process, timeoutTask: timeoutTask, continuation: continuation, onLaunchFailure: discardCapture
+        ) { terminated in
             capture.fileHandle.closeFile()
             let output = (try? readCapturedOutput(capture.tempURL)) ?? ""
             try? FileManager.default.removeItem(at: capture.tempURL)
@@ -191,9 +199,13 @@ struct ProcessRunner: Sendable {
         }
 
         do {
+            try Task.checkCancellation()
             try process.run()
-            setpgid(process.processIdentifier, process.processIdentifier)
+            Self.checkOwnGroup(process.processIdentifier)
             track(process)
+            if Task.isCancelled {
+                onTimeout(process.processIdentifier)
+            }
         } catch {
             timeoutTask.cancel()
             onLaunchFailure()
@@ -204,6 +216,21 @@ struct ProcessRunner: Sendable {
     private func track(_ process: Process) {
         Self.track(process.processIdentifier, isRunning: { process.isRunning }, in: processGroups)
     }
+
+    static func checkOwnGroup(
+        _ pid: pid_t,
+        groupOf: (pid_t) -> pid_t = getpgid,
+        warning: OnceWarning = groupWarning
+    ) {
+        let group = groupOf(pid)
+        guard group >= 0, group != pid else { return }
+        warning(
+            "Warning: process \(pid) does not lead its own process group, "
+                + "so a timeout or an interrupt may leave its child processes running"
+        )
+    }
+
+    private static let groupWarning = OnceWarning()
 
     static func track(_ pid: pid_t, isRunning: () -> Bool, in processGroups: ProcessGroupRegistry) {
         processGroups.register(pid)

@@ -5,7 +5,7 @@ import Testing
 @Suite("OperatorTier")
 struct OperatorTierTests {
 
-    @Test("Given the three tiers, when compared, then conservative comes before default and default before experimental")
+    @Test("Given the three tiers, when compared, then conservative precedes default and default precedes experimental")
     func tiersAreOrderedFromConservativeToExperimental() {
         #expect(OperatorTier.conservative < .standard)
         #expect(OperatorTier.standard < .experimental)

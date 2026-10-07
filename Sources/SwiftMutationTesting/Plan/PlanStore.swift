@@ -6,9 +6,11 @@ struct PlanStore: Sendable {
             Plan.self,
             from: path,
             version: Plan.formatVersion,
-            notFound: PlanError.notFound(path: path),
-            unreadable: PlanError.unreadable(path: path),
-            unsupported: { PlanError.unsupportedVersion(path: path, version: $0) }
+            failures: .init(
+                notFound: PlanError.notFound(path: path),
+                unreadable: PlanError.unreadable(path: path),
+                unsupported: { PlanError.unsupportedVersion(path: path, version: $0) }
+            )
         )
     }
 

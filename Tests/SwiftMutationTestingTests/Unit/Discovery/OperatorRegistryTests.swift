@@ -4,12 +4,12 @@ import Testing
 
 @Suite("OperatorRegistry")
 struct OperatorRegistryTests {
-    @Test("Given the experimental tier, when the operators up to it are listed, then every operator is there, in registry order")
+    @Test("Given the experimental tier, when its operators are listed, then every operator is there, in registry order")
     func theExperimentalTierHoldsEveryOperator() {
         #expect(OperatorRegistry.operatorNames(upTo: .experimental) == OperatorRegistry.allOperatorNames)
     }
 
-    @Test("Given the tiers of the record campaign, when each is listed, then it holds the operators the campaign assigned")
+    @Test("Given the tiers of the record campaign, when each is listed, then it holds the operators assigned to it")
     func theTiersAreTheCampaignsAssignments() {
         #expect(
             OperatorRegistry.operatorNames(upTo: .conservative) == [
@@ -22,7 +22,7 @@ struct OperatorRegistryTests {
         #expect(OperatorRegistry.operatorNames(upTo: .experimental).count == 7)
     }
 
-    @Test("Given each tier, when the operators up to it are listed, then the lower tier's set is inside the higher one's")
+    @Test("Given each tier, when its operators are listed, then the lower tier's set is inside the higher one's")
     func lowerTiersAreInsideHigherOnes() {
         let conservative = OperatorRegistry.operatorNames(upTo: .conservative)
         let standard = OperatorRegistry.operatorNames(upTo: .standard)

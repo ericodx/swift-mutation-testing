@@ -16,24 +16,28 @@ struct TestExecutionStage: Sendable {
         var timedOut: [MutantDescriptor] = []
         var killedUnactivated: [MutantDescriptor] = []
 
-        try await forEach(mutants, concurrency: concurrency, run: { mutant in
-            try await self.attempt(mutant, in: context, timeout: timeout * Self.loadedTimeoutFactor)
-        }) { attempt in
-            switch attempt {
-            case .settled(let result):
-                results.append(result)
-            case .timedOut(let mutant):
-                timedOut.append(mutant)
-            case .killedUnactivated(let mutant):
-                killedUnactivated.append(mutant)
+        try await forEach(
+            mutants, concurrency: concurrency,
+            run: { mutant in
+                try await self.attempt(mutant, in: context, timeout: timeout * Self.loadedTimeoutFactor)
+            },
+            collect: { attempt in
+                switch attempt {
+                case .settled(let result):
+                    results.append(result)
+                case .timedOut(let mutant):
+                    timedOut.append(mutant)
+                case .killedUnactivated(let mutant):
+                    killedUnactivated.append(mutant)
+                }
             }
-        }
+        )
 
-        try await forEach(timedOut, concurrency: max(1, concurrency / Self.retryWorkerShare), run: { mutant in
-            try await self.runAgain(mutant, in: context, timeout: timeout)
-        }) { result in
-            results.append(result)
-        }
+        try await forEach(
+            timedOut, concurrency: max(1, concurrency / Self.retryWorkerShare),
+            run: { mutant in try await self.runAgain(mutant, in: context, timeout: timeout) },
+            collect: { result in results.append(result) }
+        )
 
         try await forEach(
             killedUnactivated, concurrency: 1,

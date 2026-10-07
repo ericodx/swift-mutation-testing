@@ -9,7 +9,9 @@ actor TargetedRunLauncher: ProcessLaunching {
 
     init(
         targetedOutcome: (exitCode: Int32, output: String),
-        fullOutcome: (exitCode: Int32, output: String) = (0, "✔ Test run with 9 tests in 3 suites passed after 0.2 seconds.")
+        fullOutcome: (exitCode: Int32, output: String) = (
+            0, "✔ Test run with 9 tests in 3 suites passed after 0.2 seconds."
+        )
     ) {
         self.targetedOutcome = targetedOutcome
         self.fullOutcome = fullOutcome

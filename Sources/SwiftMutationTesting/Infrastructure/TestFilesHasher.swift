@@ -36,7 +36,8 @@ struct TestFilesHasher: Sendable {
         for case let url as URL in enumerator {
             guard url.pathExtension == "swift" else { continue }
 
-            let isInTestsDir = url.pathComponents.contains { $0.hasSuffix("Tests") }
+            let relativePath = ProjectRelativePath.make(for: url.path, in: directory.path)
+            let isInTestsDir = relativePath.split(separator: "/").dropLast().contains { $0.hasSuffix("Tests") }
             let isTestFile = url.lastPathComponent.hasSuffix("Tests.swift")
 
             if isInTestsDir || isTestFile {

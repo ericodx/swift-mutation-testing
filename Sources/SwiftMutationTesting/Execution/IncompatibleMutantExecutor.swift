@@ -83,7 +83,16 @@ struct IncompatibleMutantExecutor: Sendable {
             return results
         }
 
-        let numbered = Array(viable.enumerated())
+        results += try await runRoundRobin(viable, over: ready, configuration: configuration)
+        return results
+    }
+
+    private func runRoundRobin(
+        _ mutants: [MutantDescriptor],
+        over ready: [WarmSandbox],
+        configuration: RunnerConfiguration
+    ) async throws -> [ExecutionResult] {
+        let numbered = Array(mutants.enumerated())
         let finished = try await withThrowingTaskGroup(of: [(Int, ExecutionResult)].self) { group in
             for (slot, worker) in ready.enumerated() {
                 let mine = numbered.filter { $0.offset % ready.count == slot }
@@ -104,8 +113,7 @@ struct IncompatibleMutantExecutor: Sendable {
             return all
         }
 
-        results += finished.sorted { $0.0 < $1.0 }.map(\.1)
-        return results
+        return finished.sorted { $0.0 < $1.0 }.map(\.1)
     }
 
     private struct WarmSandbox: Sendable {
@@ -141,15 +149,35 @@ struct IncompatibleMutantExecutor: Sendable {
         let sandboxRoot = sandbox.rootURL.resolvingSymlinksInPath().path
 
         let originalCanonical = URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path
-        let content = mutant.mutatedSourceContent!
+        guard let content = mutant.mutatedSourceContent else {
+            return await storeAndReport(
+                mutant: mutant, sandbox: nil,
+                keepLogsPath: configuration.reporting.keepLogsPath,
+                buildOutput: "The mutation could not be applied to the source file."
+            )
+        }
         let relative = String(originalCanonical.dropFirst(projectRoot.count))
         let sandboxFilePath = sandboxRoot + relative
 
-        defer {
-            try? FileManager.default.removeItem(atPath: sandboxFilePath)
-            try? FileManager.default.createSymbolicLink(atPath: sandboxFilePath, withDestinationPath: originalCanonical)
+        do {
+            let result = try await buildAndTest(
+                mutant: mutant, content: content, at: sandboxFilePath, configuration: configuration, sandbox: sandbox
+            )
+            try SandboxLink.restore(at: sandboxFilePath, to: originalCanonical)
+            return result
+        } catch {
+            try? SandboxLink.restore(at: sandboxFilePath, to: originalCanonical)
+            throw error
         }
+    }
 
+    private func buildAndTest(
+        mutant: MutantDescriptor,
+        content: String,
+        at sandboxFilePath: String,
+        configuration: RunnerConfiguration,
+        sandbox: Sandbox
+    ) async throws -> ExecutionResult {
         let instrumented = ActivationInstrumenter(importStyle: importStyle).instrument(mutant)
         var measured = instrumented != nil
         var build = try await buildSPM(

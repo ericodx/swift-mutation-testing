@@ -111,7 +111,8 @@ struct SwapTernaryTests {
 
     @Test("Given a ternary assigned over several lines under a comment, when schematized, then it is not discarded")
     func aCommentedMultilineAssignmentIsPlaced() {
-        let code = "init(name: String) {\n    // strip it\n    self.name =\n      name.first == \"_\"\n"
+        let code =
+            "init(name: String) {\n    // strip it\n    self.name =\n      name.first == \"_\"\n"
             + "      ? String(name.dropFirst(1))\n      : name\n}"
         let source = makeParsedSource(code)
         let mutations = op.mutations(in: source).enumerated().map { (index: $0.offset, point: $0.element) }

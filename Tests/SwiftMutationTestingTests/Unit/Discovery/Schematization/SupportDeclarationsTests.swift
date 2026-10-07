@@ -72,7 +72,19 @@ struct SupportDeclarationsTests {
 
         #expect(block.contains("@usableFromInline nonisolated static let id: String ="))
         #expect(block.contains(#"environment["__SWIFT_MUTATION_TESTING_ACTIVE"]"#))
-        #expect(block.contains("@usableFromInline nonisolated internal var __swiftMutationTestingID_\(suffix): String {"))
+        #expect(
+            block.contains("@usableFromInline nonisolated internal var __swiftMutationTestingID_\(suffix): String {")
+        )
         #expect(block.contains("__SwiftMutationTesting_\(suffix).id"))
+    }
+
+    @Test("Given Foundation imported inside an active #if, when declarations are appended, then no import is added")
+    func aConditionalFoundationImportGetsNoSecondImport() {
+        let content = "#if canImport(Foundation)\ninternal import Foundation\n#endif\nfunc f() {}"
+        let syntax = Parser.parse(source: content)
+
+        let appended = SupportDeclarations.appended(to: content, path: path, syntax: syntax, style: .explicit)
+
+        #expect(appended.components(separatedBy: "import Foundation").count == 2)
     }
 }

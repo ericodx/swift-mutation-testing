@@ -16,7 +16,7 @@ struct SonarReporter: Sendable {
         let reportable = summary.survived.map { ($0, "MAJOR") } + summary.noCoverage.map { ($0, "MINOR") }
         return reportable.map { result, severity in
             let descriptor = result.descriptor
-            let relativePath = String(descriptor.filePath.dropFirst(projectRoot.count))
+            let relativePath = ProjectRelativePath.make(for: descriptor.filePath, in: projectRoot)
             return SonarIssue(
                 engineId: "swift-mutation-testing",
                 ruleId: descriptor.operatorIdentifier,
@@ -29,7 +29,7 @@ struct SonarReporter: Sendable {
                         startLine: descriptor.line,
                         endLine: descriptor.line,
                         startColumn: descriptor.column,
-                        endColumn: descriptor.column + descriptor.originalText.count
+                        endColumn: descriptor.column + descriptor.originalText.utf8.count
                     )
                 )
             )

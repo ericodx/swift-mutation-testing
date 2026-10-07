@@ -92,7 +92,7 @@ struct SchemaNarrower: Sendable {
         errorOutput: String,
         mutantsInFile: [MutantDescriptor],
         importStyle: ImportStyle
-    ) -> [MutantDescriptor]
+    ) throws -> [MutantDescriptor]
 
     static func regeneratedSchema(
         originalPath: String, keeping mutants: [MutantDescriptor], importStyle: ImportStyle = .implicit
@@ -100,7 +100,7 @@ struct SchemaNarrower: Sendable {
 }
 ```
 
-Narrows a schematized SPM build that does not compile. `narrow` reads the sandbox files the compiler blamed (`<sandbox>/….swift:<line>:`), and for each one that maps back to a project file holding schematizable mutants calls `excludeProblematicMutants`: from every error line it walks up to the nearest `case "<mutant id>":` — stopping at `default:` or `switch` — and takes those mutants out. `regeneratedSchema` rebuilds the file's schema from the original source with the mutants kept (reading each one's index with `MutantID.index(of:)`) and writes it over the sandbox copy. When no error line lands in a mutant's `case`, or the schema cannot be regenerated, the sandbox file goes back to a symlink to the original and every mutant of the file is excluded. It then reports `.schemaNarrowed`, builds again and recurses with what it has excluded so far, until a build compiles or no new mutant is blamed — then it answers no artifact, and `MutantExecutor` falls back to `FallbackExecutor`.
+Narrows a schematized SPM build that does not compile. `narrow` reads the sandbox files the compiler blamed (`<sandbox>/….swift:<line>:`), and for each one that maps back to a project file holding schematizable mutants calls `excludeProblematicMutants`: from every error line it walks up to the nearest `case "<mutant id>":` — stopping at `default:` or `switch` — and takes those mutants out. `regeneratedSchema` rebuilds the file's schema from the original source with the mutants kept (reading each one's index with `MutantID.index(of:)`) and writes it over the sandbox copy. When no error line lands in a mutant's `case`, or the schema cannot be regenerated, the sandbox file goes back to a symlink to the original (`SandboxLink.restore`) and every mutant of the file is excluded. A link that cannot be restored throws `IntegrityError.sourceNotRestored`, and a narrowed schema that cannot be written throws its write error: both used to be ignored, leaving the broken schema in the sandbox to fail every later build. It then reports `.schemaNarrowed`, builds again and recurses with what it has excluded so far, until a build compiles or no new mutant is blamed — then it answers no artifact, and `MutantExecutor` falls back to `FallbackExecutor`.
 
 ---
 
@@ -169,6 +169,7 @@ enum IntegrityError: Error, Equatable, LocalizedError {
     case schemaNotApplied(path: String)
     case supportMissing(path: String)
     case activationNeverObserved(killed: Int)
+    case sourceNotRestored(path: String)
 }
 ```
 
@@ -553,7 +554,7 @@ flowchart TD
     WARM -- none built --> ALLUNVIABLE[every mutant .unviable\nwith that build's output]
 ```
 
-**SPM path:** Uses warm sandboxes created via `SandboxFactory.createClean(projectPath:)`, each built once with `swift build --build-tests` (`ToolRequests.swiftBuildTests`) so that every mutant after the first costs an incremental rebuild rather than a cold one. For each mutant, writes the mutated source content (`mutant.mutatedSourceContent!`) directly into its sandbox, rebuilds, runs the tests, and restores the original file. Pipeline invariants guarantee `mutatedSourceContent` is always non-nil for incompatible mutants.
+**SPM path:** Uses warm sandboxes created via `SandboxFactory.createClean(projectPath:)`, each built once with `swift build --build-tests` (`ToolRequests.swiftBuildTests`) so that every mutant after the first costs an incremental rebuild rather than a cold one. For each mutant, writes the mutated source content directly into its sandbox, rebuilds, runs the tests, and restores the original file — the sandbox's symlink to it — through `SandboxLink.restore(at:to:)`. A mutant without `mutatedSourceContent` is reported unviable before any sandbox is touched. The restore used to be a `try?` in a `defer`: when re-linking failed, the file was simply gone from the sandbox and every later mutant of that worker failed to build and was cached `unviable`. A failed restore now throws `IntegrityError.sourceNotRestored` and ends the run.
 
 The number of sandboxes is a quarter of `--concurrency` (`TestExecutionStage.retryWorkerShare`, never fewer than one, never more than there are mutants), the same share the second test pass uses: a rebuild and a test run each spread over several cores, so four of them is a load the machine notices and eight is not worth it. Mutants are dealt round-robin over the sandboxes that built; a sandbox whose warm build failed is left out, and only when none built are the mutants reported unviable with that build's output. Results come back in input order whatever the completion order. Measured on `swift-cpd`, nine incompatible mutants took 118s of a 176s subset run when they ran one after another in a single sandbox — the first 26s for the cold build, then 9s each — which is what made this worth parallelising.
 
@@ -571,6 +572,7 @@ actor SimulatorPool {
     func release(_ slot: SimulatorSlot) async
     func cancelPending(id: UUID)
     func tearDown() async
+    static func orphanedClones(in listOutput: String, isAlive: (pid_t) -> Bool = ProcessTree.isAlive) -> [String]
 }
 ```
 
@@ -581,6 +583,10 @@ Manages a fixed-size pool of simulator slots for parallel test execution.
 | `platform=macOS` and SPM | Creates one no-op slot (no UDID) | No-op |
 | iOS / tvOS / watchOS | Clones the base simulator `size` times; boots each clone | Shuts down and deletes each clone |
 
+Each clone's UDID is recorded as soon as its `simctl clone` returns, and every clone call is waited for even after one fails. If any clone or boot fails, `setUp` runs `tearDown` before rethrowing, so a pool that fails part-way leaves no `XMR-<pid>-<session>-<n>` device behind — the caller only tears down a pool whose `setUp` succeeded.
+
+**Clones left by other runs.** A run killed with `SIGKILL` or a crash never reaches `tearDown`, and its clones stay registered with CoreSimulator, booted ones still holding memory. Before cloning, `setUp` lists the devices and shuts down and deletes every one `orphanedClones(in:isAlive:)` names: a clone whose name carries the pid of a process that is gone (`CloneName.isOrphaned`), or one in the `XMR-<session>-<n>` form clones had before the pid was part of the name. The pid is what makes this safe: sweeping every `XMR-*` device would delete the simulators of another run in progress, the mistake the sandbox sweep once made (#86). A device list that cannot be read skips the sweep.
+
 `usesSimulators` reports whether slots are simulator clones. One no-op slot means a run is effectively sequential regardless of `size`, which is why `ConfigurationResolver` resolves concurrency down to 1 for those destinations.
 
 `acquire()` returns an available slot immediately or suspends the caller until one is released. The suspension is wrapped with `withTaskCancellationHandler` — if the owning task is cancelled, the slot is released to prevent permanent deadlock.
@@ -588,6 +594,20 @@ Manages a fixed-size pool of simulator slots for parallel test execution.
 `release(_:)` resumes the oldest pending `acquire()` waiter, or returns the slot to the available pool if no waiters exist.
 
 **`Simulator/SimulatorPool+Make.swift`** — `static func make(for configuration: RunnerConfiguration, launcher: any ProcessLaunching) async throws -> SimulatorPool` builds the pool a run's destination needs: the Xcode destination, or `platform=macOS` for a package; plain slots (`baseUDID: nil`) when `SimulatorManager.requiresSimulatorPool(for:)` says no, otherwise clones of the base simulator `resolveBaseUDID(for:)` finds. `size` is the configured concurrency.
+
+---
+
+## Simulator/CloneName.swift
+
+```swift
+enum CloneName {
+    static let prefix: String   // "XMR-"
+    static func make(session: String, index: Int, pid: pid_t = getpid()) -> String
+    static func isOrphaned(_ name: String, isAlive: (pid_t) -> Bool = ProcessTree.isAlive) -> Bool
+}
+```
+
+Names a simulator clone `XMR-<pid>-<session>-<index>`, the session being eight hex characters fixed per pool, and tells whether a device so named was left by a run that is gone. A name that does not match either the current or the pre-pid form is never orphaned, so a device the tool did not create is never touched.
 
 ---
 

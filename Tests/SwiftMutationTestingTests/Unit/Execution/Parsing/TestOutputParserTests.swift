@@ -113,7 +113,7 @@ struct TestOutputParserTests {
         #expect(result == .crashed)
     }
 
-    @Test("Given a test name that mentions a crash marker before a failing test, when parsed, then the test names the kill")
+    @Test("Given a test name mentioning a crash marker before a failing test, when parsed, then the test is named")
     func testNameMentioningACrashMarkerDoesNotHideTheFailingTest() {
         let output = """
             ◇ Test "Given output with EXC_BAD_INSTRUCTION, when parsed, then returns crashed" started.

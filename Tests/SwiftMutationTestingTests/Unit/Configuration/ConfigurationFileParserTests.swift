@@ -216,4 +216,42 @@ struct ConfigurationFileParserTests {
         #expect(result[""] == nil)
         #expect(result["timeout"] == "45")
     }
+
+    @Test("Given values followed by inline comments, when parsed, then the comments are dropped")
+    func inlineCommentsAreStripped() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try FileHelpers.write(
+            "timeout: 60 # seconds\nquiet: true\t# keep it short\n"
+                + "exclude: # files to skip\n  - \"**/Gen/**\" # generated\n"
+                + "mutators:\n  - name: SwapTernary # noisy\n    active: false # off\n",
+            named: ".swift-mutation-testing.yml",
+            in: dir
+        )
+
+        let result = try parser.parse(at: dir.path)
+
+        #expect(result["timeout"] == "60")
+        #expect(result["quiet"] == "true")
+        #expect(result["exclude"] == "**/Gen/**")
+        #expect(result["disabled-mutators"] == "SwapTernary")
+    }
+
+    @Test("Given a # inside quotes or inside a word, when parsed, then it is kept")
+    func aHashThatIsNotACommentIsKept() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try FileHelpers.write(
+            "scheme: \"My #App\"\nsources-path: Sources/C#Bridge\n",
+            named: ".swift-mutation-testing.yml",
+            in: dir
+        )
+
+        let result = try parser.parse(at: dir.path)
+
+        #expect(result["scheme"] == "My #App")
+        #expect(result["sources-path"] == "Sources/C#Bridge")
+    }
 }

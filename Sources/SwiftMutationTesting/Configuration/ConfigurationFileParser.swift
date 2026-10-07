@@ -17,7 +17,8 @@ struct ConfigurationFileParser: Sendable {
         var currentMutatorName: String?
         var disabledMutators: [String] = []
 
-        for line in content.components(separatedBy: .newlines) {
+        for rawLine in content.components(separatedBy: .newlines) {
+            let line = Self.strippingComment(rawLine)
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
 
@@ -50,6 +51,23 @@ struct ConfigurationFileParser: Sendable {
         }
 
         return result
+    }
+
+    static func strippingComment(_ line: String) -> String {
+        var quote: Character?
+        var previous: Character = " "
+        for index in line.indices {
+            let character = line[index]
+            if let open = quote {
+                if character == open { quote = nil }
+            } else if character == "\"" || character == "'" {
+                quote = character
+            } else if character == "#", previous.isWhitespace {
+                return String(line[..<index])
+            }
+            previous = character
+        }
+        return line
     }
 
     private func parseTopLevel(

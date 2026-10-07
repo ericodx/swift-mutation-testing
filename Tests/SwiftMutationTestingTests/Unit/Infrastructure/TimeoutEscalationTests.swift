@@ -73,11 +73,46 @@ struct TimeoutEscalationTests {
         #expect(target.isRunning)
     }
 
+    @Test("Given an escalation armed twice, when the grace period elapses, then only the second arm kills")
+    func aSecondArmReplacesTheFirst() async throws {
+        let kill = RecordingKill()
+        let escalation = TimeoutEscalation(gracePeriod: 0.1, kill: kill.asKill)
+
+        escalation.arm(pid: 999_998, descendants: [])
+        escalation.arm(pid: 999_999, descendants: [])
+        try await Task.sleep(for: .milliseconds(400))
+
+        #expect(kill.recorded == [SentSignal(pid: -999_999, signal: SIGKILL)])
+    }
+
+    @Test("Given a process that has terminated, when the escalation is armed, then nothing is signalled")
+    func anArmAfterTerminationDoesNothing() async throws {
+        let kill = RecordingKill()
+        let escalation = TimeoutEscalation(gracePeriod: 0.1, kill: kill.asKill)
+
+        escalation.processTerminated()
+        escalation.arm(pid: 999_999, descendants: [999_997])
+        try await Task.sleep(for: .milliseconds(300))
+
+        #expect(kill.recorded.isEmpty)
+    }
+
+    @Test("Given an escalation, when the process terminates, then it reports whether a kill was pending")
+    func terminationReportsWhetherAKillWasPending() {
+        let kill = RecordingKill()
+        let idle = TimeoutEscalation(gracePeriod: 3600, kill: kill.asKill)
+        let armed = TimeoutEscalation(gracePeriod: 3600, kill: kill.asKill)
+        armed.arm(pid: 999_999, descendants: [])
+
+        #expect(!idle.processTerminated())
+        #expect(armed.processTerminated())
+        #expect(kill.recorded.isEmpty)
+    }
+
     // MARK: - Private
 
     private func spawnGroupLeader() throws -> Sleeper {
         let sleeper = try spawnSleeper()
-        setpgid(sleeper.pid, sleeper.pid)
 
         try #require(
             getpgid(sleeper.pid) == sleeper.pid,

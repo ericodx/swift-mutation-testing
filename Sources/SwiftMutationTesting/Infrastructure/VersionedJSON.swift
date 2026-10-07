@@ -2,22 +2,26 @@ import CryptoKit
 import Foundation
 
 enum VersionedJSON {
+    struct Failures {
+        let notFound: any Error
+        let unreadable: any Error
+        let unsupported: (Int) -> any Error
+    }
+
     static func read<Document: Decodable>(
         _ type: Document.Type,
         from path: String,
         version: Int,
         decoder: JSONDecoder = JSONDecoder(),
-        notFound: @autoclosure () -> any Error,
-        unreadable: @autoclosure () -> any Error,
-        unsupported: (Int) -> any Error
+        failures: Failures
     ) throws -> Document {
-        guard FileManager.default.fileExists(atPath: path) else { throw notFound() }
+        guard FileManager.default.fileExists(atPath: path) else { throw failures.notFound }
 
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
 
-        guard let header = try? JSONDecoder().decode(Header.self, from: data) else { throw unreadable() }
-        guard header.formatVersion == version else { throw unsupported(header.formatVersion) }
-        guard let document = try? decoder.decode(Document.self, from: data) else { throw unreadable() }
+        guard let header = try? JSONDecoder().decode(Header.self, from: data) else { throw failures.unreadable }
+        guard header.formatVersion == version else { throw failures.unsupported(header.formatVersion) }
+        guard let document = try? decoder.decode(Document.self, from: data) else { throw failures.unreadable }
 
         return document
     }

@@ -119,12 +119,70 @@ struct ProcessTreeTests {
         var calls = 0
         let failingOnRead: SystemCalls.Sysctl = { _, _, _, size, _, _ in
             calls += 1
-            guard calls == 1 else { return -1 }
+            guard calls == 1 else {
+                errno = EPERM
+                return -1
+            }
             size?.pointee = MemoryLayout<kinfo_proc>.stride * 4
             return 0
         }
 
         #expect(ProcessTree.descendants(of: 2, sysctl: failingOnRead).isEmpty)
         #expect(calls == 2)
+    }
+
+    @Test("Given the table grows between sizing and reading, when descendants are asked for, then they are found")
+    func aTableThatGrowsIsReadAgain() {
+        var reads = 0
+        let growing: SystemCalls.Sysctl = { _, _, buffer, size, _, _ in
+            let stride = MemoryLayout<kinfo_proc>.stride
+            guard let buffer else {
+                size?.pointee = stride * 2
+                return 0
+            }
+            reads += 1
+            guard reads > 1 else {
+                errno = ENOMEM
+                return -1
+            }
+            let procs = buffer.bindMemory(to: kinfo_proc.self, capacity: 2)
+            procs[0].kp_proc.p_pid = 10
+            procs[0].kp_eproc.e_ppid = 2
+            procs[1].kp_proc.p_pid = 11
+            procs[1].kp_eproc.e_ppid = 10
+            size?.pointee = stride * 2
+            return 0
+        }
+
+        #expect(ProcessTree.descendants(of: 2, sysctl: growing) == [10, 11])
+        #expect(reads == 2)
+    }
+
+    @Test("Given the process table keeps outgrowing the buffer, when descendants are asked for, then reading gives up")
+    func aTableThatKeepsGrowingGivesUp() {
+        var reads = 0
+        let alwaysGrowing: SystemCalls.Sysctl = { _, _, buffer, size, _, _ in
+            guard buffer != nil else {
+                size?.pointee = MemoryLayout<kinfo_proc>.stride * 2
+                return 0
+            }
+            reads += 1
+            errno = ENOMEM
+            return -1
+        }
+
+        #expect(ProcessTree.descendants(of: 2, sysctl: alwaysGrowing).isEmpty)
+        #expect(reads == 3)
+    }
+
+    @Test("Given this process and one that has exited, when asked whether they are alive, then only this one is")
+    func liveAndExitedProcessesAreTold() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try process.run()
+        process.waitUntilExit()
+
+        #expect(ProcessTree.isAlive(getpid()))
+        #expect(!ProcessTree.isAlive(process.processIdentifier))
     }
 }

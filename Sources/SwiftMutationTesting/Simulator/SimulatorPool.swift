@@ -27,17 +27,24 @@ actor SimulatorPool {
             return
         }
 
-        let clones = try await cloneBase(baseUDID)
-        clonedUDIDs = clones
-        try await bootClones(clones)
+        await removeOrphanedClones()
 
+        do {
+            try await cloneBase(baseUDID)
+            try await bootClones(clonedUDIDs)
+        } catch {
+            await tearDown()
+            throw error
+        }
+
+        let clones = clonedUDIDs
         let platform =
             destination.components(separatedBy: ",")
             .first(where: { $0.hasPrefix("platform=") }) ?? "platform=iOS Simulator"
         available = clones.map { SimulatorSlot(udid: $0, destination: "\(platform),id=\($0)") }
     }
 
-    private func cloneBase(_ base: String) async throws -> [String] {
+    private func cloneBase(_ base: String) async throws {
         let launcher = self.launcher
         let size = self.size
         let session = self.sessionID
@@ -49,13 +56,13 @@ actor SimulatorPool {
             timeout: 30
         )
 
-        return try await withThrowingTaskGroup(of: String.self) { group in
+        try await withThrowingTaskGroup(of: String.self) { group in
             for index in 0 ..< size {
                 group.addTask {
                     let result = try await launcher.launchCapturing(
                         ProcessRequest(
                             executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-                            arguments: ["simctl", "clone", base, "XMR-\(session)-\(index)"],
+                            arguments: ["simctl", "clone", base, CloneName.make(session: session, index: index)],
                             environment: nil,
                             additionalEnvironment: [:],
                             workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
@@ -71,9 +78,14 @@ actor SimulatorPool {
                 }
             }
 
-            var results: [String] = []
-            for try await udid in group { results.append(udid) }
-            return results
+            var firstError: (any Error)?
+            while let outcome = await group.nextResult() {
+                switch outcome {
+                case .success(let udid): clonedUDIDs.append(udid)
+                case .failure(let error): firstError = firstError ?? error
+                }
+            }
+            if let firstError { throw firstError }
         }
     }
 
@@ -123,8 +135,46 @@ actor SimulatorPool {
     func tearDown() async {
         guard baseUDID != nil else { return }
 
+        await remove(clonedUDIDs)
+    }
+
+    static func orphanedClones(in listOutput: String, isAlive: (pid_t) -> Bool = ProcessTree.isAlive) -> [String] {
+        guard
+            let data = listOutput.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let devices = json["devices"] as? [String: [[String: Any]]]
+        else { return [] }
+
+        return devices.values.flatMap { $0 }.compactMap { device in
+            guard
+                let name = device["name"] as? String,
+                let udid = device["udid"] as? String,
+                CloneName.isOrphaned(name, isAlive: isAlive)
+            else { return nil }
+            return udid
+        }.sorted()
+    }
+
+    private func removeOrphanedClones() async {
+        guard
+            let listed = try? await launcher.launchCapturing(
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                    arguments: ["simctl", "list", "devices", "--json"],
+                    environment: nil,
+                    additionalEnvironment: [:],
+                    workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                    timeout: 30
+                )
+            ),
+            listed.exitCode == 0
+        else { return }
+
+        await remove(Self.orphanedClones(in: listed.output))
+    }
+
+    private func remove(_ udids: [String]) async {
         let launcher = self.launcher
-        let udids = clonedUDIDs
 
         await withTaskGroup(of: Void.self) { group in
             for udid in udids {

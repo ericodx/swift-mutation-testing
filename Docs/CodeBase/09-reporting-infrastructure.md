@@ -200,7 +200,19 @@ struct HtmlReporter: Sendable {
 }
 ```
 
-Writes a self-contained HTML dashboard to `outputPath`. Shows the overall score, the detection line and the totals, then a per-file score table with `<details>` elements listing survived mutants inline. Score cells are colour-coded: green (100%), yellow (≥ 50%), red (< 50%).
+Writes a self-contained HTML dashboard to `outputPath`. Shows the overall score, the detection line and the totals, then a per-file score table with `<details>` elements listing survived mutants inline. Score cells are colour-coded: green (100%), yellow (≥ 50%), red (< 50%). Every interpolated value — the file path, the operator, the mutation description and the detection line — goes through `String.htmlEscaped` (`&`, `<`, `>`, `"`, `'`), so a `<` or `&&` mutation keeps the table intact and a string literal cannot inject markup. File paths are relative to `projectRoot`, computed by `ProjectRelativePath`, with no leading `/`.
+
+---
+
+## Reporting/String+HtmlEscaped.swift
+
+```swift
+extension String {
+    var htmlEscaped: String
+}
+```
+
+Replaces `&`, `<`, `>`, `"` and `'` with their character references, so that any text can be placed in an HTML element or attribute value. `HtmlReporter` applies it to every value it interpolates.
 
 ---
 
@@ -214,7 +226,7 @@ struct SonarReporter: Sendable {
 }
 ```
 
-Writes a SonarQube Generic Issue Import Format JSON file to `outputPath`. Reports survived mutants as `MAJOR` issues and `noCoverage` mutants as `MINOR` issues.
+Writes a SonarQube Generic Issue Import Format JSON file to `outputPath`. Reports survived mutants as `MAJOR` issues and `noCoverage` mutants as `MINOR` issues. Each issue's `filePath` is relative to `projectRoot`, computed by `ProjectRelativePath`, with no leading `/`, as the generic issue import expects.
 
 `engineId` is always `"swift-mutation-testing"`. `ruleId` is the operator identifier. `type` is `"CODE_SMELL"`.
 
@@ -438,7 +450,7 @@ struct MutationReportLocation: Sendable, Encodable {
 }
 ```
 
-`end.column` is computed as `start.column + originalText.count`.
+`end.column` is computed as `start.column + originalText.utf8.count`: `start.column` is the UTF-8 column SwiftSyntax reports, so the length is counted in the same unit — counting characters ended the range early on any text with a multi-byte character.
 
 ---
 
@@ -526,7 +538,7 @@ struct SonarRange: Sendable, Encodable {
 }
 ```
 
-`endColumn` is `startColumn + originalText.count`. `startLine == endLine` (single-line range).
+`endColumn` is `startColumn + originalText.utf8.count`, in UTF-8 columns like `startColumn`. `startLine == endLine` (single-line range).
 
 ---
 
@@ -617,6 +629,7 @@ struct ProcessRunner: Sendable {
 
     func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
     func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
+    static func checkOwnGroup(_ pid: pid_t, groupOf: (pid_t) -> pid_t = getpgid, warning: OnceWarning = groupWarning)
 }
 ```
 
@@ -624,7 +637,7 @@ Low-level process execution engine. Uses `withTaskCancellationHandler` + `withCh
 
 **Reading the capture back:** `readCapturedOutput` defaults to reading the file as bytes and decoding them with `String(decoding:as: UTF8.self)`, which replaces an invalid byte rather than failing — the way `OutputWatcher` reads the same file. A run stopped at its first failure or at a timeout is killed mid-write, and Swift Testing prints multi-byte symbols (`✘`, `✔`); a strict decode would turn the whole log into `""` over one cut character, and the mutant into a crash with no killer test. Only a file that cannot be read at all yields empty output.
 
-Both launch paths share their plumbing: the private `awaitTermination(of:killedByUs:start:)` wraps the continuation and its cancellation handler, and the private `run(_:timeoutTask:continuation:onLaunchFailure:result:)` installs the `terminationHandler`, starts the process, sets its group and tracks it — or, when `process.run()` throws, cancels the timeout task, runs `onLaunchFailure` (for `launchCapturing`, closing and removing the capture file) and resumes with the error. Each path only supplies its timeout task and the `result` closure that turns the terminated process into its return value.
+Both launch paths share their plumbing: the private `awaitTermination(of:killedByUs:start:)` wraps the continuation and its cancellation handler, and the private `run(_:timeoutTask:continuation:onLaunchFailure:result:)` installs the `terminationHandler`, starts the process, checks its group and tracks it — or, when `process.run()` throws, cancels the timeout task, runs `onLaunchFailure` (for `launchCapturing`, closing and removing the capture file) and resumes with the error. Each path only supplies its timeout task and the `result` closure that turns the terminated process into its return value.
 
 **Timeout handling:** a `Task` sleeping for `timeout` seconds marks a `KilledByUsFlag` and calls `onTimeout(pid)`. The `terminationHandler` checks the flag and returns `-1` instead of the actual exit code.
 
@@ -632,13 +645,15 @@ Both launch paths share their plumbing: the private `awaitTermination(of:killedB
 
 This is what makes a killed mutant cheap. A mutant is killed by its *first* failing test, and `TestOutputParser.parse` already reports only that one; running the remaining tests after it changed nothing but the clock. Neither XCTest nor Swift Testing offers a stop-on-first-failure switch, so the runner watches for one. Measured on `swift-cpd` (987 mutants, a suite that runs 14s alone), stopping early took a full run from 38m30s to 25m38s on its own, and 13m46s with the rest of the work in this area — the probe standing in for the baseline, the file's own tests running first, and incompatible mutants spread over warm sandboxes. The first 300 mutants ran three times faster than before; the middle of the run less so, which is where the killing tests are the slow integration ones and the first failure lands late regardless of order. It applies to the SPM test-bundle runs and the `swift test` fallback only; `xcodebuild test-without-building` is left to finish, because its verdict is read from the `.xcresult` bundle it writes at the end.
 
-**Cancellation handling:** `onCancel` marks the flag and calls `onTimeout(pid)` immediately, ensuring the continuation is always resumed via the `terminationHandler`.
+**Cancellation handling:** `onCancel` marks the flag and calls `onTimeout(pid)` immediately, ensuring the continuation is always resumed via the `terminationHandler`. A task that is already cancelled runs `onCancel` before the process exists, with pid 0, which signals nothing; `run` therefore checks for cancellation before `process.run()` and resumes with `CancellationError` without starting anything, and checks again right after, so a cancellation that lands while the process starts still stops it through `onTimeout`.
 
 **Post-termination cleanup:** `postTerminationCleanup` is called after every process termination (success or failure), used by `SPMProcessLauncher` to kill the process group.
 
-`launchCapturing` writes output to a temporary file (UUID-named) and reads it in the `terminationHandler` to avoid pipe buffer limits. Sets process group via `setpgid(pid, pid)` to enable group signaling.
+`launchCapturing` writes output to a temporary file (UUID-named) and reads it in the `terminationHandler` to avoid pipe buffer limits.
 
-**Tracking what is in flight:** both launch paths register the new group in `processGroups` right after `setpgid`, and the `terminationHandler` deregisters it first thing, so the signal handler in `SandboxCleaner` knows exactly which groups to kill if the tool is interrupted. A process that exits before it is registered would otherwise leave its pid behind — and a later `killAll` would signal whatever reused it — so registration is followed by an `isRunning` check that undoes it.
+**Process groups:** Foundation's `Process` starts every child as the leader of a process group of its own, which is what lets `kill(-pid, …)` reach a whole test tree. The runner used to call `setpgid(pid, pid)` after `process.run()`, but by then the child has exec'd and the call always fails with `EACCES`. `checkOwnGroup(_:groupOf:warning:)` instead reads `getpgid(pid)` and, if a live process does not lead its own group, warns once on stderr through an `OnceWarning` that a timeout or an interrupt may leave its children running.
+
+**Tracking what is in flight:** both launch paths register the new group in `processGroups` right after the group check, and the `terminationHandler` deregisters it first thing, so the signal handler in `SandboxCleaner` knows exactly which groups to kill if the tool is interrupted. A process that exits before it is registered would otherwise leave its pid behind — and a later `killAll` would signal whatever reused it — so registration is followed by an `isRunning` check that undoes it.
 
 ---
 
@@ -661,7 +676,7 @@ The group is frozen **before** the descendants are collected, and the snapshot i
 
 `SIGKILL` rather than `SIGTERM` for the same reason: a test binary is not owed a chance to clean up after its deadline, and a handler that delays exit is a handler that delays the whole run. The `TimeoutEscalation` is still armed, now as the sweep for anything the snapshot missed rather than as the escalation from a polite signal. Cleanup that instead matched processes by sandbox name could not tell one mutant's run from another's when both ran in the same sandbox: it killed the next mutant's test binary, and the truncated output was read as a crash.
 
-**`TimeoutEscalation`** — owns the SIGKILL that follows SIGTERM, and ties it to the run's lifetime. A process that stops when asked has its descendants cleaned up at once and the pending kill cancelled, rather than a timer firing seconds later when the pid may belong to something else.
+**`TimeoutEscalation`** — owns the SIGKILL that follows the first signals, and ties it to the run's lifetime. A process that stops when asked has its descendants cleaned up at once and the pending kill cancelled, rather than a timer firing seconds later when the pid may belong to something else.
 
 ---
 
@@ -669,14 +684,14 @@ The group is frozen **before** the descendants are collected, and the snapshot i
 
 ```swift
 struct XcodeProcessLauncher: Sendable, ProcessLaunching {
-    static func terminate(pid: pid_t, grace: Duration = .seconds(5), kill: @escaping SystemCalls.Kill = Darwin.kill)
+    static func terminate(pid: pid_t, escalation: TimeoutEscalation, kill: SystemCalls.Kill = Darwin.kill)
 
     func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
     func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
 }
 ```
 
-The default launcher for Xcode projects. Its timeout handler is simpler than the SPM one: `SIGTERM` to the group, then `SIGKILL` after a grace period, with no descendant snapshot — `xcodebuild` reaps its own children, and its results are read from the `.xcresult` bundle rather than from whatever the processes left on stdout.
+The default launcher for Xcode projects. Its timeout handler is simpler than the SPM one: `SIGTERM` to the group, then a `TimeoutEscalation` armed with no descendants for the `SIGKILL` after its grace period. When the process exits first, `postTerminationCleanup` cancels that kill and, if it was pending, kills what is left of the group at once — the delayed kill used to be a detached task that fired five seconds later whatever happened, on every killed mutant, at a pid that might by then lead someone else's group. There is no descendant snapshot — `xcodebuild` reaps its own children, and its results are read from the `.xcresult` bundle rather than from whatever the processes left on stdout.
 
 ---
 
@@ -750,17 +765,22 @@ The file-system calls that `ConfigurationResolver`, `ProjectDetector`, `XcodeCon
 
 ```swift
 enum VersionedJSON {
+    struct Failures {
+        let notFound: any Error
+        let unreadable: any Error
+        let unsupported: (Int) -> any Error
+    }
+
     static func read<Document: Decodable>(
         _ type: Document.Type, from path: String, version: Int, decoder: JSONDecoder = JSONDecoder(),
-        notFound: @autoclosure () -> any Error, unreadable: @autoclosure () -> any Error,
-        unsupported: (Int) -> any Error
+        failures: Failures
     ) throws -> Document
     static func encode(_ document: some Encodable, dates: JSONEncoder.DateEncodingStrategy = .deferredToDate) throws -> Data
     static func sha256(of data: Data) -> String
 }
 ```
 
-The format shared by `PlanStore` and `BaselineStore`. `read` decodes a document carrying a `formatVersion` in two steps — the version first, then the whole document — so a file written by another version is refused with the caller's `unsupported` error rather than as unreadable; a missing file throws `notFound`. `encode` produces the same bytes wherever it runs: pretty-printed, sorted keys, no escaped slashes, one trailing newline. `sha256(of:)` is the lowercase hex digest the stores hash those bytes with.
+The format shared by `PlanStore` and `BaselineStore`. `read` decodes a document carrying a `formatVersion` in two steps — the version first, then the whole document — so a file written by another version is refused with the caller's `failures.unsupported` error rather than as unreadable; a missing file throws `failures.notFound`. `encode` produces the same bytes wherever it runs: pretty-printed, sorted keys, no escaped slashes, one trailing newline. `sha256(of:)` is the lowercase hex digest the stores hash those bytes with.
 
 ---
 
@@ -768,12 +788,26 @@ The format shared by `PlanStore` and `BaselineStore`. `read` decodes a document 
 
 ```swift
 enum JSONLines {
-    static func append(_ value: some Encodable, to path: String)
+    static func append(_ value: some Encodable, to path: String) throws
+    static func failureWarning(for path: String, error: any Error) -> String
     static func read<Value: Decodable>(_ type: Value.Type, from path: String) -> [Value]
 }
 ```
 
-A file of one JSON value per line, shared by `CacheStore`'s journal and `PlanJournal`. `append` encodes one value, creates the parent directory if needed and appends the line, so a run cut short keeps every line it wrote; failures are swallowed. `read` returns the values in order, skipping a line an interruption left incomplete, and an empty array when the file does not exist.
+A file of one JSON value per line, shared by `CacheStore`'s journal and `PlanJournal`. `append` encodes one value, creates the parent directory if needed and appends the line, so a run cut short keeps every line it wrote. It throws when any step fails — a full disk, a parent that is a file — and each journal reports that through an `OnceWarning` with `failureWarning(for:error:)`, once per journal, and goes on: the verdict is still in memory and reaches `results.json` and the reports, but would be lost to an interruption. Every step used to be a `try?`, so a full disk dropped entries without a word. `read` returns the values in order, skipping a line an interruption left incomplete, and an empty array when the file does not exist.
+
+---
+
+## Infrastructure/OnceWarning.swift
+
+```swift
+final class OnceWarning: Sendable {
+    init(warn: @escaping @Sendable (String) -> Void = StandardError.write)
+    func callAsFunction(_ message: @autoclosure () -> String)
+}
+```
+
+Writes its first message through `warn` and ignores every later one, with an `Atomic<Bool>` so concurrent callers agree on which was first. Used for a warning that would otherwise repeat once per mutant.
 
 ---
 
@@ -842,11 +876,12 @@ Resolves symlinks with `realpath`, returning the input unchanged when it cannot.
 ```swift
 enum ProcessTree {
     static func descendants(of pid: Int32, sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32]
+    static func isAlive(_ pid: pid_t) -> Bool
     static func all(sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32]
 }
 ```
 
-Walks the process table from `sysctl(KERN_PROC_ALL)` and returns every descendant of a pid, at any depth. `SPMProcessLauncher.terminate` snapshots them while the group is frozen, so a test process that spawns children cannot leave one behind. `all()` returns every pid above 1, for `OrphanedProcessReaper` to inspect.
+Walks the process table from `sysctl(KERN_PROC_ALL)` and returns every descendant of a pid, at any depth. Sizing the table and reading it are two calls, and processes started in between make the read fail with `ENOMEM`; the buffer therefore gets an eighth more room plus 16 entries, and a read that still fails with `ENOMEM` is retried from the sizing, up to three times, before the snapshot comes back empty. `SPMProcessLauncher.terminate` snapshots them while the group is frozen, so a test process that spawns children cannot leave one behind. `all()` returns every pid above 1, for `OrphanedProcessReaper` to inspect. `isAlive(_:)` is `kill(pid, 0)`, with `EPERM` counted as alive — the process exists, it is just not ours to signal; `SandboxName` and `CloneName` both decide ownership with it.
 
 ---
 
@@ -867,14 +902,14 @@ Reads another process's `argv` through `sysctl(KERN_PROCARGS2)`. The buffer hold
 
 ```swift
 final class TimeoutEscalation: @unchecked Sendable {
-    init(gracePeriod: Double = 5)
+    init(gracePeriod: Double = 5, kill: @escaping SystemCalls.Kill = Darwin.kill)
 
     func arm(pid: Int32, descendants: [Int32])
-    func processTerminated()
+    @discardableResult func processTerminated() -> Bool
 }
 ```
 
-Owns the `SIGKILL` that sweeps up whatever the first round of signals missed, and ties it to the run's lifetime: a process that stops when asked has its snapshotted descendants killed at once and the pending task cancelled, rather than a timer firing seconds later when the pid may belong to something else.
+Owns the `SIGKILL` that sweeps up whatever the first round of signals missed, and ties it to the run's lifetime: a process that stops when asked has its snapshotted descendants killed at once and the pending task cancelled, rather than a timer firing seconds later when the pid may belong to something else. Arming again cancels the kill already pending, and an arm after `processTerminated` does nothing. `processTerminated` reports whether a kill was pending, which is how `XcodeProcessLauncher` knows the process ended after a timeout.
 
 ---
 
@@ -942,7 +977,7 @@ Provides per-file test hashing and test file path enumeration for granular cache
 | `hashPerFile(projectPath:)` | Returns a dictionary mapping relative test file paths to their SHA256 content hashes. Symlinks pointing outside the project root use absolute paths as keys to avoid collisions |
 | `testFilePaths(projectPath:)` | Returns all test file paths in the project |
 
-**Test file collection:** files whose containing directory name ends with `Tests` or `Specs`, or whose filename matches `*Tests.swift` or `*Specs.swift`.
+**Test file collection:** Swift files under a directory whose name ends with `Tests`, or whose filename matches `*Tests.swift`. Only the directories between the project root and the file count — the path is made relative with `ProjectRelativePath` first — so a project checked out under, say, `~/Work/IntegrationTests/App` does not have every file taken for a test file.
 
 ---
 
