@@ -76,8 +76,14 @@ struct PlanMaterializer: Sendable {
         var sources: [SourceFile] = []
         for file in plan.files {
             let path = Self.absolute(file.path, in: projectPath)
-            guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+            guard FileManager.default.fileExists(atPath: path) else {
                 throw PlanError.missingFile(file: file.path)
+            }
+            let content: String
+            do {
+                content = try String(contentsOfFile: path, encoding: .utf8)
+            } catch {
+                throw PlanError.unreadableFile(file: file.path, reason: error.localizedDescription)
             }
             guard MutantCacheKey.hash(of: content) == file.sha256 else {
                 throw PlanError.stale(file: file.path)

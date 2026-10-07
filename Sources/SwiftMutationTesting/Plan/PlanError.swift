@@ -7,6 +7,7 @@ enum PlanError: Error, Equatable, LocalizedError {
     case unknownProjectType(String)
     case stale(file: String)
     case missingFile(file: String)
+    case unreadableFile(file: String, reason: String)
     case corrupt(fingerprint: String, file: String)
     case invalidShard(String)
     case unknownMutant(String)
@@ -30,6 +31,9 @@ enum PlanError: Error, Equatable, LocalizedError {
 
         case .missingFile(let file):
             return "plan is stale: \(file) is no longer there; make the plan again"
+
+        case .unreadableFile(let file, let reason):
+            return "plan file \(file) is there but could not be read: \(reason)"
 
         case .corrupt(let fingerprint, let file):
             return "plan is corrupt: mutant \(fingerprint) does not match the text at its position in \(file)"
