@@ -4,4 +4,5 @@ struct ExecutionDeps: Sendable {
     let reporter: any ProgressReporter
     let counter: MutationCounter
     let killerTestFileResolver: KillerTestFileResolver
+    var targetedSuites: [String: TargetedSuite] = [:]
 }

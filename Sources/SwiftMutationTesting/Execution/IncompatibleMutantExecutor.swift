@@ -4,7 +4,6 @@ struct IncompatibleMutantExecutor: Sendable {
     let deps: ExecutionDeps
     let sandboxFactory: SandboxFactory
     var importStyle: ImportStyle = .implicit
-    var targetedSuites: [String: TargetedSuite] = [:]
 
     func execute(
         _ mutants: [MutantDescriptor],
@@ -252,7 +251,7 @@ struct IncompatibleMutantExecutor: Sendable {
         let start = Date()
 
         if !configuration.build.reproducing,
-            let suite = TargetedSuites.suite(for: mutant.filePath, among: targetedSuites)
+            let suite = TargetedSuites.suite(for: mutant.filePath, among: deps.targetedSuites)
         {
             let targeted = try await swiftTest(
                 filter: suite.name, marker: marker, configuration: configuration, sandbox: sandbox)

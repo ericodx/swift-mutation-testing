@@ -8,21 +8,32 @@ struct TestFilesHasher: Sendable {
         FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
     }
 
-    func hashPerFile(
-        projectPath: String,
-        enumerate: FileEnumerator = Self.defaultEnumerator
-    ) -> [String: String] {
+    struct Snapshot: Sendable {
+        let paths: [String]
+        let contents: [String: String]
+        let hashes: [String: String]
+    }
+
+    func snapshot(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> Snapshot {
         let paths = collectTestFilePaths(under: URL(fileURLWithPath: projectPath), enumerate: enumerate)
-        var result: [String: String] = [:]
+        var contents: [String: String] = [:]
+        var hashes: [String: String] = [:]
 
         for path in paths.sorted() {
             guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
 
-            let relativePath = ProjectRelativePath.make(for: path, in: projectPath)
-            result[relativePath] = MutantCacheKey.hash(of: content)
+            contents[path] = content
+            hashes[ProjectRelativePath.make(for: path, in: projectPath)] = MutantCacheKey.hash(of: content)
         }
 
-        return result
+        return Snapshot(paths: paths, contents: contents, hashes: hashes)
+    }
+
+    func hashPerFile(
+        projectPath: String,
+        enumerate: FileEnumerator = Self.defaultEnumerator
+    ) -> [String: String] {
+        snapshot(projectPath: projectPath, enumerate: enumerate).hashes
     }
 
     func testFilePaths(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> [String] {

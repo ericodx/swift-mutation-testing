@@ -40,7 +40,7 @@ struct MutantExecutor: Sendable {
             environment.reporter
             ?? (configuration.reporting.quiet ? SilentProgressReporter() : ConsoleProgressReporter())
 
-        let (cacheStore, metadata, hasher) = try await prepareCacheStore(input: input)
+        let (cacheStore, metadata, testFiles) = try await prepareCacheStore(input: input)
         try await cacheStore.persistMetadata(metadata)
 
         if let cached = await allCached(mutants: input.mutants, cacheStore: cacheStore) {
@@ -51,7 +51,7 @@ struct MutantExecutor: Sendable {
         }
 
         let deps = makeExecutionDeps(
-            input: input, hasher: hasher, cacheStore: cacheStore, reporter: reporter
+            input: input, testFiles: testFiles, cacheStore: cacheStore, reporter: reporter
         )
 
         let sandbox = try await environment.sandboxFactory.create(
@@ -111,7 +111,7 @@ struct MutantExecutor: Sendable {
 
     private func prepareCacheStore(
         input: RunnerInput
-    ) async throws -> (CacheStore, CacheStore.CacheMetadata, TestFilesHasher) {
+    ) async throws -> (CacheStore, CacheStore.CacheMetadata, TestFilesHasher.Snapshot) {
         let cachePath = URL(fileURLWithPath: configuration.projectPath)
             .appendingPathComponent("\(CacheStore.directoryName)/results.json").path
         let cacheStore = CacheStore(
@@ -127,30 +127,29 @@ struct MutantExecutor: Sendable {
             )
         }
 
-        let hasher = environment.testFilesHasher
-        let currentTestHashes = hasher.hashPerFile(projectPath: input.projectPath)
-        let diff = try await cacheStore.changedTestFiles(current: currentTestHashes)
+        let testFiles = environment.testFilesHasher.snapshot(projectPath: input.projectPath)
+        let diff = try await cacheStore.changedTestFiles(current: testFiles.hashes)
         await cacheStore.invalidate(diff: diff)
 
-        let metadata = CacheStore.CacheMetadata(testFileHashes: currentTestHashes, testSelection: selection)
-        return (cacheStore, metadata, hasher)
+        let metadata = CacheStore.CacheMetadata(testFileHashes: testFiles.hashes, testSelection: selection)
+        return (cacheStore, metadata, testFiles)
     }
 
     private func makeExecutionDeps(
         input: RunnerInput,
-        hasher: TestFilesHasher,
+        testFiles: TestFilesHasher.Snapshot,
         cacheStore: CacheStore,
         reporter: any ProgressReporter
     ) -> ExecutionDeps {
         let mutantCount = input.mutants.count
         let counter = MutationCounter(total: mutantCount)
         let resolver = KillerTestFileResolver(
-            testFilePaths: hasher.testFilePaths(projectPath: input.projectPath),
-            projectPath: input.projectPath
+            testFilePaths: testFiles.paths, projectPath: input.projectPath, read: { testFiles.contents[$0] }
         )
         return ExecutionDeps(
             launcher: launcher, cacheStore: cacheStore, reporter: reporter,
-            counter: counter, killerTestFileResolver: resolver
+            counter: counter, killerTestFileResolver: resolver,
+            targetedSuites: TargetedSuites.declared(in: testFiles.paths, read: { testFiles.contents[$0] })
         )
     }
 
@@ -183,7 +182,6 @@ struct MutantExecutor: Sendable {
 
         let excludedIDs = Set(schemaBuildExcluded.map(\.id))
         let testableSchematizable = schematizable.filter { !excludedIDs.contains($0.id) }
-        let targetedSuites = TargetedSuites.declared(in: deps.killerTestFileResolver.testFilePaths)
 
         if let artifact {
             var bundles: [TestBundle] = []
@@ -197,7 +195,7 @@ struct MutantExecutor: Sendable {
                 configuration: configuration,
                 bundles: bundles,
                 testFilter: testFilter,
-                targetedSuites: targetedSuites
+                targetedSuites: deps.targetedSuites
             )
             results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
         } else if !testableSchematizable.isEmpty {
@@ -205,8 +203,7 @@ struct MutantExecutor: Sendable {
         }
 
         results += try await runIncompatible(
-            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool,
-            importStyle: input.importStyle, targetedSuites: targetedSuites
+            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool, importStyle: input.importStyle
         )
 
         return results
@@ -298,12 +295,10 @@ struct MutantExecutor: Sendable {
         deps: ExecutionDeps,
         mutants: [MutantDescriptor],
         pool: SimulatorPool,
-        importStyle: ImportStyle,
-        targetedSuites: [String: TargetedSuite]
+        importStyle: ImportStyle
     ) async throws -> [ExecutionResult] {
         try await IncompatibleMutantExecutor(
-            deps: deps, sandboxFactory: environment.sandboxFactory, importStyle: importStyle,
-            targetedSuites: targetedSuites
+            deps: deps, sandboxFactory: environment.sandboxFactory, importStyle: importStyle
         )
         .execute(mutants, configuration: configuration, pool: pool)
     }
