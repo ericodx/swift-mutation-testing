@@ -18,9 +18,13 @@ struct SandboxFactory: Sendable {
         }
     }
 
-    func createClean(projectPath: String) async throws -> Sandbox {
+    func createClean(projectPath: String, disablingSwiftLint: Bool = false) async throws -> Sandbox {
         try await Self.offCooperativePool {
-            try populate(projectPath: projectPath, replacing: [:])
+            let sandbox = try populate(projectPath: projectPath, replacing: [:])
+            if disablingSwiftLint {
+                try disableSwiftLintBuildPhases(in: sandbox.rootURL)
+            }
+            return sandbox
         }
     }
 
