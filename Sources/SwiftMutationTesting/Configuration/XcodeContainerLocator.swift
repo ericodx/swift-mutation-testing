@@ -125,7 +125,8 @@ enum XcodeContainerLocator {
     private static func references(of workspace: String, in root: URL) -> [String] {
         let workspaceURL = root.appendingPathComponent(workspace)
         let contents = workspaceURL.appendingPathComponent("contents.xcworkspacedata")
-        guard let parser = XMLParser(contentsOf: contents) else { return [] }
+        guard let data = FileManager.default.contents(atPath: contents.path) else { return [] }
+        let parser = XMLParser(data: data)
         let collector = ReferenceCollector(container: workspaceURL.deletingLastPathComponent())
         parser.delegate = collector
         parser.parse()
