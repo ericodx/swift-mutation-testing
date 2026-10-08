@@ -23,34 +23,36 @@ struct SchemataGenerator: Sendable {
         mutating func record(start: Int, delta: Int)
     }
 }
-
-struct SchemaGeneration: Sendable {
-    let content: String
-    let discarded: [MutationPoint]
-}
 ```
 
 Rewrites a source file to embed all its schematizable mutations into `switch __swiftMutationTestingID_<hash>` blocks, the hash naming the file. Returns the complete rewritten source as `content`, and as `discarded` the mutations it could not place: a point inside no function body, a body whose statements could not be extracted, or a mutation whose text does not fit inside the body it belongs to. A discarded mutation gets no `case`, so `ApplicationVerifier` finds it missing from the sandbox and stops the run rather than letting a mutant that is not in the build be judged. Every byte splice goes through `UTF8Splice`, which answers `nil` instead of trapping when a range falls outside the text or cuts through a character; a `nil` read or mutation is a discarded mutation, and a body whose replacement fails is left as it was.
 
-`generate` is two steps. `groupByScope` takes the file's `functionScopes` from its `ParsedSource`, groups the mutations by the innermost function body holding each — last body in the file first — and discards the ones no body holds. The whole file is one `[UInt8]` for the length of `generate`, decoded once at the end: each body's statements are read from it and each `switch` spliced into it in place, where every group used to encode the whole text to bytes and decode it back, twice. `Edits` maps an offset of the original file to the buffer: the bodies are rewritten from the last one back, so an edit only moves the offsets after its start, and since the edits are recorded with decreasing starts, `current` finds the ones before an offset by binary search over their running totals rather than filtering all of them. An edit is recorded only when its body was replaced. `schemaBody(for:in:edits:path:)` builds one body's `switch`, a case per mutation that fits, or `nil` when none does; `generate` splices each into the content and records the edit.
+`generate` is two steps. `groupByScope` takes the file's `functionScopes` from its `ParsedSource`, groups the mutations by the innermost function body holding each (`FunctionBodyScopes.innermostScope(containing:)`) — last body in the file first — and discards the ones no body holds. The whole file is one `[UInt8]` for the length of `generate`, decoded once at the end: each body's statements are read from it and each `switch` spliced into it in place, where every group used to encode the whole text to bytes and decode it back, twice. `Edits` maps an offset of the original file to the buffer: the bodies are rewritten from the last one back, so an edit only moves the offsets after its start, and since the edits are recorded with decreasing starts, `current` finds by binary search over the starts the first edit that begins before the offset, and the running totals give the sum of it and every later one, rather than filtering all of them. An edit is recorded only when its body was replaced. `schemaBody(for:in:edits:path:)` builds one body's `switch` from the buffer, a case per mutation that fits — each mutation applied to a copy of the body's statement bytes through `UTF8Splice.replacing(from:to:in:with:)`, at its offset mapped by `Edits` — or `nil` when none does; `generate` checks the body's mapped range with `UTF8Splice.isRange`, splices the `switch` into the buffer and records the edit. When no edit was recorded, the file's content is returned as it was, with no support block.
 
 ```mermaid
 flowchart TD
     subgraph groupByScope
-        A[read the file's function body scopes] --> B[group mutations by innermost scope]
-        B --> C[sort groups by bodyStartOffset DESC]
+        A["source.functionScopes"] --> B["innermostScope(containing:) per mutation"]
+        B -- no scope --> DISC["discarded"]
+        B --> C["group by bodyStartOffset,<br>sort groups DESC"]
     end
-    C --> D[for each group]
+    C --> BYTES["bytes = Array(content.utf8)<br>edits = Edits()"]
+    BYTES --> D["for each group"]
     subgraph schemaBody
-        D --> E[extract original statements text]
-        E --> F[apply each mutation to produce mutated copy]
-        F --> G[build switch block\none case per mutant + default]
+        D --> E["read statements at<br>edits.current(offsets)"]
+        E --> F["apply each mutation to<br>a copy of the statement bytes"]
+        F --> G["build switch block<br>one case per mutant + default"]
     end
-    G --> H[replace body range in content]
-    H --> I[return rewritten content\n+ SupportDeclarations.appended]
+    E -- range or UTF-8 invalid --> DISC
+    F -- splice fails --> DISC
+    G --> H["splice switch into bytes<br>edits.record(start:delta:)"]
+    H --> D
+    D -- groups done --> EMPTY{"edits.isEmpty?"}
+    EMPTY -- yes --> ORIG["original content"]
+    EMPTY -- no --> I["decode bytes once<br>+ SupportDeclarations.appended"]
 ```
 
-Groups are processed in reverse `bodyStartOffset` order so that earlier replacements do not invalidate the byte offsets of later ones.
+Groups are processed in reverse `bodyStartOffset` order so that a replacement only moves offsets after its start, which is what `Edits` relies on.
 
 **Generated switch structure**, for a body of statements:
 
@@ -72,6 +74,26 @@ Mutant IDs are `MutantID.make(index:)`, `"swift-mutation-testing_<index>"`, wher
 
 ---
 
+## Discovery/Schematization/SchemaGeneration.swift
+
+```swift
+struct SchemaGeneration: Sendable {
+    let content: String
+    let discarded: [MutationPoint]
+}
+```
+
+What `SchemataGenerator.generate` returns.
+
+| Field | Description |
+|---|---|
+| `content` | The rewritten source with its support block, or the original content when no body was rewritten |
+| `discarded` | The mutations that got no `case`: outside every function body, in a body whose statements could not be read, or whose splice failed |
+
+`SchematizationStage` stores `content` as the file's `schematizedContent`, and `SchemaNarrower.regeneratedSchema` writes it over the sandbox copy; both read only `content`. A discarded mutant still gets its descriptor, so `ApplicationVerifier` finds its `case` missing and stops the run.
+
+---
+
 ## Discovery/Schematization/MutationRewriter.swift
 
 ```swift
@@ -80,7 +102,7 @@ struct MutationRewriter: Sendable {
 }
 ```
 
-Applies a single mutation to a complete source file via raw UTF-8 byte replacement. Used exclusively for incompatible mutants.
+Applies a single mutation to a complete source file via raw UTF-8 byte replacement. `IncompatibleRewritingStage` uses it for incompatible mutants, `MutantExecutor` for the mutants `SchemaNarrower` took out of the schema, and `Reproducer.diff(of:in:)` for the diff it prints.
 
 Replaces the bytes `utf8Offset ..< utf8Offset + originalText.utf8.count` with `mutatedText` through `UTF8Splice.replacing`. When the splice answers `nil` — the range lies outside the source or cuts through a character — the source is returned unchanged.
 
@@ -106,29 +128,37 @@ Byte-range edits on a string's UTF-8 form, the unit SwiftSyntax offsets count in
 
 ```swift
 final class TypeScopeVisitor: SyntaxVisitor {
+    init()
     private(set) var scopes: [FunctionBodyScope]
-    var functionScopes: FunctionBodyScopes
-}
-
-struct FunctionBodyScopes: Sendable {
-    let scopes: [FunctionBodyScope]
-    func isSchematizable(utf8Offset: Int) -> Bool
-    func innermostScope(containing utf8Offset: Int) -> FunctionBodyScope?
+    var functionScopes: FunctionBodyScopes { get }
 }
 ```
 
-Walks the AST and records every `FunctionBodyScope`. Records scopes for:
+Walks the AST (`.sourceAccurate`) and records a `FunctionBodyScope`, with its `FunctionBodyShape`, for every body of:
 
 - `FunctionDeclSyntax`
 - `InitializerDeclSyntax`
 - `DeinitializerDeclSyntax`
 - `AccessorDeclSyntax`
 
-`isSchematizable(utf8Offset:)` returns `true` if any recorded scope contains the given offset.
+A declaration without a body records nothing. The visitor answers no lookup itself: `functionScopes` wraps `scopes` in a `FunctionBodyScopes`, which `ParsedSource` keeps for the file, so the scopes are asked without the visitor.
 
-`innermostScope(containing:)` returns the tightest scope that contains the offset, enabling correct handling of nested functions and closures.
+---
 
-Both live on `FunctionBodyScopes` (`Discovery/Schematization/FunctionBodyScopes.swift`), the `Sendable` value the visitor's `functionScopes` hands out, so that the scopes of a file are kept on its `ParsedSource` and asked without the visitor. It keeps the scopes sorted by start (the outer of two that start together first) with each one's enclosing scope: a lookup finds by binary search the last scope starting at or before the offset, and climbs the enclosing scopes from there until one still holds it — the first that does is the innermost, since bodies nest or are disjoint. That is a binary search plus the nesting depth per mutant, where it used to filter every scope of the file.
+## Discovery/Schematization/FunctionBodyScopes.swift
+
+```swift
+struct FunctionBodyScopes: Sendable {
+    let scopes: [FunctionBodyScope]
+    init(scopes: [FunctionBodyScope])
+    func isSchematizable(utf8Offset: Int) -> Bool
+    func innermostScope(containing utf8Offset: Int) -> FunctionBodyScope?
+}
+```
+
+The function bodies of one file, kept on its `ParsedSource`. `MutantIndexingStage` asks `isSchematizable(utf8Offset:)` to split the mutants into schematizable and incompatible, and `SchemataGenerator` asks `innermostScope(containing:)` to group them; a nested function or accessor gets its own scope rather than its enclosing one's.
+
+`init` keeps the scopes sorted by start (the outer of two that start together first) with each one's enclosing scope, found with a stack of the scopes still open. A lookup finds by binary search the last scope starting at or before the offset, and climbs the enclosing scopes from there until one still holds it — the first that does is the innermost, since bodies nest or are disjoint. That is a binary search plus the nesting depth per mutant, where it used to filter every scope of the file. `isSchematizable` is `innermostScope` answering a scope.
 
 ---
 
@@ -221,7 +251,7 @@ struct ActivationInstrumenter: Sendable {
 
 Returns the mutant's `mutatedSourceContent` with a call that records activation, followed by `SupportDeclarations.perFile(for:)` and, when the file does not import Foundation, `importLine(importStyle)` above it — both through `SupportDeclarations.appended(to:path:syntax:style:)`. The insertion and the wrapping are `UTF8Splice` edits. `IncompatibleMutantExecutor` builds this copy first.
 
-- **An expression mutation** is wrapped whole: the file is parsed, its operators folded with `OperatorTable.standardOperators`, and from the token at `utf8Offset` the first enclosing expression that covers the whole mutated text and can stand as an argument is wrapped in `activatingCall(for:)`. An operator, an assignment, an arrow, `&x`, a type or a pattern cannot, so the search goes on to its parent; folding makes that parent the operator's own `InfixOperatorExprSyntax`, not the whole sequence. The search stops at the statement or member that holds the mutation.
+- **An expression mutation** is wrapped whole: the file is parsed, its operators folded with `OperatorTable.standardOperators`, and from the token at `utf8Offset` the first enclosing expression that covers the whole mutated text and can stand as an argument is wrapped in `activatingCall(for:)`. An operator, an assignment, an arrow, `&x`, `_`, a type or a pattern cannot, so the search goes on to its parent; folding makes that parent the operator's own `InfixOperatorExprSyntax`, not the whole sequence. The search stops at the statement or member that holds the mutation. The argument is the expression's own text (`trimmedDescription`) from the folded tree, spliced over the expression's range without its trivia.
 - **A removed statement** (`.removeStatement`) gets `activationCall(for:)` in its place.
 - **`nil`**, leaving the mutant unmeasured, when there is no content, no expression qualifies, a splice answers `nil`, or the mutation is inside an attribute, a macro expansion, an enum case (a raw value must stay a literal), or an `#if` condition.
 

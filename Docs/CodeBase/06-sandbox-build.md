@@ -24,6 +24,15 @@ struct SandboxFactory: Sendable {
     ) async throws -> Sandbox
 
     static func offCooperativePool<Value: Sendable>(_ work: @escaping @Sendable () throws -> Value) async throws -> Value
+    static func xcodeprojs(in directory: URL) -> [URL]
+
+    struct Replacements {
+        let byCanonicalPath: [String: String]
+        let byRelativePath: [String: String]
+        init(_ byCanonicalPath: [String: String], under root: String)
+        var isEmpty: Bool { get }
+        func content(for source: URL, relativePath: String, isSymlink: Bool) -> String?
+    }
 }
 ```
 
@@ -33,33 +42,34 @@ Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<
 
 | Method | Used by | Description |
 |---|---|---|
-| `create(projectPath:schematizedFiles:)` | `MutantExecutor` for schematizable path | Embeds all schematized files; disables SwiftLint phases |
-| `createClean(projectPath:disablingSwiftLint:)` | `IncompatibleMutantExecutor` warm sandboxes, SPM and Xcode | Clean sandbox without mutations; mutated files are written directly later. The Xcode workers pass `disablingSwiftLint: true` |
-| `create(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor` for an Xcode reproduction | Writes a single mutated file |
+| `create(projectPath:schematizedFiles:)` | `MutantExecutor` for the schematizable path, `FallbackExecutor` with one file per sandbox | Embeds the schematized files; disables SwiftLint phases |
+| `createClean(projectPath:disablingSwiftLint:)` | `IncompatibleMutantExecutor` warm sandboxes, SPM and Xcode | Clean sandbox without mutations; mutated files are written directly later. The Xcode workers pass `disablingSwiftLint: true`; the SPM ones keep the default `false` |
+| `create(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor.runXcodeCold`, for an Xcode reproduction | Writes a single mutated file; SwiftLint phases are left as they are |
 
 **Copy strategy:**
 
 ```mermaid
 flowchart TD
-    DIR[directory item] --> SKIP{skip?}
-    SKIP -- .build / DerivedData / .xmr-* --> DROP[skip]
-    SKIP -- no --> XCODEPROJ{.xcodeproj?}
-    XCODEPROJ -- yes --> PROJ[xcuserdata → mkdir\nxcshareddata → copy\neverything else → symlink]
-    XCODEPROJ -- no --> RECURSE[recurse into directory]
-    FILE[file item] --> REPLACED{schematized or mutated?}
-    REPLACED -- yes --> WRITE[write its content]
-    REPLACED -- no --> SHARED{under .xcworkspace/xcshareddata?}
-    SHARED -- yes --> COPY[copy]
-    SHARED -- no --> SYMLINK[symlink to original]
+    ITEM["directory entry<br>relative path built on the way down"] --> KIND{"directory and not a symlink?"}
+    KIND -- yes --> SKIP{"skipped name?"}
+    SKIP -- ".build, DerivedData, .xmr-*" --> DROP["skip"]
+    SKIP -- no --> XCODEPROJ{".xcodeproj?"}
+    XCODEPROJ -- yes --> PROJ["xcuserdata: empty directory<br>xcshareddata: copy<br>everything else: symlink"]
+    XCODEPROJ -- no --> RECURSE["mkdir and recurse<br>copy flag set under .xcworkspace/xcshareddata"]
+    KIND -- no --> REPLACED{"Replacements.content: by relative path,<br>or by resolved path for a symlink"}
+    REPLACED -- found --> WRITE["write its content"]
+    REPLACED -- "none, or nothing replaced" --> SHARED{"copy flag set?"}
+    SHARED -- yes --> COPY["copy"]
+    SHARED -- no --> SYMLINK["symlink to original"]
 ```
 
 **Matching the replaced files.** The schematized or mutated paths are resolved once, and each is keyed by its path relative to the resolved project root; the walk builds each item's relative path as it descends and looks it up, so no file is resolved for that. Only a file that is itself a symlink is resolved, and matched by where it points. When nothing is replaced — `createClean`, or a run with no schematized file — the lookup is skipped altogether. The walk used to resolve every file of the project and search its path for `.xcworkspace/xcshareddata/`, once per sandbox; a flag passed down the recursion now marks that directory.
 
 **Off the cooperative pool.** All three are `async` but the work is synchronous file system calls, which used to occupy a cooperative thread for the whole walk — threads that simulator and process work wait on. `offCooperativePool` runs it on a global dispatch queue and resumes the caller through a continuation.
 
-**Post-processing steps (schematizable overload only):**
+**Post-processing (`create(projectPath:schematizedFiles:)`, and `createClean` with `disablingSwiftLint: true`):**
 
-1. `disableSwiftLintBuildPhases` — for every `.xcodeproj` of the sandbox (`SandboxFactory.xcodeprojs(in:)`: any depth, in path order, not inside `.build`, `DerivedData`, `Pods/` or another bundle), patches `project.pbxproj`, replacing the `shellScript` of every `PBXShellScriptBuildPhase` that contains `swiftlint` with `exit 0\n`. Before, only the first `.xcodeproj` at the root was patched, and a workspace's other projects linted the schematized code and failed the build.
+1. `disableSwiftLintBuildPhases` — for every `.xcodeproj` of the sandbox (`SandboxFactory.xcodeprojs(in:)`: any depth, in path order, not inside `.build`, `DerivedData`, `Pods`, `.xmr-derived-data`, `.derived-data`, a symlinked directory or another `.xcodeproj`/`.xcworkspace`), patches `project.pbxproj`, replacing the `shellScript` of every `PBXShellScriptBuildPhase` that contains `swiftlint` (any case) with `exit 0\n`; the sandbox's `project.pbxproj` is a symlink to the original, so the link is removed and the patched XML written in its place. Before, only the first `.xcodeproj` at the root was patched, and a workspace's other projects linted the schematized code and failed the build.
 
 
 ---
@@ -79,7 +89,7 @@ A lightweight wrapper around the sandbox root URL.
 |---|---|
 | `rootURL` | Absolute URL of the `xmr-<pid>-<UUID>` directory in `$TMPDIR` |
 
-`cleanup()` removes the entire `rootURL` directory tree via `FileManager.default.removeItem(at:)`.
+`cleanup()` removes the entire `rootURL` directory tree via `FileManager.default.removeItem(at:)`. The executors release a sandbox through `release(keepingFor:)` (`Plan/Reproduction.swift`): it is kept, and its path recorded, when a `Reproduction` is passed, and removed with `cleanup()` otherwise.
 
 ---
 
@@ -91,7 +101,7 @@ enum SandboxLink {
 }
 ```
 
-Puts a sandbox file back as a symlink to the project's original, removing whatever is at the path first — a mutated copy, a schema, or nothing. Throws `IntegrityError.sourceNotRestored` when the link cannot be created, since a sandbox missing that file would fail every later build and have its mutants cached as unviable. `IncompatibleMutantExecutor` restores with it after each mutant, and `SchemaNarrower` when it gives up on a file's schema.
+Puts a sandbox file back as a symlink to the project's original, removing whatever is at the path first — a mutated copy, a schema, or nothing. Throws `IntegrityError.sourceNotRestored` when the link cannot be created, since a sandbox missing that file would fail every later build and have its mutants cached as unviable. `IncompatibleMutantExecutor` restores with it after each mutant in a warm sandbox, SPM and Xcode — when the mutant's run throws, the restore is attempted with `try?` and the original error rethrown — and `SchemaNarrower` when it gives up on a file's schema.
 
 ---
 
@@ -124,6 +134,7 @@ enum SandboxCleaner {
         processGroups: ProcessGroupRegistry = .shared,
         exit: (Int32) -> Void = SignalTarget.process.exit
     )
+    static let handledSignals: [Int32]
     static func installSignalHandlers()
     static func withSignalTarget<T>(_ target: SignalTarget, _ body: () throws -> T) rethrows -> T
 
@@ -145,7 +156,7 @@ Handles cleanup of orphaned and active sandbox directories.
 | `deregister(in:)` | Forgets the active sandbox without touching the directory |
 | `cleanupActiveSandbox(in:)` | Removes the active sandbox directory, if one is registered |
 | `terminate(registry:processGroups:exit:)` | What a signal does: kills every test process group still in flight, removes the active sandbox, then calls `exit(1)` |
-| `installSignalHandlers()` | Installs an empty C handler for `SIGINT`, `SIGTERM` and `SIGHUP`, and once per process a dispatch signal source for each that calls `terminate` with the current `SignalTarget` |
+| `installSignalHandlers()` | Installs an empty C handler for each of `handledSignals` (`SIGINT`, `SIGTERM`, `SIGHUP`), and once per process a dispatch signal source for each, on a global `.userInitiated` queue, that calls `terminate` with the current `SignalTarget` |
 | `withSignalTarget(_:_:)` | Points the installed signal sources at another registry and exit for the length of `body`, then restores `SignalTarget.process` |
 
 **The cleanup does not run in the signal handler.** It used to: the C handler took a lock, built a `String` and a `URL`, called `FileManager.removeItem` and freed memory, none of which is async-signal-safe — a signal landing while another thread held the malloc lock could deadlock the tool on its way out. The C handler is now empty, which is safe by definition, and the work runs on a `DispatchSourceSignal`, whose event handler is an ordinary block on a dispatch queue: kqueue records the signal whatever its disposition. The handler is a function rather than `SIG_IGN` because an ignored signal stays ignored across `exec`, and every test process would then ignore the `SIGTERM` a timeout sends; a caught signal is reset to its default in the child.
@@ -238,19 +249,22 @@ Runs a single build inside the sandbox.
 
 ```mermaid
 flowchart TD
-    A[xcodebuild build-for-testing\n-scheme -destination\n-derivedDataPath sandbox/.xmr-derived-data] --> B{exit code?}
-    B -- non-zero --> FAIL[throw BuildError.compilationFailed]
-    B -- 0 --> C[search Build/Products for .xctestrun]
-    C -- not found --> NFE[throw BuildError.xctestrunNotFound]
-    C -- found --> D[Data(contentsOf: xctestrunURL)]
-    D --> E[XCTestRunPlist(data)]
-    E -- nil --> NFE2[throw BuildError.xctestrunNotFound]
-    E -- plist --> F[BuildArtifact]
+    A["xcodebuild build-for-testing<br>-scheme -destination<br>-derivedDataPath sandbox/.xmr-derived-data<br>+ container arguments"] --> B{"exit code?"}
+    B -- "SPMResultParser.timedOutExitCode" --> TO["throw BuildError.timedOut"]
+    B -- "other non-zero" --> FAIL["throw BuildError.compilationFailed"]
+    B -- 0 --> C["first .xctestrun in Build/Products"]
+    C -- "not found" --> NFE["throw BuildError.xctestrunNotFound"]
+    C -- found --> D["Data(contentsOf: xctestrunURL)"]
+    D --> E["XCTestRunPlist(data)"]
+    E -- nil --> NFE2["throw BuildError.xctestrunNotFound"]
+    E -- plist --> F["BuildArtifact"]
 ```
 
 Passes the resolved container as `-workspace <path>` or `-project <path>`, relative to the sandbox root; with none, `xcodebuild` is given no container. It no longer scans the sandbox for one: the first `.xcworkspace` of a directory listing is not a decision.
 
-**SPM path (`buildSPM`):** Runs `swift build --build-tests` in the sandbox directory. Returns a `BuildArtifact` with the sandbox path (no `.xctestrun` needed).
+**SPM path (`buildSPM`):** Runs `swift build --build-tests` in the sandbox directory. Returns a `BuildArtifact` whose `derivedDataPath` is `<sandbox>/.build`, with no `.xctestrun` and no plist.
+
+On both paths the timeout exit code (`SPMResultParser.timedOutExitCode`) becomes `BuildError.timedOut(seconds:output:)` and any other non-zero exit `BuildError.compilationFailed(output:)`, each carrying the build output.
 
 Both requests come from `ToolRequests` (`buildForTesting(in:scheme:destination:container:timeout:)` and `swiftBuildTests(in:timeout:)`). Derived data is placed at `ToolRequests.derivedDataPath(in:)` — `<sandbox>/.xmr-derived-data` — to keep it inside the sandbox directory.
 
@@ -280,10 +294,11 @@ Every `swift` and `xcodebuild` invocation a run builds and tests a sandbox with,
 | Method | Invocation | Used by |
 |---|---|---|
 | `swiftBuildTests` | `swift build --build-tests` | `BuildStage.buildSPM`, `IncompatibleMutantExecutor` (warm and per-mutant SPM builds) |
-| `swiftTest` | `swift test --skip-build [--filter <filter>]` | `TestExecutionStage` (SPM without bundles), `IncompatibleMutantExecutor.testSPM`, `BaselineProbe` |
-| `buildForTesting` | `xcodebuild build-for-testing -scheme -destination -derivedDataPath` plus the container's arguments | `BuildStage.build`, `IncompatibleMutantExecutor` (Xcode) |
+| `swiftTest` | `swift test --skip-build [--filter <filter>]` | `TestExecutionStage` (SPM without bundles), `IncompatibleMutantExecutor` (SPM tests), `BaselineProbe` |
+| `buildForTesting` | `xcodebuild build-for-testing -scheme -destination -derivedDataPath` plus the container's arguments | `BuildStage.build`, `IncompatibleMutantExecutor` (the Xcode workers' warm builds, each mutant's incremental build, and a reproduction's cold ones) |
 | `xcodebuild` | `xcodebuild` with the given arguments | `TestExecutionStage` (`test-without-building`), `IncompatibleMutantExecutor.testXcode` |
 | `derivedDataPath` | `<sandbox>/.xmr-derived-data` | every Xcode build and test |
+| `noTestDiagnostics` | `-collect-test-diagnostics never` | appended to every `test-without-building`, in `TestExecutionStage` and `IncompatibleMutantExecutor.testXcode`; see [Execution](07-execution.md#executionincompatiblemutantexecutorxcodeswift) for why |
 
 Before, each caller built its own `ProcessRequest`, and the incompatible Xcode path put its derived data in `.derived-data` while the schematized build used `.xmr-derived-data`; there is now one directory.
 
@@ -294,16 +309,16 @@ Before, each caller built its own `ProcessRequest`, and the incompatible Xcode p
 ```swift
 struct BuildArtifact: Sendable {
     let derivedDataPath: String
-    let xctestrunURL: URL
-    let plist: XCTestRunPlist
+    let xctestrunURL: URL?
+    let plist: XCTestRunPlist?
 }
 ```
 
 | Field | Description |
 |---|---|
-| `derivedDataPath` | Path passed to `-derivedDataPath`; reused by `test-without-building` |
-| `xctestrunURL` | URL of the `.xctestrun` file in `Build/Products` |
-| `plist` | Parsed representation of the `.xctestrun` plist |
+| `derivedDataPath` | Xcode: the path passed to `-derivedDataPath`, reused by `test-without-building`. SPM: `<sandbox>/.build` |
+| `xctestrunURL` | URL of the `.xctestrun` file in `Build/Products`; `nil` for SPM |
+| `plist` | Parsed representation of the `.xctestrun` plist; `nil` for SPM, which is how `TestExecutionStage` tells the two paths apart |
 
 ---
 
@@ -319,12 +334,12 @@ enum BuildError: Error, Equatable, LocalizedError {
 }
 ```
 
-Conforms to `LocalizedError` to provide structured error descriptions that propagate through generic `catch` blocks.
+Conforms to `LocalizedError` to provide structured error descriptions that propagate through generic `catch` blocks; the build output, when there is any, comes before the message. `==` compares the cases only, not their payloads.
 
 | Case | Condition | Handling |
 |---|---|---|
-| `compilationFailed(output:)` | Build exits with non-zero code | Caught by `MutantExecutor`; triggers `FallbackExecutor` |
-| `timedOut(seconds:output:)` | Build did not finish within `--build-timeout` | Ends the run rather than reporting the mutants unviable — a build that ran out of time says nothing about them |
+| `compilationFailed(output:)` | Build exits with non-zero code | Caught by `MutantExecutor`: on SPM it starts `SchemaNarrower`, on Xcode — or when narrowing blames no mutant — `FallbackExecutor`. In `FallbackExecutor` it marks the file's mutants `.unviable` |
+| `timedOut(seconds:output:)` | Build did not finish within `--build-timeout` | Ends the run when the schematized build times out, rather than reporting the mutants unviable — a build that ran out of time says nothing about them. In `FallbackExecutor` it marks the file's mutants `.timeout` |
 | `xctestrunNotFound` | No `.xctestrun` in `Build/Products`, or plist parse failure | Propagates; fatal |
 
 ---
