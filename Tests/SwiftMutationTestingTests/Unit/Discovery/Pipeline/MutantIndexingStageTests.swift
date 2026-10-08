@@ -59,4 +59,19 @@ struct MutantIndexingStageTests {
         let result = stage.run(mutationPoints: points, sources: [], projectPath: "/tmp")
         #expect(result.allSatisfy { !$0.isSchematizable })
     }
+
+    @Test("Given points out of source order, when indexed, then they are numbered in source order all the same")
+    func pointsOutOfOrderAreIndexedInSourceOrder() {
+        let first = makeParsedSource("func f() { let x = true }", path: "a.swift")
+        let second = makeParsedSource("func g() { let y = false }", path: "b.swift")
+        let points =
+            BooleanLiteralReplacement().mutations(in: first) + BooleanLiteralReplacement().mutations(in: second)
+
+        let inOrder = stage.run(mutationPoints: points, sources: [first, second], projectPath: "/tmp")
+        let reversed = stage.run(mutationPoints: points.reversed(), sources: [first, second], projectPath: "/tmp")
+
+        #expect(inOrder.map(\.mutation.filePath) == ["a.swift", "b.swift"])
+        #expect(reversed.map(\.mutation.filePath) == ["a.swift", "b.swift"])
+        #expect(reversed.map(\.fingerprint) == inOrder.map(\.fingerprint))
+    }
 }

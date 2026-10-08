@@ -28,12 +28,7 @@ struct IncompatibleMutantExecutor: Sendable {
             results += try await runSPMShared(
                 mutants: pending, configuration: configuration)
         } else if case .xcode(let scheme, _) = configuration.build.projectType {
-            for mutant in pending {
-                results.append(
-                    try await run(
-                        mutant: mutant, scheme: scheme,
-                        configuration: configuration, pool: pool))
-            }
+            results += try await runXcode(pending, scheme: scheme, configuration: configuration, pool: pool)
         }
 
         return results
@@ -45,7 +40,7 @@ struct IncompatibleMutantExecutor: Sendable {
     ) async throws -> [ExecutionResult] {
         var results: [ExecutionResult] = []
 
-        let viable = mutants.filter { $0.mutatedSourceContent != nil }
+        let viable = mutants.compactMap { mutant in mutant.mutatedSourceContent.map { (mutant, $0) } }
 
         for mutant in mutants where mutant.mutatedSourceContent == nil {
             results.append(
@@ -70,7 +65,7 @@ struct IncompatibleMutantExecutor: Sendable {
 
         guard !ready.isEmpty else {
             let failed = workers[0].build
-            for mutant in viable {
+            for (mutant, _) in viable {
                 results.append(
                     await storeAndReport(
                         mutant: mutant, sandbox: nil,
@@ -88,7 +83,7 @@ struct IncompatibleMutantExecutor: Sendable {
     }
 
     private func runRoundRobin(
-        _ mutants: [MutantDescriptor],
+        _ mutants: [(MutantDescriptor, String)],
         over ready: [WarmSandbox],
         configuration: RunnerConfiguration
     ) async throws -> [ExecutionResult] {
@@ -98,9 +93,9 @@ struct IncompatibleMutantExecutor: Sendable {
                 let mine = numbered.filter { $0.offset % ready.count == slot }
                 group.addTask {
                     var done: [(Int, ExecutionResult)] = []
-                    for (offset, mutant) in mine {
+                    for (offset, (mutant, content)) in mine {
                         let result = try await runInSharedSandbox(
-                            mutant: mutant, configuration: configuration, sandbox: worker.sandbox
+                            mutant: mutant, content: content, configuration: configuration, sandbox: worker.sandbox
                         )
                         done.append((offset, result))
                     }
@@ -141,6 +136,7 @@ struct IncompatibleMutantExecutor: Sendable {
 
     private func runInSharedSandbox(
         mutant: MutantDescriptor,
+        content: String,
         configuration: RunnerConfiguration,
         sandbox: Sandbox
     ) async throws -> ExecutionResult {
@@ -149,11 +145,11 @@ struct IncompatibleMutantExecutor: Sendable {
         let sandboxRoot = sandbox.rootURL.resolvingSymlinksInPath().path
 
         let originalCanonical = URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path
-        guard let content = mutant.mutatedSourceContent else {
+        guard originalCanonical.hasPrefix(projectRoot + "/") else {
             return await storeAndReport(
                 mutant: mutant, sandbox: nil,
                 keepLogsPath: configuration.reporting.keepLogsPath,
-                buildOutput: "The mutation could not be applied to the source file."
+                buildOutput: Self.outsideProjectMessage
             )
         }
         let relative = String(originalCanonical.dropFirst(projectRoot.count))
@@ -226,7 +222,7 @@ struct IncompatibleMutantExecutor: Sendable {
         )
     }
 
-    private struct Verdict {
+    struct Verdict {
         let status: ExecutionStatus
         let output: String
         let duration: Double
@@ -254,14 +250,23 @@ struct IncompatibleMutantExecutor: Sendable {
     ) async throws -> Verdict {
         let marker = measured ? ActivationMarker(for: mutant.id, in: sandbox) : nil
         let start = Date()
-        let test = try await deps.launcher.launchCapturing(
-            ToolRequests.swiftTest(
-                in: sandbox,
-                filter: configuration.build.testTarget,
-                environment: marker.map { [ActivationMarker.environmentVariable: $0.path] } ?? [:],
-                timeout: configuration.build.timeout
-            )
-        )
+
+        if !configuration.build.reproducing,
+            let suite = TargetedSuites.suite(for: mutant.filePath, among: deps.targetedSuites)
+        {
+            let targeted = try await swiftTest(
+                filter: suite.name, marker: marker, configuration: configuration, sandbox: sandbox)
+            let status = SPMResultParser().parse(exitCode: targeted.exitCode, output: targeted.output)
+                .asExecutionStatus
+            if status.isKill {
+                return Verdict(
+                    raw: status, output: targeted.output, duration: Date().timeIntervalSince(start), marker: marker
+                )
+            }
+        }
+
+        let test = try await swiftTest(
+            filter: configuration.build.testTarget, marker: marker, configuration: configuration, sandbox: sandbox)
 
         return Verdict(
             raw: SPMResultParser().parse(exitCode: test.exitCode, output: test.output).asExecutionStatus,
@@ -271,7 +276,24 @@ struct IncompatibleMutantExecutor: Sendable {
         )
     }
 
-    private func record(
+    private func swiftTest(
+        filter: String?,
+        marker: ActivationMarker?,
+        configuration: RunnerConfiguration,
+        sandbox: Sandbox
+    ) async throws -> (exitCode: Int32, output: String) {
+        let request = ToolRequests.swiftTest(
+            in: sandbox,
+            filter: filter,
+            environment: marker.map { [ActivationMarker.environmentVariable: $0.path] } ?? [:],
+            timeout: configuration.build.timeout
+        )
+        return try await deps.launcher.launchCapturing(
+            configuration.build.reproducing ? request : request.stopping(at: .firstTestFailure)
+        )
+    }
+
+    func record(
         _ verdict: Verdict,
         mutant: MutantDescriptor,
         configuration: RunnerConfiguration
@@ -282,167 +304,9 @@ struct IncompatibleMutantExecutor: Sendable {
         )
     }
 
-    private func run(
-        mutant: MutantDescriptor,
-        scheme: String,
-        configuration: RunnerConfiguration,
-        pool: SimulatorPool
-    ) async throws -> ExecutionResult {
-        guard let content = mutant.mutatedSourceContent else {
-            return await storeAndReport(
-                mutant: mutant, sandbox: nil,
-                keepLogsPath: configuration.reporting.keepLogsPath,
-                buildOutput: "The mutation could not be applied to the source file."
-            )
-        }
+    static let outsideProjectMessage = "The mutated file lies outside the project, so no sandbox holds it."
 
-        if let instrumented = ActivationInstrumenter(importStyle: importStyle).instrument(mutant) {
-            let verdict = try await runXcode(
-                XcodeAttempt(
-                    mutant: mutant, content: instrumented, measured: true, scheme: scheme,
-                    configuration: configuration
-                ),
-                pool: pool
-            )
-            if !verdict.buildFailed {
-                return await record(verdict, mutant: mutant, configuration: configuration)
-            }
-        }
-
-        let verdict = try await runXcode(
-            XcodeAttempt(
-                mutant: mutant, content: content, measured: false, scheme: scheme, configuration: configuration
-            ),
-            pool: pool
-        )
-        return await record(verdict, mutant: mutant, configuration: configuration)
-    }
-
-    private struct XcodeAttempt {
-        let mutant: MutantDescriptor
-        let content: String
-        let measured: Bool
-        let scheme: String
-        let configuration: RunnerConfiguration
-    }
-
-    private struct XcodeRun {
-        let attempt: XcodeAttempt
-        let slot: SimulatorSlot
-        let sandbox: Sandbox
-    }
-
-    private func runXcode(_ attempt: XcodeAttempt, pool: SimulatorPool) async throws -> Verdict {
-        let configuration = attempt.configuration
-        let sandbox = try await sandboxFactory.create(
-            projectPath: configuration.projectPath,
-            mutatedFilePath: attempt.mutant.filePath,
-            mutatedContent: attempt.content
-        )
-        defer { sandbox.release(keepingFor: configuration.build.reproduction) }
-
-        let slot = try await pool.acquire()
-        do {
-            let run = XcodeRun(attempt: attempt, slot: slot, sandbox: sandbox)
-            var verdict = try await buildAndTestXcode(run)
-            if verdict.isUnactivatedKill {
-                verdict = try await testXcode(run, start: Date())
-            }
-            await pool.release(slot)
-            return verdict
-        } catch {
-            await pool.release(slot)
-            throw error
-        }
-    }
-
-    private func buildAndTestXcode(_ run: XcodeRun) async throws -> Verdict {
-        let configuration = run.attempt.configuration
-        let start = Date()
-
-        let build = try await deps.launcher.launchCapturing(
-            ToolRequests.buildForTesting(
-                in: run.sandbox,
-                scheme: run.attempt.scheme,
-                destination: run.slot.destination,
-                container: configuration.build.xcodeContainer,
-                timeout: configuration.build.buildTimeout
-            )
-        )
-
-        guard build.exitCode == 0 else {
-            let launched = TestLaunchResult(
-                exitCode: build.exitCode,
-                output: build.output,
-                xcresultPath: xcresultPath(in: run.sandbox),
-                duration: Date().timeIntervalSince(start)
-            )
-            var verdict = Verdict(
-                raw: try await resolve(launched, configuration: configuration),
-                output: build.output, duration: launched.duration, marker: nil
-            )
-            verdict.buildFailed = true
-            return verdict
-        }
-
-        return try await testXcode(run, start: start)
-    }
-
-    private func testXcode(_ run: XcodeRun, start: Date) async throws -> Verdict {
-        let configuration = run.attempt.configuration
-        let xcresultPath = xcresultPath(in: run.sandbox)
-        var testArguments =
-            [
-                "test-without-building",
-                "-scheme", run.attempt.scheme,
-                "-destination", run.slot.destination,
-                "-derivedDataPath", ToolRequests.derivedDataPath(in: run.sandbox),
-                "-resultBundlePath", xcresultPath,
-                "-parallel-testing-enabled", "NO",
-            ] + (configuration.build.xcodeContainer?.arguments ?? [])
-
-        if let testTarget = configuration.build.testTarget {
-            testArguments += ["-only-testing", testTarget]
-        }
-
-        let marker = run.attempt.measured ? ActivationMarker(for: run.attempt.mutant.id, in: run.sandbox) : nil
-        let environment = marker.map { [Self.testRunnerPrefix + ActivationMarker.environmentVariable: $0.path] }
-        let test = try await deps.launcher.launchCapturing(
-            ToolRequests.xcodebuild(
-                testArguments, in: run.sandbox, environment: environment ?? [:], timeout: configuration.build.timeout
-            )
-        )
-
-        let launched = TestLaunchResult(
-            exitCode: test.exitCode,
-            output: test.output,
-            xcresultPath: xcresultPath,
-            duration: Date().timeIntervalSince(start)
-        )
-        return Verdict(
-            raw: try await resolve(launched, configuration: configuration),
-            output: test.output, duration: launched.duration, marker: marker
-        )
-    }
-
-    static let testRunnerPrefix = "TEST_RUNNER_"
-
-    private func resolve(
-        _ launched: TestLaunchResult,
-        configuration: RunnerConfiguration
-    ) async throws -> ExecutionStatus {
-        try await TestResultResolver(launcher: deps.launcher).resolve(
-            launch: launched,
-            projectType: configuration.build.projectType,
-            timeout: configuration.build.timeout
-        ).asExecutionStatus
-    }
-
-    private func xcresultPath(in sandbox: Sandbox) -> String {
-        sandbox.rootURL.appendingPathComponent("\(UUID().uuidString).xcresult").path
-    }
-
-    private func storeAndReport(
+    func storeAndReport(
         mutant: MutantDescriptor,
         sandbox: Sandbox?,
         keepLogsPath: String?,
@@ -455,7 +319,7 @@ struct IncompatibleMutantExecutor: Sendable {
         )
     }
 
-    private func buildStatus(exitCode: Int32) -> ExecutionStatus {
+    func buildStatus(exitCode: Int32) -> ExecutionStatus {
         exitCode == SPMResultParser.timedOutExitCode ? .timeout : .unviable
     }
 }

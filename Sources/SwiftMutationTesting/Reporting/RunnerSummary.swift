@@ -7,6 +7,11 @@ struct RunnerSummary: Sendable {
     let unviable: [ExecutionResult]
     let timeouts: [ExecutionResult]
     let noCoverage: [ExecutionResult]
+    let score: Double
+    let resultsByFile: [String: [ExecutionResult]]
+    let fromCache: [ExecutionResult]
+    let integrityWarnings: [ExecutionResult]
+    let activationNotMeasured: [ExecutionResult]
 
     init(results: [ExecutionResult], totalDuration: Double) {
         self.results = results
@@ -17,6 +22,10 @@ struct RunnerSummary: Sendable {
         var unviable: [ExecutionResult] = []
         var timeouts: [ExecutionResult] = []
         var noCoverage: [ExecutionResult] = []
+        var resultsByFile: [String: [ExecutionResult]] = [:]
+        var fromCache: [ExecutionResult] = []
+        var integrityWarnings: [ExecutionResult] = []
+        var activationNotMeasured: [ExecutionResult] = []
 
         for result in results {
             switch result.status {
@@ -26,7 +35,21 @@ struct RunnerSummary: Sendable {
             case .timeout: timeouts.append(result)
             case .noCoverage: noCoverage.append(result)
             }
+            resultsByFile[result.descriptor.filePath, default: []].append(result)
+            if result.fromCache { fromCache.append(result) }
+            if result.activated == false, result.status.isKill || result.status == .timeout {
+                integrityWarnings.append(result)
+            }
+            if result.activated == nil, result.status != .unviable { activationNotMeasured.append(result) }
         }
+
+        let detectedCount = killed.count + timeouts.count
+        let validCount = detectedCount + survived.count + noCoverage.count
+        self.score = validCount > 0 ? Double(detectedCount) / Double(validCount) * 100.0 : 100.0
+        self.resultsByFile = resultsByFile
+        self.fromCache = fromCache
+        self.integrityWarnings = integrityWarnings
+        self.activationNotMeasured = activationNotMeasured
 
         self.killed = killed
         self.survived = survived
@@ -41,18 +64,6 @@ struct RunnerSummary: Sendable {
 
     var undetected: [ExecutionResult] {
         survived + noCoverage
-    }
-
-    var score: Double {
-        let valid = detected.count + undetected.count
-
-        guard valid > 0 else { return 100.0 }
-
-        return Double(detected.count) / Double(valid) * 100.0
-    }
-
-    var resultsByFile: [String: [ExecutionResult]] {
-        Dictionary(grouping: results, by: { $0.descriptor.filePath })
     }
 
     var files: [(path: String, summary: RunnerSummary)] {

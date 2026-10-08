@@ -9,7 +9,7 @@ enum VersionedJSON {
     }
 
     static func read<Document: Decodable>(
-        _ type: Document.Type,
+        _: Document.Type,
         from path: String,
         version: Int,
         decoder: JSONDecoder = JSONDecoder(),

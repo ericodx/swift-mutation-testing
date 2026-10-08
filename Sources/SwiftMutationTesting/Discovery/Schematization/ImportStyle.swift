@@ -29,13 +29,18 @@ enum ImportStyle: String, Sendable, Equatable {
         statements.flatMap { statement -> [ImportDeclSyntax] in
             if let declaration = statement.item.as(ImportDeclSyntax.self) { return [declaration] }
             guard let block = statement.item.as(IfConfigDeclSyntax.self) else { return [] }
-            return block.clauses.flatMap { clause -> [ImportDeclSyntax] in
-                guard
-                    !inactive.contains(where: { $0.contains(clause.position) }),
-                    case .statements(let nested) = clause.elements
-                else { return [] }
-                return imports(in: nested, excluding: inactive)
-            }
+            return block.clauses.flatMap { imports(in: $0, excluding: inactive) }
         }
+    }
+
+    private static func imports(
+        in clause: IfConfigClauseSyntax,
+        excluding inactive: [Range<AbsolutePosition>]
+    ) -> [ImportDeclSyntax] {
+        guard
+            !inactive.contains(where: { $0.contains(clause.position) }),
+            case .statements(let nested) = clause.elements
+        else { return [] }
+        return imports(in: nested, excluding: inactive)
     }
 }

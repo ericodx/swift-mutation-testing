@@ -3,11 +3,22 @@ import Foundation
 enum ProjectRelativePath {
 
     static func make(for path: String, in projectPath: String) -> String {
-        let root = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath().path
-        let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        Resolver(projectPath: projectPath).make(for: path)
+    }
 
-        guard resolved.hasPrefix(root + "/") else { return path }
+    struct Resolver: Sendable {
+        init(projectPath: String) {
+            root = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath().path
+        }
 
-        return String(resolved.dropFirst(root.count + 1))
+        private let root: String
+
+        func make(for path: String) -> String {
+            let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+
+            guard resolved.hasPrefix(root + "/") else { return path }
+
+            return String(resolved.dropFirst(root.count + 1))
+        }
     }
 }

@@ -3,7 +3,7 @@ import SwiftSyntax
 class MutationSyntaxVisitor: SyntaxVisitor {
     required init(source: ParsedSource) {
         filePath = source.file.path
-        locationConverter = SourceLocationConverter(fileName: source.file.path, tree: source.syntax)
+        locationConverter = source.locationConverter
         super.init(viewMode: .sourceAccurate)
     }
 

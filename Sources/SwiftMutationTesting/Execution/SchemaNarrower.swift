@@ -17,6 +17,9 @@ struct SchemaNarrower: Sendable {
         let projectRoot = URL(fileURLWithPath: input.projectPath).resolvingSymlinksInPath().path
         let errorSandboxPaths = Self.extractErrorPaths(from: output, sandboxRoot: sandboxRoot)
         let alreadyExcludedIDs = Set(alreadyExcluded.map(\.id))
+        let schematizableByPath = Dictionary(
+            grouping: input.mutants.filter { $0.isSchematizable && !alreadyExcludedIDs.contains($0.id) }
+        ) { URL(fileURLWithPath: $0.filePath).resolvingSymlinksInPath().path }
 
         var newlyExcluded: [MutantDescriptor] = []
 
@@ -26,13 +29,7 @@ struct SchemaNarrower: Sendable {
 
             guard FileManager.default.fileExists(atPath: originalPath) else { continue }
 
-            let mutantsInFile = input.mutants.filter { mutant in
-                mutant.isSchematizable
-                    && !alreadyExcludedIDs.contains(mutant.id)
-                    && URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path == originalPath
-            }
-
-            guard !mutantsInFile.isEmpty else { continue }
+            guard let mutantsInFile = schematizableByPath[originalPath], !mutantsInFile.isEmpty else { continue }
 
             newlyExcluded += try Self.excludeProblematicMutants(
                 sandboxPath: sandboxPath,

@@ -34,13 +34,13 @@ enum OperatorRegistry {
     static let loopRiskyNames: Set<String>
     static func operatorNames(upTo tier: OperatorTier) -> [String]
     static func operators(named identifiers: [String]) -> [any MutationOperator]
-    static func `operator`(named identifier: String) -> (any MutationOperator)?
+    static func mutationOperator(named identifier: String) -> (any MutationOperator)?
 }
 ```
 
 Every mutation operator, in the order discovery runs them, with the tier it belongs to. The names are the operators' own `identifier`s, so the registry holds no second copy of them.
 
-`allOperatorNames` is the ordered list of all registered operator identifiers. `ConfigurationFileWriter` uses it to populate the operators section of the generated YAML, and `Planner` and `BaselineScope` record it when the operator list is empty. `operatorNames(upTo:)` is the same list cut at a tier: the identifiers whose `OperatorTier` is at most the given one, in registry order. `loopRiskyNames` is the set of operators whose `isLoopRisky` is `true`, the default `InfiniteLoopFilter` leaves out of loop bodies. `operators(named:)` returns the operators to run, and `operator(named:)` the one with an identifier — `SarifRuleCatalog` reads each rule's name and description from it.
+`allOperatorNames` is the ordered list of all registered operator identifiers. `ConfigurationFileWriter` uses it to populate the operators section of the generated YAML, and `Planner` and `BaselineScope` record it when the operator list is empty. `operatorNames(upTo:)` is the same list cut at a tier: the identifiers whose `OperatorTier` is at most the given one, in registry order. `loopRiskyNames` is the set of operators whose `isLoopRisky` is `true`, the default `InfiniteLoopFilter` leaves out of loop bodies. `operators(named:)` returns the operators to run, and `mutationOperator(named:)` the one with an identifier — `SarifRuleCatalog` reads each rule's name and description from it.
 
 **Operator registry** (registration order is fixed; the tier comes from the campaign in `Docs/OPERATORS.md`):
 
@@ -167,11 +167,11 @@ struct MutantDiscoveryStage: Sendable {
 Applies all active operators concurrently across sources via `withTaskGroup`. For each source:
 
 1. Collects mutation points from every operator
-2. Hands them to each exclusion in turn, which drops the points inside its ranges: by default the suppressed declarations (`SuppressionFilter`), then the `while`/`repeat` bodies for loop-risky operators (`InfiniteLoopFilter`), then the `#if` clauses the host build leaves out (`InactiveRegionFilter`)
+2. Hands them to each exclusion in turn — through `filter(_:in:)` with the whole `ParsedSource`, so `SuppressionFilter` reuses the file's converter — which drops the points inside its ranges: by default the suppressed declarations (`SuppressionFilter`), then the `while`/`repeat` bodies for loop-risky operators (`InfiniteLoopFilter`), then the `#if` clauses the host build leaves out (`InactiveRegionFilter`)
 
 A test can give the stage exclusions of its own.
 
-Results are sorted by `filePath` then `utf8Offset`.
+Results are sorted by `filePath` then `utf8Offset` (`MutationPoint.inSourceOrder`).
 
 ---
 
@@ -183,7 +183,7 @@ struct MutantIndexingStage: Sendable {
 }
 ```
 
-Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset) and classifies them as schematizable or incompatible using `TypeScopeVisitor`. The index becomes the mutant ID, `MutantID.make(index:)`.
+Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset, with `MutationPoint.inSourceOrder` — the order `MutantDiscoveryStage` already returns them in, so the stage checks the order and sorts only points that come out of it) and classifies them as schematizable or incompatible using the file's `functionScopes`. The index becomes the mutant ID, `MutantID.make(index:)`.
 
 It also computes each mutant's `MutantFingerprint`. The index is renumbered by any mutant added earlier in any file, so it cannot identify a mutant across runs of different code; the fingerprint can. Among mutants that share a file, declaration, operator and change, the ordinal is their position in offset order.
 
@@ -333,6 +333,9 @@ struct SourceFile: Sendable {
 struct ParsedSource: Sendable {
     let file: SourceFile
     let syntax: SourceFileSyntax
+    let locationConverter: SourceLocationConverter
+    let functionScopes: FunctionBodyScopes
+    init(file: SourceFile, syntax: SourceFileSyntax)
 }
 ```
 
@@ -340,6 +343,10 @@ struct ParsedSource: Sendable {
 |---|---|
 | `file` | The source file with its raw text |
 | `syntax` | SwiftSyntax AST root node |
+| `locationConverter` | The file's offset-to-line converter, named after its path |
+| `functionScopes` | Every function, initializer, deinitializer and accessor body (`TypeScopeVisitor`) |
+
+`init` builds the last two once per file. Each of the seven operator visitors used to build its own `SourceLocationConverter` over the whole file, and the suppression filter an eighth; `MutantIndexingStage` and `SchemataGenerator` each walked the file again with `TypeScopeVisitor`. They all read these now. The seven operators still walk the file once each.
 
 ---
 

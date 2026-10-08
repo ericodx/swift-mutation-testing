@@ -25,7 +25,7 @@ enum OperatorRegistry {
         return entries.map(\.operator).filter { identifiers.contains($0.identifier) }
     }
 
-    static func `operator`(named identifier: String) -> (any MutationOperator)? {
+    static func mutationOperator(named identifier: String) -> (any MutationOperator)? {
         entries.first { $0.operator.identifier == identifier }?.operator
     }
 }

@@ -13,14 +13,9 @@ enum JSONLines {
         }
 
         let handle = try FileHandle(forWritingTo: url)
-        do {
-            try handle.seekToEnd()
-            try handle.write(contentsOf: line)
-        } catch {
-            try? handle.close()
-            throw error
-        }
-        try handle.close()
+        defer { try? handle.close() }
+        try handle.seekToEnd()
+        try handle.write(contentsOf: line)
     }
 
     static func failureWarning(for path: String, error: any Error) -> String {
@@ -28,7 +23,7 @@ enum JSONLines {
             + "verdicts reached from now on may be lost if the run is interrupted"
     }
 
-    static func read<Value: Decodable>(_ type: Value.Type, from path: String) -> [Value] {
+    static func read<Value: Decodable>(_: Value.Type, from path: String) -> [Value] {
         guard let data = FileManager.default.contents(atPath: path) else { return [] }
 
         return data.split(separator: UInt8(ascii: "\n")).compactMap { line in

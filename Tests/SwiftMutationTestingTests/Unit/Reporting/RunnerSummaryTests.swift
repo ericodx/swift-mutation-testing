@@ -191,4 +191,23 @@ struct RunnerSummaryTests {
 
         #expect(RunnerSummary.byLocation(results).map(\.descriptor.id) == ["0", "1", "2", "3"])
     }
+
+    @Test("Given cached, unactivated and unmeasured results, when summarised, then each list holds the right ones")
+    func theActivationAndCacheListsAreBuiltWithTheSummary() {
+        let summary = RunnerSummary(
+            results: [
+                makeExecutionResult(id: "a", status: .killed(by: "t"), activated: false),
+                makeExecutionResult(id: "b", status: .timeout, activated: false),
+                makeExecutionResult(id: "c", status: .survived, activated: false),
+                makeExecutionResult(id: "d", status: .survived, activated: nil, fromCache: true),
+                makeExecutionResult(id: "e", status: .unviable, activated: nil),
+            ],
+            totalDuration: 0
+        )
+
+        #expect(summary.integrityWarnings.map(\.descriptor.id) == ["a", "b"])
+        #expect(summary.activationNotMeasured.map(\.descriptor.id) == ["d"])
+        #expect(summary.fromCache.map(\.descriptor.id) == ["d"])
+        #expect(summary.resultsByFile.values.flatMap { $0 }.count == 5)
+    }
 }

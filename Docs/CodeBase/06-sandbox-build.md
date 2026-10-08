@@ -14,7 +14,7 @@ struct SandboxFactory: Sendable {
     ) async throws -> Sandbox
 
     func createClean(
-        projectPath: String
+        projectPath: String, disablingSwiftLint: Bool = false
     ) async throws -> Sandbox
 
     func create(
@@ -22,6 +22,8 @@ struct SandboxFactory: Sendable {
         mutatedFilePath: String,
         mutatedContent: String
     ) async throws -> Sandbox
+
+    static func offCooperativePool<Value: Sendable>(_ work: @escaping @Sendable () throws -> Value) async throws -> Value
 }
 ```
 
@@ -32,8 +34,8 @@ Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<
 | Method | Used by | Description |
 |---|---|---|
 | `create(projectPath:schematizedFiles:)` | `MutantExecutor` for schematizable path | Embeds all schematized files; disables SwiftLint phases |
-| `createClean(projectPath:)` | `IncompatibleMutantExecutor` for SPM shared sandbox | Clean sandbox without mutations; mutated files are written directly later |
-| `create(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor` for Xcode path | Writes a single mutated file |
+| `createClean(projectPath:disablingSwiftLint:)` | `IncompatibleMutantExecutor` warm sandboxes, SPM and Xcode | Clean sandbox without mutations; mutated files are written directly later. The Xcode workers pass `disablingSwiftLint: true` |
+| `create(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor` for an Xcode reproduction | Writes a single mutated file |
 
 **Copy strategy:**
 
@@ -44,12 +46,16 @@ flowchart TD
     SKIP -- no --> XCODEPROJ{.xcodeproj?}
     XCODEPROJ -- yes --> PROJ[xcuserdata → mkdir\nxcshareddata → copy\neverything else → symlink]
     XCODEPROJ -- no --> RECURSE[recurse into directory]
-    FILE[file item] --> SCHEMATIZED{schematized?}
-    SCHEMATIZED -- yes --> WRITE[write schematized content]
-    SCHEMATIZED -- no --> MUTATED{mutated?}
-    MUTATED -- yes --> WRITEM[write mutated content]
-    MUTATED -- no --> SYMLINK[symlink to original]
+    FILE[file item] --> REPLACED{schematized or mutated?}
+    REPLACED -- yes --> WRITE[write its content]
+    REPLACED -- no --> SHARED{under .xcworkspace/xcshareddata?}
+    SHARED -- yes --> COPY[copy]
+    SHARED -- no --> SYMLINK[symlink to original]
 ```
+
+**Matching the replaced files.** The schematized or mutated paths are resolved once, and each is keyed by its path relative to the resolved project root; the walk builds each item's relative path as it descends and looks it up, so no file is resolved for that. Only a file that is itself a symlink is resolved, and matched by where it points. When nothing is replaced — `createClean`, or a run with no schematized file — the lookup is skipped altogether. The walk used to resolve every file of the project and search its path for `.xcworkspace/xcshareddata/`, once per sandbox; a flag passed down the recursion now marks that directory.
+
+**Off the cooperative pool.** All three are `async` but the work is synchronous file system calls, which used to occupy a cooperative thread for the whole walk — threads that simulator and process work wait on. `offCooperativePool` runs it on a global dispatch queue and resumes the caller through a continuation.
 
 **Post-processing steps (schematizable overload only):**
 
@@ -254,6 +260,7 @@ Both requests come from `ToolRequests` (`buildForTesting(in:scheme:destination:c
 
 ```swift
 enum ToolRequests {
+    static let noTestDiagnostics: [String]   // ["-collect-test-diagnostics", "never"]
     static func swiftBuildTests(in sandbox: Sandbox, timeout: Double) -> ProcessRequest
     static func swiftTest(
         in sandbox: Sandbox, filter: String?, environment: [String: String], timeout: Double

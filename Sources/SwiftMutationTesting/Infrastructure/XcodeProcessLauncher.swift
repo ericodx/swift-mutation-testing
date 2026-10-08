@@ -1,26 +1,6 @@
 import Foundation
 
-struct XcodeProcessLauncher: Sendable, ProcessLaunching {
-    func launch(
-        executableURL: URL,
-        arguments: [String],
-        workingDirectoryURL: URL,
-        timeout: Double
-    ) async throws -> Int32 {
-        try await makeRunner().launch(
-            executableURL: executableURL,
-            arguments: arguments,
-            workingDirectoryURL: workingDirectoryURL,
-            timeout: timeout
-        )
-    }
-
-    func launchCapturing(
-        _ request: ProcessRequest
-    ) async throws -> (exitCode: Int32, output: String) {
-        try await makeRunner().launchCapturing(request)
-    }
-
+struct XcodeProcessLauncher: Sendable, RunnerLaunching {
     static func terminate(
         pid: pid_t,
         escalation: TimeoutEscalation,
@@ -32,7 +12,7 @@ struct XcodeProcessLauncher: Sendable, ProcessLaunching {
         escalation.arm(pid: pid, descendants: [])
     }
 
-    private func makeRunner() -> ProcessRunner {
+    func makeRunner() -> ProcessRunner {
         let escalation = TimeoutEscalation()
 
         return ProcessRunner(

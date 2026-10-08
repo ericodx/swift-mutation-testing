@@ -317,13 +317,14 @@ struct TestExecutionStage: Sendable {
 
         try plistData.write(to: xctestrunURL)
 
-        var arguments = [
-            "test-without-building",
-            "-xctestrun", xctestrunURL.path,
-            "-destination", slot.destination,
-            "-resultBundlePath", xcresultPath,
-            "-derivedDataPath", context.artifact.derivedDataPath,
-        ]
+        var arguments =
+            [
+                "test-without-building",
+                "-xctestrun", xctestrunURL.path,
+                "-destination", slot.destination,
+                "-resultBundlePath", xcresultPath,
+                "-derivedDataPath", context.artifact.derivedDataPath,
+            ] + ToolRequests.noTestDiagnostics
 
         if let testTarget = context.configuration.build.testTarget {
             arguments += ["-only-testing", testTarget]

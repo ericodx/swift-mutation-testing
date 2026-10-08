@@ -87,20 +87,24 @@ struct RunnerSummary: Sendable {
     let unviable: [ExecutionResult]
     let timeouts: [ExecutionResult]
     let noCoverage: [ExecutionResult]
+    let score: Double
+    let resultsByFile: [String: [ExecutionResult]]
+    let fromCache: [ExecutionResult]
+    let integrityWarnings: [ExecutionResult]
+    let activationNotMeasured: [ExecutionResult]
 
     init(results: [ExecutionResult], totalDuration: Double)
 
     var detected: [ExecutionResult]
     var undetected: [ExecutionResult]
-    var score: Double
-    var resultsByFile: [String: [ExecutionResult]]
     var files: [(path: String, summary: RunnerSummary)]
+    var cacheLine: String?
 
     static func byLocation(_ results: [ExecutionResult]) -> [ExecutionResult]
 }
 ```
 
-Aggregates all `ExecutionResult` values and computes the mutation score. `init` sorts the results into the five status buckets in one pass, so every report reads the same counts instead of filtering again. `killed` includes `.killedByCrash`.
+Aggregates all `ExecutionResult` values and computes the mutation score. `init` sorts the results into the five status buckets in one pass, and in the same pass works out the score, groups the results by file and collects the cached results, the integrity warnings and the results with no activation measured — so every report reads stored values, where each property used to filter `results` again on every access (`score` alone ran four filters). `files` is still built on demand from the stored `resultsByFile`, since storing it would make each per-file summary build its own. `killed` includes `.killedByCrash`.
 
 **Score formula:**
 
@@ -114,14 +118,7 @@ score      = detected / (detected + undetected) × 100
 
 `resultsByFile` groups results by `descriptor.filePath`. `files` turns that into one `RunnerSummary` per file, in path order — the per-file tables of `TextReporter`, `HtmlReporter` and `MarkdownReporter` iterate it. `byLocation(_:)` sorts results by file, line and column; every report that lists mutants — the survived and integrity lists, the Markdown tables, the SARIF results — sorts through it.
 
-### Reporting/RunnerSummary+Integrity.swift
-
-```swift
-extension RunnerSummary {
-    var integrityWarnings: [ExecutionResult]
-    var activationNotMeasured: [ExecutionResult]
-}
-```
+### Integrity lists
 
 `integrityWarnings` are the kills and timeouts whose mutated code never ran (`activated == false`); `activationNotMeasured` are the results with no measurement at all, which are the incompatible mutants that could not be instrumented. `TextReporter` and `MarkdownReporter` print both.
 
@@ -585,6 +582,18 @@ Return value `-1` from either method means the process was killed by the timeout
 
 ---
 
+## Infrastructure/RunnerLaunching.swift
+
+```swift
+protocol RunnerLaunching: ProcessLaunching {
+    func makeRunner() -> ProcessRunner
+}
+```
+
+A launcher that runs every process through a fresh `ProcessRunner`. Its extension gives `launch` and `launchCapturing`, each delegating to `makeRunner()`, so `SPMProcessLauncher` and `XcodeProcessLauncher` supply only the runner — their timeout handling and post-termination cleanup — instead of repeating the same two methods.
+
+---
+
 ## Infrastructure/ProcessRequest.swift
 
 ```swift
@@ -660,11 +669,9 @@ This is what makes a killed mutant cheap. A mutant is killed by its *first* fail
 ## Infrastructure/SPMProcessLauncher.swift
 
 ```swift
-struct SPMProcessLauncher: Sendable, ProcessLaunching {
+struct SPMProcessLauncher: Sendable, RunnerLaunching {
     static func terminate(pid: pid_t, escalation: TimeoutEscalation, kill: SystemCalls.Kill = Darwin.kill)
-
-    func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
-    func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
+    func makeRunner() -> ProcessRunner
 }
 ```
 
@@ -683,11 +690,9 @@ The group is frozen **before** the descendants are collected, and the snapshot i
 ## Infrastructure/XcodeProcessLauncher.swift
 
 ```swift
-struct XcodeProcessLauncher: Sendable, ProcessLaunching {
+struct XcodeProcessLauncher: Sendable, RunnerLaunching {
     static func terminate(pid: pid_t, escalation: TimeoutEscalation, kill: SystemCalls.Kill = Darwin.kill)
-
-    func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
-    func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
+    func makeRunner() -> ProcessRunner
 }
 ```
 
@@ -772,7 +777,7 @@ enum VersionedJSON {
     }
 
     static func read<Document: Decodable>(
-        _ type: Document.Type, from path: String, version: Int, decoder: JSONDecoder = JSONDecoder(),
+        _: Document.Type, from path: String, version: Int, decoder: JSONDecoder = JSONDecoder(),
         failures: Failures
     ) throws -> Document
     static func encode(_ document: some Encodable, dates: JSONEncoder.DateEncodingStrategy = .deferredToDate) throws -> Data
@@ -790,7 +795,7 @@ The format shared by `PlanStore` and `BaselineStore`. `read` decodes a document 
 enum JSONLines {
     static func append(_ value: some Encodable, to path: String) throws
     static func failureWarning(for path: String, error: any Error) -> String
-    static func read<Value: Decodable>(_ type: Value.Type, from path: String) -> [Value]
+    static func read<Value: Decodable>(_: Value.Type, from path: String) -> [Value]
 }
 ```
 
@@ -952,10 +957,15 @@ Wraps the raw plist `Data` from the `.xctestrun` file.
 ```swift
 enum ProjectRelativePath {
     static func make(for path: String, in projectPath: String) -> String
+
+    struct Resolver: Sendable {
+        init(projectPath: String)
+        func make(for path: String) -> String
+    }
 }
 ```
 
-Turns an absolute path into one relative to the project root, resolving symlinks on both sides first so a sandbox path and a project path can be compared at all. A path outside the root is returned unchanged. Every reporter uses it, which is why a mutant's file reads the same in the console, the JSON and the Sonar report no matter which sandbox produced it.
+Turns an absolute path into one relative to the project root, resolving symlinks on both sides first so a sandbox path and a project path can be compared at all. A path outside the root is returned unchanged. `Resolver` resolves the root once and relativizes any number of paths against it; the reports, `MutantIndexingStage`, `Baseline` and `TestFilesHasher` take one per call instead of resolving the root again for every mutant. Every reporter uses it, which is why a mutant's file reads the same in the console, the JSON and the Sonar report no matter which sandbox produced it.
 
 ---
 
@@ -965,8 +975,9 @@ Turns an absolute path into one relative to the project root, resolving symlinks
 struct TestFilesHasher: Sendable {
     static func defaultEnumerator(_ directory: URL) -> FileManager.DirectoryEnumerator?
 
-    func hashPerFile(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> [String: String]
-    func testFilePaths(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> [String]
+    struct Snapshot: Sendable { let paths: [String]; let contents: [String: String]; let hashes: [String: String] }
+
+    func snapshot(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> Snapshot
 }
 ```
 
@@ -974,8 +985,7 @@ Provides per-file test hashing and test file path enumeration for granular cache
 
 | Method | Description |
 |---|---|
-| `hashPerFile(projectPath:)` | Returns a dictionary mapping relative test file paths to their SHA256 content hashes. Symlinks pointing outside the project root use absolute paths as keys to avoid collisions |
-| `testFilePaths(projectPath:)` | Returns all test file paths in the project |
+| `snapshot(projectPath:)` | Lists the test files once and reads each once: `paths` in enumeration order, `contents` by absolute path for the files that read as text, `hashes` mapping each readable file's relative path to its SHA256 content hash (a symlink pointing outside the project root keeps its absolute path as key, to avoid collisions). `MutantExecutor` takes one per run and builds the cache invalidation, the `KillerTestFileResolver` index and the targeted suites from it; it used to list the tree twice and read every test file three times |
 
 **Test file collection:** Swift files under a directory whose name ends with `Tests`, or whose filename matches `*Tests.swift`. Only the directories between the project root and the file count — the path is made relative with `ProjectRelativePath` first — so a project checked out under, say, `~/Work/IntegrationTests/App` does not have every file taken for a test file.
 

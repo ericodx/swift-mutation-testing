@@ -62,11 +62,15 @@ struct PlanMaterializer: Sendable {
     func materialize(plan: Plan, projectPath: String, sources: [ParsedSource],
                      execution: ExecutionOptions, mutants selection: [Plan.Mutant]? = nil) throws -> RunnerInput
     func load(plan: Plan, projectPath: String) throws -> [SourceFile]
+    static func fileHashes(of plan: Plan) -> [String: String]
+    static func descriptor(of mutant: Plan.Mutant, at index: Int, in plan: Plan, projectPath: String) -> MutantDescriptor
+    static func descriptor(of mutant: Plan.Mutant, at index: Int, fileHashes: [String: String],
+                           projectPath: String) -> MutantDescriptor
     static func absolute(_ relativePath: String, in projectPath: String) -> String
 }
 ```
 
-The first form reads the plan's files from disk through `load` — which throws `missingFile` for a file that is gone, `unreadableFile` with the reason for one that is there but cannot be read as UTF-8 text, `stale` on any hash that differs and `corrupt` on a mutant whose text is not at its range — parses them and calls the second. The second rebuilds an `IndexedMutationPoint` per selected mutant (index = position in the plan; the file path taken from the matching source, matched by relative path, so later lookups by path agree), runs `SchematizationStage` and `IncompatibleRewritingStage`, and assembles the `RunnerInput` with `ImportStyle.of(sources)`, its descriptors in id order (`MutantID.ordered`). `absolute` uses the root's real path (`CanonicalPath`), the way the file enumerator reports paths.
+The first form reads the plan's files from disk through `load` — which throws `missingFile` for a file that is gone, `unreadableFile` with the reason for one that is there but cannot be read as UTF-8 text, `stale` on any hash that differs and `corrupt` on a mutant whose text is not at its range, each file's bytes copied once for every mutant of it — parses them and calls the second. The second rebuilds an `IndexedMutationPoint` per selected mutant (index = position in the plan; the file path taken from the matching source, matched by relative path, so later lookups by path agree), runs `SchematizationStage` and `IncompatibleRewritingStage`, and assembles the `RunnerInput` with `ImportStyle.of(sources)`, its descriptors in id order (`MutantID.ordered`). `descriptor` rebuilds one plan mutant's `MutantDescriptor` without parsing anything, for the verdicts `PlanResumer` and `ResultMerger` take from a journal or a report; the `fileHashes:` form takes the `[path: sha256]` table `fileHashes(of:)` builds, so a loop over the plan's mutants builds it once instead of searching `plan.files` for each mutant. `absolute` uses the root's real path (`CanonicalPath`), the way the file enumerator reports paths.
 
 `DiscoveryPipeline.run` and a plain `run` are `Planner` then the second form; `run --plan` is `PlanStore.read` then the first, through `PlanResumer`. `ExecutionOptions(_ configuration:)` in `CLI/CommandSupport.swift` builds the options from a configuration.
 
@@ -139,12 +143,12 @@ What `JsonReporter` writes under `config`. Every run has one.
 
 ```swift
 struct ResultMerger: Sendable {
-    struct Merged { let results: [ExecutionResult]; let totalDuration: Double }
+    struct Merged { let results: [ExecutionResult]; let totalDuration: Double; let planSha256: String }
     func merge(resultPaths: [String], plan: Plan, projectPath: String) throws -> Merged
 }
 ```
 
-Decodes each report as `MutationReportPayload`, checks `config.planSha256` against the plan, refuses a fingerprint seen twice (`MergeError.duplicate`) and a plan mutant seen never (`.missing`, with the first five named), and rebuilds an `ExecutionResult` per plan mutant: the descriptor from the plan, the status from the report's `status`, `killedBy` and `statusReason`, the activation from `activated`, the duration from `duration`.
+Decodes each report as `MutationReportPayload`, checks `config.planSha256` against the plan, refuses a fingerprint seen twice (`MergeError.duplicate`) and a plan mutant seen never (`.missing`, with the first five named), and rebuilds an `ExecutionResult` per plan mutant: the descriptor from the plan, the status from the report's `status`, `killedBy` and `statusReason`, the activation from `activated`, the duration from `duration`. `planSha256` is the hash it checked the reports against, so `MergeCommand` does not encode the whole plan a second time for the merged report's identity.
 
 ## Plan/Reproducer.swift
 

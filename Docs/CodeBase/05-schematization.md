@@ -12,10 +12,16 @@ struct SchemataGenerator: Sendable {
         source: ParsedSource, mutations: [(index: Int, point: MutationPoint)], importStyle: ImportStyle = .implicit
     ) -> SchemaGeneration
 
-    private func groupByScope(_ mutations: [Entry], in syntax: SourceFileSyntax)
+    private func groupByScope(_ mutations: [Entry], in scopes: FunctionBodyScopes)
         -> (groups: [ScopeGroup], discarded: [MutationPoint])
-    private func schemaBody(for group: ScopeGroup, in content: String, edits: Edits, path: String)
+    private func schemaBody(for group: ScopeGroup, in bytes: [UInt8], edits: Edits, path: String)
         -> (switchBody: String?, discarded: [MutationPoint])
+
+    struct Edits {
+        var isEmpty: Bool { get }
+        func current(_ originalOffset: Int) -> Int
+        mutating func record(start: Int, delta: Int)
+    }
 }
 
 struct SchemaGeneration: Sendable {
@@ -26,12 +32,12 @@ struct SchemaGeneration: Sendable {
 
 Rewrites a source file to embed all its schematizable mutations into `switch __swiftMutationTestingID_<hash>` blocks, the hash naming the file. Returns the complete rewritten source as `content`, and as `discarded` the mutations it could not place: a point inside no function body, a body whose statements could not be extracted, or a mutation whose text does not fit inside the body it belongs to. A discarded mutation gets no `case`, so `ApplicationVerifier` finds it missing from the sandbox and stops the run rather than letting a mutant that is not in the build be judged. Every byte splice goes through `UTF8Splice`, which answers `nil` instead of trapping when a range falls outside the text or cuts through a character; a `nil` read or mutation is a discarded mutation, and a body whose replacement fails is left as it was.
 
-`generate` is two steps. `groupByScope` walks the AST with `TypeScopeVisitor`, groups the mutations by the innermost function body holding each — last body in the file first — and discards the ones no body holds. `schemaBody(for:in:edits:path:)` builds one body's `switch`, a case per mutation that fits, or `nil` when none does; `generate` splices each into the content and records the edit.
+`generate` is two steps. `groupByScope` takes the file's `functionScopes` from its `ParsedSource`, groups the mutations by the innermost function body holding each — last body in the file first — and discards the ones no body holds. The whole file is one `[UInt8]` for the length of `generate`, decoded once at the end: each body's statements are read from it and each `switch` spliced into it in place, where every group used to encode the whole text to bytes and decode it back, twice. `Edits` maps an offset of the original file to the buffer: the bodies are rewritten from the last one back, so an edit only moves the offsets after its start, and since the edits are recorded with decreasing starts, `current` finds the ones before an offset by binary search over their running totals rather than filtering all of them. An edit is recorded only when its body was replaced. `schemaBody(for:in:edits:path:)` builds one body's `switch`, a case per mutation that fits, or `nil` when none does; `generate` splices each into the content and records the edit.
 
 ```mermaid
 flowchart TD
     subgraph groupByScope
-        A[walk AST with TypeScopeVisitor] --> B[group mutations by innermost scope]
+        A[read the file's function body scopes] --> B[group mutations by innermost scope]
         B --> C[sort groups by bodyStartOffset DESC]
     end
     C --> D[for each group]
@@ -87,10 +93,12 @@ enum UTF8Splice {
     static func substring(of content: String, from start: Int, to end: Int) -> String?
     static func replacing(from start: Int, to end: Int, in content: String, with replacement: String) -> String?
     static func inserting(_ text: String, at offset: Int, in content: String) -> String?
+    static func isRange(from start: Int, to end: Int, in bytes: [UInt8]) -> Bool
+    static func replacing(from start: Int, to end: Int, in bytes: [UInt8], with replacement: String) -> String?
 }
 ```
 
-Byte-range edits on a string's UTF-8 form, the unit SwiftSyntax offsets count in. Each answers `nil` when the range does not lie inside the string (`start >= 0`, `start <= end`, `end <= byteCount`) or the edit would leave bytes that are not UTF-8, and the caller decides what that means. `inserting` is `replacing` an empty range. `SchemataGenerator`, `MutationRewriter` and `ActivationInstrumenter` make every splice through it; none of them traps.
+Byte-range edits on a string's UTF-8 form, the unit SwiftSyntax offsets count in. Each answers `nil` when the range does not lie inside the string (`start >= 0`, `start <= end`, `end <= byteCount`) or the edit would leave bytes that are not UTF-8, and the caller decides what that means. `inserting` is `replacing` an empty range. The `[UInt8]` forms serve a caller that already holds the bytes — `SchemataGenerator` — so nothing is encoded again; `isRange` is the bounds check they share. `SchemataGenerator`, `MutationRewriter` and `ActivationInstrumenter` make every splice through it; none of them traps.
 
 ---
 
@@ -98,6 +106,12 @@ Byte-range edits on a string's UTF-8 form, the unit SwiftSyntax offsets count in
 
 ```swift
 final class TypeScopeVisitor: SyntaxVisitor {
+    private(set) var scopes: [FunctionBodyScope]
+    var functionScopes: FunctionBodyScopes
+}
+
+struct FunctionBodyScopes: Sendable {
+    let scopes: [FunctionBodyScope]
     func isSchematizable(utf8Offset: Int) -> Bool
     func innermostScope(containing utf8Offset: Int) -> FunctionBodyScope?
 }
@@ -113,6 +127,8 @@ Walks the AST and records every `FunctionBodyScope`. Records scopes for:
 `isSchematizable(utf8Offset:)` returns `true` if any recorded scope contains the given offset.
 
 `innermostScope(containing:)` returns the tightest scope that contains the offset, enabling correct handling of nested functions and closures.
+
+Both live on `FunctionBodyScopes` (`Discovery/Schematization/FunctionBodyScopes.swift`), the `Sendable` value the visitor's `functionScopes` hands out, so that the scopes of a file are kept on its `ParsedSource` and asked without the visitor. It keeps the scopes sorted by start (the outer of two that start together first) with each one's enclosing scope: a lookup finds by binary search the last scope starting at or before the offset, and climbs the enclosing scopes from there until one still holds it — the first that does is the innermost, since bodies nest or are disjoint. That is a binary search plus the nesting depth per mutant, where it used to filter every scope of the file.
 
 ---
 

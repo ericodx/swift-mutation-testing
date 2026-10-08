@@ -1,6 +1,8 @@
 import Foundation
 
 enum ToolRequests {
+    static let noTestDiagnostics = ["-collect-test-diagnostics", "never"]
+
     static func swiftBuildTests(in sandbox: Sandbox, timeout: Double) -> ProcessRequest {
         request("/usr/bin/swift", ["build", "--build-tests"], in: sandbox, timeout: timeout)
     }

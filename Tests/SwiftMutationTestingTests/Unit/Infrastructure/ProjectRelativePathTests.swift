@@ -49,4 +49,29 @@ struct ProjectRelativePathTests {
 
         #expect(result == "FooTests.swift")
     }
+
+    @Test("Given one resolver for a root, when it relativizes several paths, then it answers as make does for each")
+    func aResolverAnswersAsMakeDoes() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let real = dir.appendingPathComponent("real")
+        let link = dir.appendingPathComponent("link")
+        for directory in ["Sources", "Tests"] {
+            try FileManager.default.createDirectory(
+                at: real.appendingPathComponent(directory), withIntermediateDirectories: true)
+        }
+        try FileHelpers.write("", named: "A.swift", in: real.appendingPathComponent("Sources"))
+        try FileHelpers.write("", named: "BTests.swift", in: real.appendingPathComponent("Tests"))
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        let paths = [
+            real.appendingPathComponent("Sources/A.swift").path,
+            link.appendingPathComponent("Tests/BTests.swift").path,
+            "/elsewhere/C.swift",
+        ]
+
+        let resolver = ProjectRelativePath.Resolver(projectPath: link.path)
+
+        #expect(paths.map(resolver.make(for:)) == paths.map { ProjectRelativePath.make(for: $0, in: link.path) })
+        #expect(paths.map(resolver.make(for:)) == ["Sources/A.swift", "Tests/BTests.swift", "/elsewhere/C.swift"])
+    }
 }

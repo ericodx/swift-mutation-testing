@@ -243,6 +243,28 @@ struct ProcessRunnerTests {
         #expect(warnings.withLock { $0 }.first?.contains("does not lead its own process group") == true)
     }
 
+    @Test("Given a task cancelled while its process starts, when the start is checked, then the process is stopped")
+    func aCancellationDuringTheStartStopsTheProcess() async throws {
+        let stopped = Mutex<[pid_t]>([])
+        var runner = ProcessRunner(onTimeout: { pid in
+            stopped.withLock { $0.append(pid) }
+            kill(pid, SIGKILL)
+        })
+        runner.isCancelled = { true }
+        let start = ContinuousClock.now
+
+        _ = try await runner.launch(
+            executableURL: URL(fileURLWithPath: "/bin/sleep"),
+            arguments: ["30"],
+            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+            timeout: 60
+        )
+
+        #expect(stopped.withLock { $0 }.count == 1)
+        #expect(stopped.withLock { $0 }.allSatisfy { $0 > 0 })
+        #expect(ContinuousClock.now - start < .seconds(10))
+    }
+
     private func shell(_ script: String, timeout: Double) -> ProcessRequest {
         ProcessRequest(
             executableURL: URL(fileURLWithPath: "/bin/sh"),

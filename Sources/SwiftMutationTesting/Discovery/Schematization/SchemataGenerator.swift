@@ -7,33 +7,33 @@ struct SchemataGenerator: Sendable {
     func generate(
         source: ParsedSource, mutations: [(index: Int, point: MutationPoint)], importStyle: ImportStyle = .implicit
     ) -> SchemaGeneration {
-        var (groups, discarded) = groupByScope(mutations, in: source.syntax)
+        var (groups, discarded) = groupByScope(mutations, in: source.functionScopes)
 
-        var content = source.file.content
+        var bytes = Array(source.file.content.utf8)
         var edits = Edits()
 
         for group in groups {
-            let body = schemaBody(for: group, in: content, edits: edits, path: source.file.path)
+            let body = schemaBody(for: group, in: bytes, edits: edits, path: source.file.path)
             discarded += body.discarded
             guard let switchBody = body.switchBody else { continue }
 
             let scope = group.scope
-            content =
-                UTF8Splice.replacing(
-                    from: edits.current(scope.bodyStartOffset),
-                    to: edits.current(scope.bodyEndOffset),
-                    in: content,
-                    with: switchBody
-                ) ?? content
+            let start = edits.current(scope.bodyStartOffset)
+            let end = edits.current(scope.bodyEndOffset)
+            guard UTF8Splice.isRange(from: start, to: end, in: bytes) else { continue }
+
+            bytes.replaceSubrange(start ..< end, with: switchBody.utf8)
             edits.record(
                 start: scope.bodyStartOffset,
                 delta: switchBody.utf8.count - (scope.bodyEndOffset - scope.bodyStartOffset)
             )
         }
 
-        guard content != source.file.content else {
-            return SchemaGeneration(content: content, discarded: discarded)
+        guard !edits.isEmpty else {
+            return SchemaGeneration(content: source.file.content, discarded: discarded)
         }
+
+        let content = String(decoding: bytes, as: UTF8.self)
 
         return SchemaGeneration(
             content: SupportDeclarations.appended(
@@ -44,16 +44,13 @@ struct SchemataGenerator: Sendable {
     }
 
     private func groupByScope(
-        _ mutations: [Entry], in syntax: SourceFileSyntax
+        _ mutations: [Entry], in scopes: FunctionBodyScopes
     ) -> (groups: [ScopeGroup], discarded: [MutationPoint]) {
-        let visitor = TypeScopeVisitor()
-        visitor.walk(syntax)
-
         var groupedByScope: [Int: ScopeGroup] = [:]
         var discarded: [MutationPoint] = []
 
         for entry in mutations {
-            guard let scope = visitor.innermostScope(containing: entry.point.utf8Offset) else {
+            guard let scope = scopes.innermostScope(containing: entry.point.utf8Offset) else {
                 discarded.append(entry.point)
                 continue
             }
@@ -66,18 +63,19 @@ struct SchemataGenerator: Sendable {
     }
 
     private func schemaBody(
-        for group: ScopeGroup, in content: String, edits: Edits, path: String
+        for group: ScopeGroup, in bytes: [UInt8], edits: Edits, path: String
     ) -> (switchBody: String?, discarded: [MutationPoint]) {
         let scope = group.scope
         let statementsStart = edits.current(scope.statementsStartOffset)
+        let statementsEnd = edits.current(scope.statementsEndOffset)
 
         guard
-            let originalStatements = UTF8Splice.substring(
-                of: content, from: statementsStart, to: edits.current(scope.statementsEndOffset)
-            )
+            UTF8Splice.isRange(from: statementsStart, to: statementsEnd, in: bytes),
+            let originalStatements = String(bytes: bytes[statementsStart ..< statementsEnd], encoding: .utf8)
         else {
             return (nil, group.mutations.map(\.point))
         }
+        let statementBytes = Array(bytes[statementsStart ..< statementsEnd])
 
         var cases: [(id: String, statements: String)] = []
         var discarded: [MutationPoint] = []
@@ -86,7 +84,7 @@ struct SchemataGenerator: Sendable {
             guard
                 let mutated = apply(
                     entry.point,
-                    to: originalStatements,
+                    to: statementBytes,
                     at: edits.current(entry.point.utf8Offset) - statementsStart
                 )
             else {
@@ -104,23 +102,35 @@ struct SchemataGenerator: Sendable {
         return (switchBody, discarded)
     }
 
-    private struct Edits {
-        private var deltas: [(start: Int, delta: Int)] = []
+    struct Edits {
+        private var starts: [Int] = []
+        private var runningTotals: [Int] = []
+
+        var isEmpty: Bool { starts.isEmpty }
 
         func current(_ originalOffset: Int) -> Int {
-            deltas.filter { $0.start < originalOffset }.reduce(originalOffset) { $0 + $1.delta }
+            var low = 0
+            var high = starts.count
+            while low < high {
+                let middle = (low + high) / 2
+                if starts[middle] < originalOffset { high = middle } else { low = middle + 1 }
+            }
+            guard low < starts.count else { return originalOffset }
+            let before = low == 0 ? 0 : runningTotals[low - 1]
+            return originalOffset + (runningTotals[runningTotals.count - 1] - before)
         }
 
         mutating func record(start: Int, delta: Int) {
-            deltas.append((start: start, delta: delta))
+            starts.append(start)
+            runningTotals.append((runningTotals.last ?? 0) + delta)
         }
     }
 
-    private func apply(_ mutation: MutationPoint, to statementsText: String, at relativeOffset: Int) -> String? {
+    private func apply(_ mutation: MutationPoint, to statements: [UInt8], at relativeOffset: Int) -> String? {
         UTF8Splice.replacing(
             from: relativeOffset,
             to: relativeOffset + mutation.originalText.utf8.count,
-            in: statementsText,
+            in: statements,
             with: mutation.mutatedText
         )
     }

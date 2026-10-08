@@ -24,10 +24,11 @@ struct HtmlReporter: Sendable {
 
     private func buildRows(_ summary: RunnerSummary) -> String {
         var rows = ""
+        let paths = ProjectRelativePath.Resolver(projectPath: projectRoot)
         for (filePath, file) in summary.files {
             let fileScore = String(format: "%.1f", file.score)
             let colorClass = scoreColorClass(file.score)
-            let relativePath = ProjectRelativePath.make(for: filePath, in: projectRoot)
+            let relativePath = paths.make(for: filePath)
             let details = buildSurvivedDetails(file.survived)
             rows +=
                 "<tr>"

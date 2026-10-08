@@ -35,4 +35,15 @@ struct UTF8SpliceTests {
         #expect(UTF8Splice.substring(of: "é", from: 0, to: 1) == nil)
         #expect(UTF8Splice.replacing(from: 0, to: 1, in: "é", with: "e") == nil)
     }
+
+    @Test("Given bytes, when a range is replaced, then it is text, or nothing out of range or mid-character")
+    func bytesAreSplicedLikeText() {
+        let bytes = Array("a é b".utf8)
+
+        #expect(UTF8Splice.replacing(from: 0, to: 1, in: bytes, with: "x") == "x é b")
+        #expect(UTF8Splice.replacing(from: 2, to: 3, in: bytes, with: "x") == nil)
+        #expect(UTF8Splice.replacing(from: 4, to: 99, in: bytes, with: "x") == nil)
+        #expect(UTF8Splice.isRange(from: 0, to: bytes.count, in: bytes))
+        #expect(!UTF8Splice.isRange(from: 3, to: 2, in: bytes))
+    }
 }

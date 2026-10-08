@@ -5,7 +5,10 @@ enum TargetedSuites {
     static let suffix = "Tests"
     static let testsDirectory = "Tests"
 
-    static func declared(in testFilePaths: [String]) -> [String: TargetedSuite] {
+    static func declared(
+        in testFilePaths: [String],
+        read: (String) -> String? = { try? String(contentsOfFile: $0, encoding: .utf8) }
+    ) -> [String: TargetedSuite] {
         var suites: [String: TargetedSuite] = [:]
 
         for path in testFilePaths {
@@ -13,7 +16,7 @@ enum TargetedSuites {
 
             guard
                 name.hasSuffix(suffix),
-                let content = try? String(contentsOfFile: path, encoding: .utf8),
+                let content = read(path),
                 declares(name, in: content)
             else { continue }
 

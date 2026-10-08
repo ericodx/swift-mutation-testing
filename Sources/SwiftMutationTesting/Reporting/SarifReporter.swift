@@ -30,9 +30,13 @@ struct SarifReporter: Sendable {
         let operators = Array(Set(reported.map(\.descriptor.operatorIdentifier))).sorted()
         let ruleIndex = Dictionary(uniqueKeysWithValues: operators.enumerated().map { ($1, $0) })
         var lines = SourceLines()
+        let paths = ProjectRelativePath.Resolver(projectPath: projectRoot)
 
         let results = reported.map { result in
-            sarifResult(for: result, ruleIndex: ruleIndex[result.descriptor.operatorIdentifier] ?? 0, lines: &lines)
+            sarifResult(
+                for: result, ruleIndex: ruleIndex[result.descriptor.operatorIdentifier] ?? 0, paths: paths,
+                lines: &lines
+            )
         }
 
         return SarifLog(
@@ -62,7 +66,9 @@ struct SarifReporter: Sendable {
         return canonical.hasSuffix("/") ? canonical : canonical + "/"
     }
 
-    private func sarifResult(for result: ExecutionResult, ruleIndex: Int, lines: inout SourceLines) -> SarifResult {
+    private func sarifResult(
+        for result: ExecutionResult, ruleIndex: Int, paths: ProjectRelativePath.Resolver, lines: inout SourceLines
+    ) -> SarifResult {
         let descriptor = result.descriptor
         let covered = result.status != .noCoverage
         let line = lines.line(descriptor.line, of: descriptor.filePath)
@@ -80,7 +86,7 @@ struct SarifReporter: Sendable {
                 SarifLocation(
                     physicalLocation: SarifPhysicalLocation(
                         artifactLocation: SarifArtifactLocation(
-                            uri: ProjectRelativePath.make(for: descriptor.filePath, in: projectRoot),
+                            uri: paths.make(for: descriptor.filePath),
                             uriBaseId: Self.sourceRootBaseId
                         ),
                         region: SarifRegion(
