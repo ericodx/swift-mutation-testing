@@ -28,7 +28,7 @@ enum JSONLines {
             + "verdicts reached from now on may be lost if the run is interrupted"
     }
 
-    static func read<Value: Decodable>(_ type: Value.Type, from path: String) -> [Value] {
+    static func read<Value: Decodable>(_: Value.Type, from path: String) -> [Value] {
         guard let data = FileManager.default.contents(atPath: path) else { return [] }
 
         return data.split(separator: UInt8(ascii: "\n")).compactMap { line in

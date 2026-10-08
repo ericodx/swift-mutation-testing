@@ -13,7 +13,7 @@ extension MutationExclusion {
         ranges(in: source.syntax)
     }
 
-    func applies(to point: MutationPoint) -> Bool {
+    func applies(to _: MutationPoint) -> Bool {
         true
     }
 
