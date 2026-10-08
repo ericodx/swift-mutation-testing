@@ -33,8 +33,8 @@ enum HelpText {
           --target <test-target>        Test target name
           --timeout <seconds>           Per-mutant test timeout in seconds (default: 120 Xcode, 30 SPM)
           --build-timeout <seconds>     Build timeout in seconds (default: 120)
-          --concurrency <n>             Parallel test workers (default: CPUs - 1). Simulator
-                                        destinations only; SPM and macOS runs use one worker
+          --concurrency <n>             Parallel test workers (default: CPUs - 1). An Xcode
+                                        run on macOS or with XCTest uses one worker
           --no-cache                    Disable the result cache — nothing is read or written
           \(ReportFormat.allCases.map(\.helpLine).joined(separator: "\n  "))
           --keep-logs <directory>       Write each mutant's captured test output to <directory>
