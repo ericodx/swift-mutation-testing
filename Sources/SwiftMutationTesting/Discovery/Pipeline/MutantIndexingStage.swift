@@ -7,9 +7,7 @@ struct MutantIndexingStage: Sendable {
         }
         let sorted = inOrder ? mutationPoints : mutationPoints.sorted(by: MutationPoint.inSourceOrder)
 
-        let scopesByPath = Dictionary(
-            sources.map { ($0.file.path, $0.functionScopes) }, uniquingKeysWith: Uniquing.first
-        )
+        let scopesByPath = Uniquing.keepingFirst(sources.map { ($0.file.path, $0.functionScopes) })
         let syntaxByPath = Dictionary(uniqueKeysWithValues: sources.map { ($0.file.path, $0.syntax) })
         var ordinals: [[String]: Int] = [:]
         let paths = ProjectRelativePath.Resolver(projectPath: projectPath)

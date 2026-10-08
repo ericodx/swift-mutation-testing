@@ -73,11 +73,10 @@ struct SandboxFactory: Sendable {
         init(_ byCanonicalPath: [String: String], under root: String) {
             self.byCanonicalPath = byCanonicalPath
             let prefix = root.hasSuffix("/") ? root : root + "/"
-            byRelativePath = Dictionary(
+            byRelativePath = Uniquing.keepingFirst(
                 byCanonicalPath.compactMap { path, content in
                     path.hasPrefix(prefix) ? (String(path.dropFirst(prefix.count)), content) : nil
-                },
-                uniquingKeysWith: Uniquing.first
+                }
             )
         }
 
