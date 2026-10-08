@@ -4,6 +4,18 @@
 
 ---
 
+## swift-mutation-testing/main.swift
+
+```swift
+import SwiftMutationTesting
+
+await SwiftMutationTesting.main()
+```
+
+The executable target's only file, under `Sources/swift-mutation-testing/`. Everything else lives in the `SwiftMutationTesting` library target, which the tests import.
+
+---
+
 ## SwiftMutationTesting.swift
 
 ```swift
@@ -15,7 +27,7 @@ public struct SwiftMutationTesting {
 }
 ```
 
-The program entry point. `main()` installs signal handlers for sandbox cleanup (`SandboxCleaner.installSignalHandlers()`), then drops `CommandLine.arguments[0]` (the executable name) and delegates to `run(args:launcher:)`.
+The program entry point. `main()` installs signal handlers for sandbox cleanup (`SandboxCleaner.installSignalHandlers()`), then drops `CommandLine.arguments[0]` (the executable name), delegates to `run(args:launcher:)` and passes the result to `exit(_:)`.
 
 `run` parses the arguments, asks `command(for:launcher:)` for the `Command` they name and executes it. It catches two error categories before returning an exit code, both written through `StandardError`:
 - `UsageError` — writes `message`
@@ -29,7 +41,7 @@ flowchart TD
     B -- .help --> HELP[HelpCommand]
     B -- .version --> VER[VersionCommand]
     B -- .initialize --> INIT[InitCommand]
-    B -- other --> CFG[configuration for: parsed]
+    B -- other --> CFG["configuration(for:)\nConfigurationFileParser.parse\nConfigurationResolver.resolve"]
     CFG -- .plan --> PLAN[PlanCommand]
     CFG -- .merge --> MERGE[MergeCommand]
     CFG -- .reproduce --> REPRO[ReproduceCommand]
@@ -63,22 +75,24 @@ One thing the tool was asked to do, with everything it needs to do it. Each comm
 
 ```mermaid
 flowchart TD
-    P{planPath?} -- yes --> AP[applyingPlan at:\nPlanResumer plan, shard]
+    P{planPath?} -- yes --> AP["applyingPlan(at:)\nPlanResumer(plan:shard:)"]
     P -- no --> LB
-    AP --> LB[RunConclusion.loadBaseline\nscope mismatch → error]
+    AP --> LB["RunConclusion.loadBaseline\nscope mismatch → GateError"]
     LB --> S[SleepInhibitor.preventingIdleSleep]
-    S --> D{resumer?}
-    D -- yes --> DR[PlanResumer.discover\nshard + journal]
-    D -- no --> DP[Planner.plan for:\nPlanMaterializer.materialize]
-    DR & DP --> Z{no mutants, nothing resumed, no shard?}
+    S --> D{PlanResumer?}
+    D -- yes --> DR["PlanResumer.discover\nshard + journal"]
+    D -- no --> DP["Planner.plan(for:)\nPlanMaterializer.materialize"]
+    DR & DP --> Z{"no mutants, nothing resumed, no shard?"}
     Z -- yes --> ERR[FileDiscoveryError.noMutants]
-    Z -- no --> AN[announceDiscovery]
+    Z -- no --> AN["ConsoleProgressReporter.announceDiscovery\nunless quiet"]
     AN --> CL[SandboxCleaner.clearLeftovers]
-    CL --> G[MutantExecutor.execute → results]
-    G --> O[resumed + results, MutantID.ordered]
-    O --> J[PlanJournal.remove]
+    CL --> R{"mutants left, or nothing resumed?"}
+    R -- yes --> G["MutantExecutor.execute → results"]
+    R -- no --> O
+    G --> O["resumed + results\nMutantID.ordered"]
+    O --> J["PlanJournal.remove\nwhen a journal was kept"]
     J --> H[RunnerSummary]
-    H --> C[RunConclusion.conclude → .success or .gateFailed]
+    H --> C["RunConclusion.conclude → .success or .gateFailed"]
 ```
 
 `SandboxCleaner.clearLeftovers()` kills test processes still running from the sandboxes of dead runs (`OrphanedProcessReaper().reap()`) and then sweeps those sandboxes (`removeOrphaned()`); doing it in the commands that build rather than in `main()` keeps `--help`, `--version` and `init` from paying for a directory listing they do not need. A run whose every mutant was resumed from the journal skips `MutantExecutor` entirely.
@@ -146,19 +160,33 @@ enum HelpText {
 }
 ```
 
-A static multi-line string printed when `--help` is passed. Describes all CLI options and subcommands. Not reproduced here — see the source file.
+A static multi-line string `HelpCommand` prints for `--help` or `-h`. Describes all CLI options and subcommands; the report-path lines are interpolated from `ReportFormat.allCases.map(\.helpLine)`, so a new format lists itself. Not reproduced here — see the source file.
+
+---
+
+## Version.swift
+
+```swift
+enum Version {
+    static let name: String
+    static let number: String
+    static var current: String { get }
+}
+```
+
+`name` is `swift-mutation-testing` and `number` is `0.0.0-dev` in the repository, replaced with the tag's version by the release workflow. `current` is `<name> <number> [<architecture>-<os>]`, e.g. `swift-mutation-testing 0.0.0-dev [arm64-macos26]` — the architecture (`arm64`, `x86_64`) and the macOS major version (`macos<major>`, or `linux`) come from compile-time checks and `ProcessInfo`, `unknown` for anything else. `VersionCommand` prints it. `number` alone is what files record as the tool's version: `Plan.toolVersion` (`Planner`) and the baseline's `toolVersion` (`RunConclusion.applyGate`).
 
 ---
 
 ## CLI/UsageError.swift
 
 ```swift
-struct UsageError: Error, Sendable {
+struct UsageError: Error, Sendable, Equatable {
     let message: String
 }
 ```
 
-Thrown by `CommandLineParser` for unknown flags and by `ConfigurationResolver` when required fields are absent in both CLI and file values (e.g. `scheme` and `destination` for Xcode projects).
+The error for a request the tool cannot carry out as given. Thrown by `CommandLineParser` (unknown flags, missing or malformed values, misplaced positionals, `--shard` or `--project-path` outside their command), by `ConfigurationResolver` (a required field absent in both CLI and file values, such as `scheme` and `destination` for Xcode projects, or an invalid value), by `XcodeContainerLocator.locate`, which declares `throws(UsageError)`, by `ConfigurationFileWriter` when the file already exists, and by `MergeCommand` without `--plan`. `run` writes its `message` alone, without the `Error: ` prefix other errors get.
 
 | Field | Type | Description |
 |---|---|---|
