@@ -7,6 +7,7 @@ struct ProcessRunner: Sendable {
         String(decoding: try Data(contentsOf: $0), as: UTF8.self)
     }
     var processGroups: ProcessGroupRegistry = .shared
+    var isCancelled: @Sendable () -> Bool = { Task.isCancelled }
 
     private struct CaptureTarget {
         let fileHandle: FileHandle
@@ -203,7 +204,7 @@ struct ProcessRunner: Sendable {
             try process.run()
             Self.checkOwnGroup(process.processIdentifier)
             track(process)
-            if Task.isCancelled {
+            if isCancelled() {
                 onTimeout(process.processIdentifier)
             }
         } catch {
