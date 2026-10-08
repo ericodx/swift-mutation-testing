@@ -5,7 +5,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/ericodx/swift-mutation-testing/main-analysis.yml?branch=main&style=flat-square&logo=github&logoColor=white&label=CI&color=4CAF50)](https://github.com/ericodx/swift-mutation-testing/actions)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=ericodx-swift-mutation-testing&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=ericodx-swift-mutation-testing)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=ericodx-swift-mutation-testing&metric=coverage)](https://sonarcloud.io/summary/new_code?id=ericodx-swift-mutation-testing)
-[![Mutation score](https://img.shields.io/badge/mutation%20score-99.1%25-lightgray?logo=jest&logoColor=white)](https://github.com/ericodx/swift-mutation-testing/blob/main/Docs/MUTATION-RESULTS.md)
+[![Mutation score](https://img.shields.io/badge/mutation%20score-99.8%25-lightgray?logo=jest&logoColor=white)](https://github.com/ericodx/swift-mutation-testing/blob/main/Docs/MUTATION-RESULTS.md)
 
 **Measure and improve test effectiveness in Swift codebases using mutation testing.**
 
