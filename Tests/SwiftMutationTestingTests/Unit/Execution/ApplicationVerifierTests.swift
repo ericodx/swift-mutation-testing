@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import SwiftMutationTesting
@@ -105,6 +106,28 @@ struct ApplicationVerifierTests {
                 sandbox: project.sandbox, projectPath: project.root.path
             )
         }
+    }
+
+    @Test("Given many mutants of one file, when verified, then the file's original is read once")
+    func eachOriginalIsReadOnce() throws {
+        let project = try Project { schema(cases: ["m0", "m1", "m2"], for: $0) }
+        defer { project.cleanup() }
+        let reads = Mutex<[String]>([])
+        var counting = ApplicationVerifier()
+        counting.read = { path in
+            reads.withLock { $0.append(path) }
+            return try? String(contentsOfFile: path, encoding: .utf8)
+        }
+
+        try counting.verify(
+            schematizedFiles: [project.file],
+            mutants: [project.mutant(id: "m0"), project.mutant(id: "m1"), project.mutant(id: "m2")]
+                + (3 ..< 8).map { project.mutant(id: "m\($0)", schematizable: false, content: "let x = \($0)") },
+            sandbox: project.sandbox, projectPath: project.root.path
+        )
+
+        let original = project.file.originalPath
+        #expect(reads.withLock { $0 }.filter { $0 == original }.count == 2, "once for the schema, once for the rest")
     }
 
     // MARK: - Helpers
