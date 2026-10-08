@@ -243,4 +243,26 @@ struct SimulatorPoolTests {
 
         #expect(mock.deletedUDIDs == ["CLONE-0", "ORPHAN"])
     }
+
+    @Test("Given a clone named after a run that has exited, when a pool is set up, then that clone is deleted")
+    func setUpDeletesTheCloneOfAnExitedRun() async throws {
+        let exited = Process()
+        exited.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try exited.run()
+        exited.waitUntilExit()
+        let name = CloneName.make(session: "1a2b3c4d", index: 0, pid: exited.processIdentifier)
+        let list = """
+            {"devices":{"com.apple.runtime.iOS":[{"udid":"GONE","name":"\(name)","state":"Shutdown"}]}}
+            """
+        let mock = SimulatorCloneFailureMock(bootFails: true, listOutput: list)
+        let pool = SimulatorPool(
+            baseUDID: "BASE-UDID", size: 1, destination: "platform=iOS Simulator,name=iPhone 15", launcher: mock
+        )
+
+        await #expect(throws: SimulatorError.self) {
+            try await pool.setUp()
+        }
+
+        #expect(mock.deletedUDIDs.contains("GONE"))
+    }
 }

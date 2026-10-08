@@ -107,6 +107,19 @@ struct MarkdownReporterTests {
         #expect(reporter.format(summary).contains("⚠️ Integrity warnings: 1 mutant killed or timed out"))
     }
 
+    @Test("Given two integrity warnings, when formatted, then the count is plural")
+    func twoIntegrityWarningsArePlural() {
+        let summary = RunnerSummary(
+            results: [
+                makeExecutionResult(id: "a", status: .killed(by: "flaky"), activated: false),
+                makeExecutionResult(id: "b", status: .timeout, activated: false),
+            ],
+            totalDuration: 0
+        )
+
+        #expect(reporter.format(summary).contains("⚠️ Integrity warnings: 2 mutants killed or timed out"))
+    }
+
     @Test("Given a failed integrity warning check, when formatted, then the gate lists it")
     func formatsTheIntegrityWarningCheck() {
         let warning = makeExecutionResult(status: .killed(by: "flaky"), activated: false)

@@ -172,6 +172,13 @@ struct SarifReporterTests {
         #expect(base["%SRCROOT%"]?["uri"] == "file:///")
     }
 
+    @Test("Given sorted operators, when a result's rule is looked up, then its position in them is the rule index")
+    func theRuleIndexIsThePositionInTheSortedOperators() {
+        let operators = ["Arithmetic", "Boolean", "Relational"]
+
+        #expect(operators.map { SarifReporter.position(of: $0, in: operators) } == [0, 1, 2])
+    }
+
     private func report(_ results: [ExecutionResult], projectRoot: String = "/tmp") throws -> [String: Any] {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
