@@ -112,7 +112,6 @@ Replaces the bytes `utf8Offset ..< utf8Offset + originalText.utf8.count` with `m
 
 ```swift
 enum UTF8Splice {
-    static func substring(of content: String, from start: Int, to end: Int) -> String?
     static func replacing(from start: Int, to end: Int, in content: String, with replacement: String) -> String?
     static func inserting(_ text: String, at offset: Int, in content: String) -> String?
     static func isRange(from start: Int, to end: Int, in bytes: [UInt8]) -> Bool
