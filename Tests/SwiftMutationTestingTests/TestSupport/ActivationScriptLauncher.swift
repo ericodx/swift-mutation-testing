@@ -7,6 +7,9 @@ actor ActivationScriptLauncher: ProcessLaunching {
         let exitCode: Int32
         let output: String
         let writesMarker: Bool
+        var throwing = false
+
+        static let throwsError = TestRun(exitCode: 0, output: "", writesMarker: false, throwing: true)
 
         static func passes(writesMarker: Bool) -> TestRun {
             TestRun(exitCode: 0, output: "", writesMarker: writesMarker)
@@ -53,6 +56,7 @@ actor ActivationScriptLauncher: ProcessLaunching {
         case "test", "test-without-building":
             testEnvironments.append(request.additionalEnvironment)
             let run = testRuns.isEmpty ? TestRun.passes(writesMarker: false) : testRuns.removeFirst()
+            if run.throwing { throw CocoaError(.fileReadNoSuchFile) }
             let markerPath = request.additionalEnvironment.first {
                 $0.key.hasSuffix(ActivationMarker.environmentVariable)
             }

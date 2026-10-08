@@ -50,6 +50,35 @@ struct IncompatibleMutantSPMTestRunTests {
         #expect(tests.first?.stopRule == nil)
     }
 
+    @Test("Given an SPM mutant whose file lies outside the project, when executed, then it is unviable")
+    func anSPMMutantOutsideTheProjectIsUnviable() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let launcher = CountingLauncher(wrapping: MockProcessLauncher(exitCode: 0))
+        let executor = makeIncompatibleMutantExecutorSPM(in: dir, launcher: launcher)
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let results = try await executor.execute(
+            [makeMutantDescriptor(filePath: "/elsewhere/Foo.swift", mutatedSourceContent: "let x = 1")],
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            pool: pool
+        )
+
+        #expect(results.map(\.status) == [.unviable])
+        #expect(await testRequests(of: launcher).isEmpty)
+    }
+
+    @Test("Given an SPM test run that throws, when executed, then the error ends the pass")
+    func aThrowingSPMRunEndsThePass() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        await #expect(throws: CocoaError.self) {
+            _ = try await run(in: dir, launcher: ThrowingDuringTestMock(throwingOnTestCall: 1), testTarget: nil)
+        }
+    }
+
     // MARK: - Private
 
     private func run(
