@@ -8,7 +8,7 @@ A run is two decisions followed by work: *what* to mutate, then *whether each mu
 
 ## The plan
 
-`Plan` (`Plan/Plan.swift`, `formatVersion` 1) holds the project (type, scheme, destination, test target), the scope (sources path, exclusions, operators), every source file in scope with the SHA-256 of its content, and every mutant with its file, UTF-8 range, line, column, operator, change, description, whether it is schematizable, and its fingerprint.
+`Plan` (`Plan/Plan.swift`, `formatVersion` 1) holds the project (type, scheme, destination, test target, and the Xcode container as `workspace` or `xcodeProject`), the scope (sources path, exclusions, operators), every source file in scope with the SHA-256 of its content, and every mutant with its file, UTF-8 range, line, column, operator, change, description, whether it is schematizable, and its fingerprint.
 
 Three properties are the point:
 
@@ -25,16 +25,17 @@ The schematized content is not in the plan: the run regenerates it from the muta
 ```mermaid
 flowchart LR
     DI[DiscoveryInput] --> P[Planner]
-    P -- Plan + parsed sources --> M[PlanMaterializer]
-    PS[(plan.json)] -- PlanStore.read --> M
+    P -- "Plan + parsed sources" --> M[PlanMaterializer]
+    P -- "plan: PlanStore.write" --> PS
+    PS[(plan.json)] -- "PlanStore.read · PlanResumer" --> M
     M -- RunnerInput --> EX[MutantExecutor]
 ```
 
-`Planner` runs discovery up to indexing — files, parsing, operators, mutation points, fingerprints — and produces the plan, handing over the parsed sources so the direct flow does not parse twice. `PlanMaterializer` turns a plan into a `RunnerInput`: it rebuilds every `IndexedMutationPoint` from the plan (the index is the mutant's position in the plan, so the report ids — `MutantID.make(index:)` — are the same ones a plain run gives), runs `SchematizationStage` and `IncompatibleRewritingStage` over the sources, and assembles the input. `DiscoveryPipeline.run` and a plain `run` (`RunCommand`) are `Planner` followed by `PlanMaterializer` on the sources just parsed; `run --plan` is `PlanStore.read` followed by `PlanMaterializer` on the sources read from disk, through `PlanResumer`. **There is one materialization, so the two flows cannot drift**, and a test pins that a plan written and read back materializes to the direct flow's input.
+`Planner` runs discovery up to indexing — files, parsing, operators, mutation points, fingerprints — and produces the plan, handing over the parsed sources so the direct flow does not parse twice. `PlanMaterializer` turns a plan into a `RunnerInput`: it rebuilds every `IndexedMutationPoint` from the plan (the index is the mutant's position in the plan, so the report ids — `MutantID.make(index:)` — are the same ones a plain run gives), runs `SchematizationStage` and `IncompatibleRewritingStage` over the sources, and assembles the input. The `plan` command (`PlanCommand`) stops after `Planner` and writes the plan with `PlanStore.write`. `DiscoveryPipeline.run` and a plain `run` (`RunCommand`) are `Planner` followed by `PlanMaterializer` on the sources just parsed; `run --plan` is `PlanStore.read` followed by `PlanMaterializer` on the sources read from disk, through `PlanResumer`. **There is one materialization, so the two flows cannot drift**, and a test pins that a plan written and read back materializes to the direct flow's input.
 
 ## Staleness
 
-Before `run --plan` builds anything, `PlanMaterializer.load` hashes every file of the plan again and compares; a changed or missing file ends the run with `PlanError.stale` or `.missingFile`, naming it. Then each mutant's `original` text is checked at its range, which catches a corrupt plan for free. A plan only ever runs over the code it describes; a shard on another machine that checked out the wrong commit finds out before it builds.
+Before `run --plan` builds anything, `PlanMaterializer.load` hashes every file of the plan again and compares; a changed or missing file ends the run with `PlanError.stale` or `.missingFile`, naming it. Then each mutant's `original` text is checked at its range (`PlanError.corrupt`), which catches a corrupt plan for free. A plan's project type, test target, container and scope replace the configuration's (`RunnerConfiguration.applying(_:)`), so a shard runs what the plan says whatever its own file says. A plan only ever runs over the code it describes; a shard on another machine that checked out the wrong commit finds out before it builds.
 
 The `toolVersion` is recorded, not required: a plan says which tool made it, and `formatVersion` says whether this tool can read it.
 
@@ -46,7 +47,7 @@ The `toolVersion` is recorded, not required: a plan says which tool made it, and
 
 Every JSON report carries `config.planSha256` and, for a shard, `config.shard` (`RunIdentity`), and every mutant carries its `fingerprint` and `activated`. A plain run has an identity too, since it made a plan in memory.
 
-`ResultMerger` joins reports into one result set under three rules, each an error (`MergeError`): every report must name the same plan; no fingerprint may have a verdict in two reports; every mutant of the plan must have a verdict. Missing mutants are listed and no score is given — `discovered == planned + skipped` is the discipline, and a score over part of the plan would not be a single run's number. The merged `ExecutionResult`s are rebuilt from the plan's mutants and the reports' verdicts, so every reporter and the quality gate run over them unchanged.
+`ResultMerger` joins reports into one result set under three rules, each an error (`MergeError`): every report must name the same plan; no fingerprint may have a verdict in two reports; every mutant of the plan must have a verdict. Missing mutants are listed and no score is given — `discovered == planned + skipped` is the discipline, and a score over part of the plan would not be a single run's number. The merged `ExecutionResult`s are rebuilt from the plan's mutants and the reports' verdicts, so `merge` (`MergeCommand`) ends in `RunConclusion` like a run: the console summary, every report file it is asked for, and the quality gate run over them unchanged.
 
 ## Resuming
 
@@ -59,7 +60,7 @@ A test sends a real `SIGINT` to the built tool in the middle of a `run --plan --
 
 ## Reproduce
 
-`Reproducer` runs one mutant of a plan — by report id, full fingerprint, or a prefix that fits one mutant — with `RunnerConfiguration.build.reproducing` set: the whole suite rather than the targeted suites first, no `OutputStopRule`, and the sandbox left in place by every executor. It prints the kept sandboxes (this process's `xmr-<pid>-*` directories), the line before and after the mutation (from `MutationRewriter`), the full test output (from `MutantLogWriter`'s log) and the verdict with its reason. The next run's sweep of orphaned sandboxes removes the kept one.
+`Reproducer` runs one mutant of a plan — `--plan`, or one made in memory — by report id, full fingerprint, or a prefix of at least six characters that fits one mutant. It sets `RunnerConfiguration.build.reproduction`, with no cache, one worker and no progress output: the whole suite rather than the targeted suites first, no `OutputStopRule`, and every sandbox left in place, each executor handing it to the `Reproduction` (`Sandbox.release(keepingFor:)`) instead of deleting it. An incompatible mutant on Xcode is built in one cold sandbox per attempt rather than a warm one, so the kept sandbox holds exactly that mutant. It prints the kept sandboxes, the line before and after the mutation (from `MutationRewriter`), the full test output (from `MutantLogWriter`'s log, under `--keep-logs` or a directory of its own) and the verdict with its reason, and exits `1` when the mutant reached no verdict. The next run's sweep of orphaned sandboxes removes the kept ones.
 
 ## Decisions
 

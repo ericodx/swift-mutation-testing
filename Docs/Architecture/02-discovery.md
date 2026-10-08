@@ -6,16 +6,23 @@
 
 ## Design
 
-The discovery pipeline is a **linear chain of pure stages**. Each stage receives an immutable input, produces an immutable output, and has no side effects. `DiscoveryPipeline` is the entry point and orchestrates the six stages sequentially.
+The discovery pipeline is a **linear chain of stages**. Each stage receives an immutable input and produces an immutable output; only the first reads the file system. `DiscoveryPipeline.run` is `Planner` followed by `PlanMaterializer`: `Planner` runs the first four stages and writes their result down as a [plan](06-plans.md), and `PlanMaterializer` runs the two schematization stages over it.
 
 ```mermaid
 flowchart TD
-    IN[DiscoveryInput] --> FD[FileDiscoveryStage]
-    FD --> PA[ParsingStage]
-    PA --> MD[MutantDiscoveryStage]
-    MD --> MI[MutantIndexingStage]
-    MI --> SC[SchematizationStage]
-    MI --> IR[IncompatibleRewritingStage]
+    IN[DiscoveryInput] --> FD
+    subgraph Planner
+        FD[FileDiscoveryStage] --> PA[ParsingStage]
+        PA --> MD[MutantDiscoveryStage]
+        MD --> MI[MutantIndexingStage]
+    end
+    MI --> PLAN[Plan + parsed sources]
+    subgraph PlanMaterializer
+        SC[SchematizationStage]
+        IR[IncompatibleRewritingStage]
+    end
+    PLAN --> SC
+    PLAN --> IR
     SC --> OUT[RunnerInput]
     IR --> OUT
 ```
@@ -31,18 +38,18 @@ Collects Swift source files under the configured sources path.
 | Input | `DiscoveryInput` — project path, sources path, exclude patterns |
 | Output | `[SourceFile]` — path + raw text content |
 
-Traverses the directory tree recursively. Excludes files matching any `--exclude` pattern — a glob against the path relative to the project root, or a fragment of the path — and files located under paths that contain `Tests`, `Specs`, `.build`, or similar test-only indicators. Each discovered file is read into a `SourceFile` value.
+Traverses the directory tree recursively, skipping hidden files. The sources path may also be a single `.swift` file; a path that does not exist, or a file that is not Swift, is a `FileDiscoveryError`. Excludes files matching any `--exclude` pattern (`ExcludePattern`) — a glob against the path relative to the project root, or a fragment of the path — and a fixed list of test-only and build locations: paths containing `/Tests/`, `/Mocks/`, `/Stubs/`, `/Fakes/`, `/TestHelpers/`, `/TestSupport/`, `/Snippets/`, `/.build/`, `/DerivedData/` or the cache directory, file names ending in `Tests.swift`, `Mock.swift` or `Spec.swift`, and package manifests. Each discovered file is read into a `SourceFile` value.
 
 ### ParsingStage
 
-Parses each source file into a SwiftSyntax AST. Runs concurrently across files via `async` iteration.
+Parses each source file into a SwiftSyntax AST. Runs concurrently across files in a task group.
 
 | | |
 |---|---|
 | Input | `[SourceFile]` |
-| Output | `[ParsedSource]` — `SourceFile` + `SourceFileSyntax` tree |
+| Output | `[ParsedSource]` — `SourceFile` + `SourceFileSyntax` tree + location converter + function scopes |
 
-Files that fail to parse are silently dropped. The resulting `[ParsedSource]` array contains only successfully parsed files.
+SwiftParser recovers from syntax errors, so every file yields a `ParsedSource`. Building one does the per-file work every later stage shares, once: a `SourceLocationConverter` that the operators' visitors use for line and column, and the file's `FunctionBodyScopes`, collected by `TypeScopeVisitor`, that indexing and schematization use.
 
 ### MutantDiscoveryStage
 
@@ -53,7 +60,7 @@ Applies mutation operators to each parsed source and collects mutation points. R
 | Input | `[ParsedSource]`, resolved `[any MutationOperator]` |
 | Output | `[MutationPoint]` — file path, position, original text, mutated text, operator |
 
-Each operator walks the AST with its own visitor and emits a `MutationPoint` for every applicable node. The points of each file then pass through the stage's exclusions in turn — suppression, infinite-loop prevention and inactive `#if` branches, below — each a `MutationExclusion` that names the ranges it covers and the points it applies to. Points are collected from all operators and all files, then returned as a flat list.
+Each operator walks the AST with its own visitor and emits a `MutationPoint` for every applicable node. The points of each file then pass through the stage's exclusions in turn — suppression, infinite-loop prevention and inactive `#if` branches, below — each a `MutationExclusion` that names the ranges it covers and the points it applies to. Points are collected from all operators and all files, then returned as one list in source order (file path, then UTF-8 offset).
 
 ### MutantIndexingStage
 
@@ -61,12 +68,12 @@ Assigns unique sequential IDs to each mutation point and classifies them as sche
 
 | | |
 |---|---|
-| Input | `[MutationPoint]`, `[ParsedSource]` |
-| Output | `[IndexedMutationPoint]` — mutation point + unique ID + schematizable flag + fingerprint |
+| Input | `[MutationPoint]`, `[ParsedSource]`, project path |
+| Output | `[IndexedMutationPoint]` — mutation point + index + schematizable flag + fingerprint |
 
-Each mutation point receives an ID in the format `swift-mutation-testing_<index>`, where `<index>` is a zero-based global counter. `MutantID` is the one place that builds, reads and orders that format. `TypeScopeVisitor` determines whether a mutation falls inside a function body (schematizable) or outside (incompatible). The indexed points are consumed by the next two stages.
+Each mutation point receives an index, a zero-based global counter over the points in source order, and its ID is `swift-mutation-testing_<index>`. `MutantID` is the one place that builds, reads and orders that format. A point is schematizable when it falls inside a function body: `ParsedSource.functionScopes.isSchematizable(utf8Offset:)` answers it from the scopes collected at parse time. The indexed points are consumed by the plan and the next two stages.
 
-The ID is only unique within one run: a mutant added earlier in any file renumbers every later one. Each point therefore also gets a **fingerprint** — a hash of its project-relative file, the declaration that contains it (`Parser.parse(_:)`), its operator and its change — which stays the same when other code moves or changes. The quality gate matches baselines by fingerprint.
+The ID is only unique within one run: a mutant added earlier in any file renumbers every later one. Each point therefore also gets a **fingerprint** (`MutantFingerprint`) — a hash of its project-relative file, the declaration that contains it (`DeclarationPath`, e.g. `Parser.parse(_:)`), its operator, its change, and an ordinal that tells apart identical changes in one declaration — which stays the same when other code moves or changes. The quality gate matches baselines by fingerprint, and plans, shards and merges identify mutants by it.
 
 ### SchematizationStage
 
@@ -77,7 +84,7 @@ Embeds all schematizable mutations into the source files via `SchemataGenerator`
 | Input | `[IndexedMutationPoint]`, `[ParsedSource]` |
 | Output | `[SchematizedFile]`, `[MutantDescriptor]` — schematized files and schematizable mutant descriptors |
 
-For each file, the stage processes only the schematizable indexed points. Mutations are embedded into the source via `SchemataGenerator`, which rewrites function bodies to contain `switch __swiftMutationTestingID_<hash>` blocks, the hash naming the file. See [Schematization](05-schematization.md) for a detailed breakdown.
+For each file, the stage processes only the schematizable indexed points. Mutations are embedded into the source via `SchemataGenerator`, which rewrites function bodies to contain `switch __swiftMutationTestingID_<hash>` blocks, the hash naming the file, splicing them into the file's UTF-8 bytes. The import style of the support block (`ImportStyle`) is decided once over all sources. See [Schematization](05-schematization.md) for a detailed breakdown.
 
 ### IncompatibleRewritingStage
 
@@ -88,23 +95,23 @@ Produces full-file rewrites for mutants that cannot be schematized (mutations ou
 | Input | `[IndexedMutationPoint]`, `[ParsedSource]` |
 | Output | `[MutantDescriptor]` — incompatible mutant descriptors with pre-computed `mutatedSourceContent` |
 
-Each incompatible mutation point is applied to the source via `MutationRewriter`, producing a complete replacement source file stored in `MutantDescriptor.mutatedSourceContent`. These mutants are executed later by `IncompatibleMutantExecutor`, each requiring a separate build + test cycle.
+Each incompatible mutation point is applied to the source via `MutationRewriter`, producing a complete replacement source file stored in `MutantDescriptor.mutatedSourceContent`. These mutants are executed later by `IncompatibleMutantExecutor`, each requiring its own rebuild + test cycle.
 
 ## Mutation Operators
 
-All operators implement the `MutationOperator` protocol and are registered in `OperatorRegistry`. Each is a `VisitorOperator` over a dedicated `Visitor` that extends `MutationSyntaxVisitor`; the visitor declares the operator's name, its description and whether it is loop-risky, and the rest of the tool — configuration, tiers, SARIF rules, the infinite-loop filter — reads those from the operator rather than from lists of its own.
+All operators implement the `MutationOperator` protocol and are registered in `OperatorRegistry`, each with its tier. Each is a `VisitorOperator` over a dedicated visitor that extends `MutationSyntaxVisitor` and conforms to `OperatorVisitor`; the visitor declares the operator's name, its description and whether it is loop-risky, and the rest of the tool — configuration, tiers, SARIF rules, the infinite-loop filter — reads those from the operator rather than from lists of its own.
 
-| Operator | What it mutates | Example |
-|---|---|---|
-| `RelationalOperatorReplacement` | Comparison operators | `>` → `>=`, `<` → `<=`, `==` → `!=` |
-| `BooleanLiteralReplacement` | Boolean literals | `true` → `false`, `false` → `true` |
-| `LogicalOperatorReplacement` | Logical connectives | `&&` → `\|\|`, `\|\|` → `&&` |
-| `ArithmeticOperatorReplacement` | Arithmetic operators | `+` → `-`, `-` → `+`, `*` → `/`, `/` → `*` |
-| `NegateConditional` | Conditional expressions | `condition` → `!condition` |
-| `SwapTernary` | Ternary branches | `a ? b : c` → `a ? c : b` |
-| `RemoveSideEffects` | Standalone function call statements | `doSomething()` → *(removed)* |
+| Operator | Tier | What it mutates | Example |
+|---|---|---|---|
+| `RelationalOperatorReplacement` | experimental | Comparison operators, each to a boundary and an opposite variant | `>` → `>=` and `<`, `<=` → `<` and `>=`, `==` → `!=` |
+| `BooleanLiteralReplacement` | experimental | Boolean literals | `true` → `false`, `false` → `true` |
+| `LogicalOperatorReplacement` | conservative | Logical connectives | `&&` → `\|\|`, `\|\|` → `&&` |
+| `ArithmeticOperatorReplacement` | experimental | Arithmetic operators | `+` → `-`, `-` → `+`, `*` → `/`, `/` → `*` |
+| `NegateConditional` | conservative | Conditional expressions | `condition` → `!(condition)` |
+| `SwapTernary` | conservative | Ternary branches | `a ? b : c` → `a ? c : b` |
+| `RemoveSideEffects` | experimental | Standalone function call statements | `doSomething()` → *(removed)* |
 
-Operators are activated by name via `--operator` or deactivated via `--disable-mutator`. If neither flag is provided, the operators of the `--operator-tier` are active — the `default` tier unless configured otherwise. The tiers and the measurements behind them are in [`Docs/OPERATORS.md`](../OPERATORS.md).
+The tiers are ordered `conservative` < `default` < `experimental`, and a tier runs every operator at or below it; no operator sits in `default` today, so the `default` tier runs the conservative set. `--operator` names the operators to run, whatever their tier. Without it, the operators of `--operator-tier` run — `default` unless configured otherwise — minus those named by `--disable-mutator` or set `active: false` under `mutators:`. The tiers and the measurements behind them are in [`Docs/OPERATORS.md`](../OPERATORS.md).
 
 ## Suppression
 
@@ -126,10 +133,10 @@ A mutant in a branch the host build leaves out — `#if os(Windows)`, `#if canIm
 DiscoveryInput
 ├── projectPath       — project root (Xcode or SPM)
 ├── projectType       — ProjectType (.xcode or .spm)
-├── sourcesPath       — root for Swift file discovery
+├── timeout, concurrency, noCache
+├── sourcesPath       — root (or single file) for Swift file discovery
 ├── excludePatterns   — globs or path fragments to skip
-├── operators         — list of active operator identifiers
-└── timeout, concurrency, noCache
+└── operators         — list of active operator identifiers
 
 SourceFile
 ├── path              — absolute path to the .swift file
@@ -137,24 +144,28 @@ SourceFile
 
 ParsedSource
 ├── file              — SourceFile
-└── syntax            — SourceFileSyntax (SwiftSyntax AST)
+├── syntax            — SourceFileSyntax (SwiftSyntax AST)
+├── locationConverter — SourceLocationConverter, built once per file
+└── functionScopes    — FunctionBodyScopes, collected once per file by TypeScopeVisitor
 
 MutationPoint
+├── operatorIdentifier
 ├── filePath          — absolute source file path
 ├── line, column      — 1-based position
 ├── utf8Offset        — byte offset in UTF-8 encoded content
 ├── originalText      — token(s) before mutation
 ├── mutatedText       — token(s) after mutation
-├── operatorIdentifier
-└── replacementKind   — ReplacementKind enum
+├── replacement       — ReplacementKind enum
+└── description       — human-readable mutation description
 
 IndexedMutationPoint
-├── point             — MutationPoint
-├── id                — unique ID (MutantID: swift-mutation-testing_<index>)
-└── isSchematizable   — whether the mutation is inside a function body
+├── index             — global position in source order; mutantID = MutantID.make(index:)
+├── mutation          — MutationPoint
+├── isSchematizable   — whether the mutation is inside a function body
+└── fingerprint       — MutantFingerprint, stable across unrelated edits
 
 MutantDescriptor
-├── id                — unique ID
+├── id                — unique ID (swift-mutation-testing_<index>)
 ├── filePath          — absolute source file path
 ├── line, column      — 1-based position
 ├── utf8Offset        — byte offset
@@ -164,14 +175,17 @@ MutantDescriptor
 ├── replacementKind   — ReplacementKind enum
 ├── description       — human-readable mutation description
 ├── isSchematizable   — schematizable or incompatible
-└── mutatedSourceContent — pre-computed full source (incompatible only)
+├── mutatedSourceContent — pre-computed full source (incompatible only)
+├── sourceContentHash — SHA-256 of the unmutated file, part of the cache key
+└── fingerprint
 
 RunnerInput
 ├── projectPath
 ├── projectType       — ProjectType (.xcode or .spm)
 ├── timeout, concurrency, noCache
 ├── schematizedFiles  — [SchematizedFile] (one per modified source file, each ending with its own support declarations)
-└── mutants           — [MutantDescriptor] (all mutants, schematizable and incompatible)
+├── mutants           — [MutantDescriptor] (all mutants, schematizable and incompatible, in id order)
+└── importStyle       — ImportStyle, for a schema regenerated after a failed build
 ```
 
 ---

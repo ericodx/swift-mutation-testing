@@ -6,15 +6,15 @@
 
 ## Purpose
 
-Schematization is the key technique that allows `swift-mutation-testing` to run `xcodebuild build-for-testing` exactly once for all schematizable mutants. Instead of creating a separate binary per mutant, all mutations for a given function body are embedded into the same binary behind a runtime `switch` statement. The active mutant is selected at test time by setting an environment variable.
+Schematization is the key technique that allows `swift-mutation-testing` to build once — `xcodebuild build-for-testing` or `swift build --build-tests` — for all schematizable mutants. Instead of creating a separate binary per mutant, all mutations for a given function body are embedded into the same binary behind a runtime `switch` statement. The active mutant is selected at test time by setting an environment variable.
 
 ## Schematizable vs Incompatible Mutants
 
-A mutation is **schematizable** when it falls inside a function body — anywhere `TypeScopeVisitor` can determine an enclosing function scope. Mutations outside function bodies (stored property initializers, global-scope expressions) are **incompatible** and require a separate full build + test cycle via `IncompatibleMutantExecutor`.
+A mutation is **schematizable** when it falls inside a function body — anywhere `TypeScopeVisitor` can determine an enclosing function scope. Mutations outside function bodies (stored property initializers, global-scope expressions) are **incompatible** and require a rebuild + test cycle each via `IncompatibleMutantExecutor`.
 
 ```mermaid
 flowchart TD
-    MP[MutationPoint] --> TSV[FunctionBodyScopes\ninnermostScope]
+    MP[MutationPoint] --> TSV["ParsedSource.functionScopes\ninnermostScope(containing:)"]
     TSV -- scope found --> SCHEMA[Schematizable\nembedded in switch]
     TSV -- no scope --> INCOMPAT[Incompatible\nfull rewrite per mutant]
 ```
@@ -30,40 +30,45 @@ flowchart TD
 
 ```swift
 {
-    switch __swiftMutationTestingID_<hash> {
-    case "swift-mutation-testing_0":
-        return a - b
-    case "swift-mutation-testing_1":
-        return a + b
-    default:
-        return a + b
-    }
+switch __swiftMutationTestingID_<hash> {
+case "swift-mutation-testing_0":
+let _ = __SwiftMutationTesting_<hash>.activated()
+return a - b > limit
+case "swift-mutation-testing_1":
+let _ = __SwiftMutationTesting_<hash>.activated()
+return a + b >= limit
+default:
+return a + b > limit
+}
 }
 ```
 
+Each `case` starts by recording that it ran; how that call sits depends on the body's shape (see [Activation Marker](#activation-marker)). Mutations inside one body are written in id order.
+
 Mutant IDs follow the pattern `swift-mutation-testing_<index>`, where index is the global sequential position of the mutant across all files. `MutantID` owns the format: it builds the id, reads the index back and orders results by it.
 
-Multiple scopes within the same file are processed in reverse order by `bodyStartOffset` to preserve correct byte offsets as the content grows.
+The generator works on the file's UTF-8 bytes: the content is turned into a byte array once, every body is spliced into that buffer, and the `String` is built once at the end. Scopes are processed in reverse order by `bodyStartOffset`, and `SchemataGenerator.Edits` records each splice's start and size change, so the current position of any original offset is found by a binary search over the edits rather than by re-reading the text. A mutation whose scope cannot be found or whose bytes cannot be spliced is discarded (`SchemaGeneration.discarded`); a file where nothing was spliced is returned unchanged, without a support block.
 
 ## MutationRewriter
 
 For **incompatible** mutants, `MutationRewriter` applies the single mutation directly to the source file's raw text using UTF-8 byte offsets, producing a complete replacement source file stored in `MutantDescriptor.mutatedSourceContent`.
 
-`MutationRewriter`, `SchemataGenerator` and `ActivationInstrumenter` make every byte splice through `UTF8Splice`, which reads, replaces or inserts on the string's UTF-8 bytes and answers `nil` — instead of trapping — when a range lies outside the text or cuts through a character. Each caller decides what `nil` means: the rewriter keeps the source unchanged, the generator discards the mutation (or leaves the body as it was), and the instrumenter leaves the mutant unmeasured.
+`MutationRewriter`, `SchemataGenerator` and `ActivationInstrumenter` make every byte splice through `UTF8Splice`, which reads, replaces or inserts on a string's UTF-8 bytes — or, for the generator, on a byte buffer it already holds — and answers `nil` — instead of trapping — when a range lies outside the text or cuts through a character. Each caller decides what `nil` means: the rewriter keeps the source unchanged, the generator discards the mutation (or leaves the body as it was), and the instrumenter leaves the mutant unmeasured.
 
 ## TypeScopeVisitor
 
-`TypeScopeVisitor` walks the SwiftSyntax AST and records every `FunctionBodyScope` — the UTF-8 byte range of each function body's `{`, its statements, and its closing `}`. It visits function declarations, initializers, deinitializers, and property/subscript accessors.
+`TypeScopeVisitor` walks the SwiftSyntax AST and records every `FunctionBodyScope` — the UTF-8 byte range of each function body's `{`, its statements, and its closing `}`, and the body's `FunctionBodyShape`. It visits function declarations, initializers, deinitializers, and property/subscript accessors.
 
 ```
 FunctionBodyScope
 ├── bodyStartOffset       — byte offset of opening {
 ├── bodyEndOffset         — byte offset after closing }
 ├── statementsStartOffset — byte offset of first statement
-└── statementsEndOffset   — byte offset after last statement
+├── statementsEndOffset   — byte offset after last statement
+└── shape                 — FunctionBodyShape (.statements, .expression, .conditional(returnsValue:))
 ```
 
-The scopes are kept, once per file, on `ParsedSource.functionScopes` (`FunctionBodyScopes`). Its `innermostScope(containing:)` returns the tightest scope that contains a given UTF-8 offset, enabling correct handling of nested functions and closures, and its `isSchematizable(utf8Offset:)` is the Boolean interface `MutantIndexingStage` uses to classify each mutation point.
+The visitor runs once per file, when the `ParsedSource` is built, and the scopes are kept on `ParsedSource.functionScopes` (`FunctionBodyScopes`), sorted by start with each scope's parent. Its `innermostScope(containing:)` — a binary search, then a walk up the parents — returns the tightest scope that contains a given UTF-8 offset, enabling correct handling of nested functions and closures, and its `isSchematizable(utf8Offset:)` is the Boolean interface `MutantIndexingStage` uses to classify each mutation point.
 
 ## Per-file support declarations
 
@@ -104,23 +109,25 @@ The block is part of `SchematizedFile.schematizedContent`. That is what makes th
 
 ## Runtime Activation
 
-At test execution time, `XCTestRunPlist.activating(_:activationFile:)` injects the mutant ID into the `.xctestrun` plist under `EnvironmentVariables.__SWIFT_MUTATION_TESTING_ACTIVE` for every test target in the run, and the SPM path puts the same variable in the test process's environment. A fresh copy of the `.xctestrun` is written for each mutant.
+At test execution time, `XCTestRunPlist.activating(_:activationFile:)` injects the mutant ID into the `.xctestrun` plist under `EnvironmentVariables.__SWIFT_MUTATION_TESTING_ACTIVE`, with the activation marker path, for every test target in the run, and the SPM path puts the same variables in the test process's environment (`TestBundleInvocation.environment(mutantID:activationFile:)`). A fresh copy of the `.xctestrun` is written for each mutant run and removed after it.
 
 ```mermaid
 flowchart TD
-    PLIST[BuildArtifact.plist] --> ACT[XCTestRunPlist.activating\nmutantID + marker path]
-    ACT --> XCTESTRUN[Temporary .xctestrun\nwith env vars set]
-    XCTESTRUN --> XCB[xcodebuild test-without-building\n-xctestrun <path>]
-    XCB --> BINARY[Test binary reads\n__SWIFT_MUTATION_TESTING_ACTIVE\nat startup]
-    BINARY --> SWITCH[switch __swiftMutationTestingID_<hash>\nroutes to active mutant]
-    SWITCH --> MARK[the case writes the marker file\nonce per file]
+    PLIST[BuildArtifact.plist] --> ACT["XCTestRunPlist.activating\nmutantID + marker path"]
+    ACT --> XCTESTRUN["Temporary .xctestrun\nwith env vars set"]
+    XCTESTRUN --> XCB["xcodebuild test-without-building\n-xctestrun #lt;path#gt;"]
+    SPM["SPM: TestBundleInvocation.environment\nmutantID + marker path"] --> BUNDLE["xctest / swiftpm-testing-helper\non the built bundle"]
+    XCB --> BINARY["Test binary reads\n__SWIFT_MUTATION_TESTING_ACTIVE\non first use, once per file"]
+    BUNDLE --> BINARY
+    BINARY --> SWITCH["switch __swiftMutationTestingID_#lt;hash#gt;\nroutes to active mutant"]
+    SWITCH --> MARK["the case writes the marker file\nonce per file"]
 ```
 
 When no environment variable is set (baseline run or passive execution), `__swiftMutationTestingID_<hash>` returns `""`, which matches no `case` and the `default` branch executes — the original code runs unmodified.
 
 ## Activation Marker
 
-A verdict is only meaningful if the mutated code ran, so every `case` records that it did. The runner names a marker file for each test run, `<sandbox>/.xmr-activation/<mutant id>-<UUID>`, and passes it in `__SWIFT_MUTATION_TESTING_ACTIVATION_FILE`. The first time a file's `case` runs, `__SwiftMutationTesting.activated()` creates that file; a flag in the same private enum makes every later call a bool read. After the run, `ActivationMarker.wasWritten()` reads and removes it. The targeted run and the full run get markers of their own, and either counts.
+A verdict is only meaningful if the mutated code ran, so every `case` records that it did. The runner names a marker file for each test run, `<sandbox>/.xmr-activation/<mutant id>-<UUID>`, and passes it in `__SWIFT_MUTATION_TESTING_ACTIVATION_FILE`. The first time a file's `case` runs, `__SwiftMutationTesting_<hash>.activated()` creates that file; a flag in the same enum, `activationRecorded`, makes every later call a bool read. After the run, `ActivationMarker.wasWritten()` reads and removes it. The targeted run and the full run get markers of their own, and either counts.
 
 How the call sits in the `case` depends on the body's shape, recorded by `TypeScopeVisitor` as `FunctionBodyShape`:
 
