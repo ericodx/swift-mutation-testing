@@ -27,7 +27,7 @@ struct PlanMaterializer: Sendable {
         let selected = Set((selection ?? plan.mutants).map(\.fingerprint))
         let sourceByRelativePath = Dictionary(
             sources.map { (Planner.relative($0.file.path, to: projectPath), $0) },
-            uniquingKeysWith: { first, _ in first }
+            uniquingKeysWith: Uniquing.first
         )
         let indexed: [IndexedMutationPoint] = try plan.mutants.enumerated().compactMap { index, mutant in
             guard selected.contains(mutant.fingerprint) else { return nil }
@@ -108,7 +108,7 @@ struct PlanMaterializer: Sendable {
     }
 
     static func fileHashes(of plan: Plan) -> [String: String] {
-        Dictionary(plan.files.map { ($0.path, $0.sha256) }, uniquingKeysWith: { first, _ in first })
+        Dictionary(plan.files.map { ($0.path, $0.sha256) }, uniquingKeysWith: Uniquing.first)
     }
 
     static func descriptor(

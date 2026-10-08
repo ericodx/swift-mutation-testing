@@ -106,8 +106,9 @@ struct TestBundleInvocation: Sendable {
                 [
                     "DYLD_FRAMEWORK_PATH": DeveloperToolchain.frameworksPath,
                     "DYLD_LIBRARY_PATH": DeveloperToolchain.librariesPath,
-                ]
-            ) { current, _ in current },
+                ],
+                uniquingKeysWith: Uniquing.first
+            ),
             workingDirectoryURL: workingDirectory,
             timeout: timeout
         )

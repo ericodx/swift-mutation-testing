@@ -17,7 +17,7 @@ struct PlanJournal: Sendable {
         self.path = path
         self.warning = warning
         fingerprintByKey = Dictionary(
-            mutants.map { (MutantCacheKey.make(for: $0), $0.fingerprint) }, uniquingKeysWith: { first, _ in first }
+            mutants.map { (MutantCacheKey.make(for: $0), $0.fingerprint) }, uniquingKeysWith: Uniquing.first
         )
     }
 
@@ -46,7 +46,7 @@ struct PlanJournal: Sendable {
 
     static func entries(at path: String) -> [String: Entry] {
         Dictionary(
-            JSONLines.read(Entry.self, from: path).map { ($0.fingerprint, $0) }, uniquingKeysWith: { _, last in last }
+            JSONLines.read(Entry.self, from: path).map { ($0.fingerprint, $0) }, uniquingKeysWith: Uniquing.last
         )
     }
 

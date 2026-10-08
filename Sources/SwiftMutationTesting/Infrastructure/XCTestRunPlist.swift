@@ -30,7 +30,7 @@ struct XCTestRunPlist: Sendable, Equatable {
                 if var targets = configurations[index]["TestTargets"] as? [[String: Any]] {
                     for targetIndex in targets.indices {
                         var envVars = targets[targetIndex]["EnvironmentVariables"] as? [String: String] ?? [:]
-                        envVars.merge(activation) { _, new in new }
+                        envVars.merge(activation, uniquingKeysWith: Uniquing.last)
                         targets[targetIndex]["EnvironmentVariables"] = envVars
                     }
                     configurations[index]["TestTargets"] = targets
@@ -41,7 +41,7 @@ struct XCTestRunPlist: Sendable, Equatable {
             for key in dict.keys where !key.hasPrefix("__") {
                 if var targetDict = dict[key] as? [String: Any] {
                     var envVars = targetDict["EnvironmentVariables"] as? [String: String] ?? [:]
-                    envVars.merge(activation) { _, new in new }
+                    envVars.merge(activation, uniquingKeysWith: Uniquing.last)
                     targetDict["EnvironmentVariables"] = envVars
                     dict[key] = targetDict
                 }

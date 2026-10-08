@@ -77,7 +77,7 @@ struct SandboxFactory: Sendable {
                 byCanonicalPath.compactMap { path, content in
                     path.hasPrefix(prefix) ? (String(path.dropFirst(prefix.count)), content) : nil
                 },
-                uniquingKeysWith: { first, _ in first }
+                uniquingKeysWith: Uniquing.first
             )
         }
 
