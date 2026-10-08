@@ -40,7 +40,7 @@ struct IncompatibleMutantExecutor: Sendable {
     ) async throws -> [ExecutionResult] {
         var results: [ExecutionResult] = []
 
-        let viable = mutants.filter { $0.mutatedSourceContent != nil }
+        let viable = mutants.compactMap { mutant in mutant.mutatedSourceContent.map { (mutant, $0) } }
 
         for mutant in mutants where mutant.mutatedSourceContent == nil {
             results.append(
@@ -65,7 +65,7 @@ struct IncompatibleMutantExecutor: Sendable {
 
         guard !ready.isEmpty else {
             let failed = workers[0].build
-            for mutant in viable {
+            for (mutant, _) in viable {
                 results.append(
                     await storeAndReport(
                         mutant: mutant, sandbox: nil,
@@ -83,7 +83,7 @@ struct IncompatibleMutantExecutor: Sendable {
     }
 
     private func runRoundRobin(
-        _ mutants: [MutantDescriptor],
+        _ mutants: [(MutantDescriptor, String)],
         over ready: [WarmSandbox],
         configuration: RunnerConfiguration
     ) async throws -> [ExecutionResult] {
@@ -93,9 +93,9 @@ struct IncompatibleMutantExecutor: Sendable {
                 let mine = numbered.filter { $0.offset % ready.count == slot }
                 group.addTask {
                     var done: [(Int, ExecutionResult)] = []
-                    for (offset, mutant) in mine {
+                    for (offset, (mutant, content)) in mine {
                         let result = try await runInSharedSandbox(
-                            mutant: mutant, configuration: configuration, sandbox: worker.sandbox
+                            mutant: mutant, content: content, configuration: configuration, sandbox: worker.sandbox
                         )
                         done.append((offset, result))
                     }
@@ -136,6 +136,7 @@ struct IncompatibleMutantExecutor: Sendable {
 
     private func runInSharedSandbox(
         mutant: MutantDescriptor,
+        content: String,
         configuration: RunnerConfiguration,
         sandbox: Sandbox
     ) async throws -> ExecutionResult {
@@ -144,13 +145,6 @@ struct IncompatibleMutantExecutor: Sendable {
         let sandboxRoot = sandbox.rootURL.resolvingSymlinksInPath().path
 
         let originalCanonical = URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path
-        guard let content = mutant.mutatedSourceContent else {
-            return await storeAndReport(
-                mutant: mutant, sandbox: nil,
-                keepLogsPath: configuration.reporting.keepLogsPath,
-                buildOutput: "The mutation could not be applied to the source file."
-            )
-        }
         guard originalCanonical.hasPrefix(projectRoot + "/") else {
             return await storeAndReport(
                 mutant: mutant, sandbox: nil,
