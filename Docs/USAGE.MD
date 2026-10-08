@@ -297,7 +297,7 @@ operators:
 How the three settings combine, on the command line and in the file:
 
 1. An explicit list — `--operator` or `operators` — runs exactly those operators, whatever their tier. The command line wins over the file.
-2. Otherwise the tier's set runs — `--operator-tier`, else `operator-tier`, else `default` — minus every operator disabled by `--disable-mutator`, `disabled-mutators` or `active: false`, from the command line and the file alike.
+2. Otherwise the tier's set runs — `--operator-tier`, else `operator-tier`, else `default` — minus every operator disabled by `--disable-mutator`, `disabled-mutators` or `active: false`, from the command line and the file alike. Disabling every operator of the tier is a usage error, exit code `1`; choose a larger `--operator-tier` instead.
 
 Identifiers are case-sensitive, and one that names no operator is ignored without a warning: a list in which no name matches finds no mutant, and the run ends with exit code `1`.
 

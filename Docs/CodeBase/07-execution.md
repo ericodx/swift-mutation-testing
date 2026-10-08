@@ -65,7 +65,7 @@ flowchart TD
 
 **Normal path:** builds once, runs `TestExecutionStage` for all schematizable mutants in parallel, then re-runs any mutant that timed out on its own before reporting it.
 
-**Fallback path:** triggered when `BuildStage` throws `compilationFailed` on the Xcode path, or on the SPM path when `SchemaNarrower` finds no mutant to blame, and only when schematizable mutants remain besides the ones narrowing took out. Delegates to `FallbackExecutor`, which rebuilds one schematized file at a time. Mutants in files that still fail to compile are marked `.unviable`.
+**Fallback path:** triggered when `BuildStage` throws `compilationFailed` on the Xcode path, or on the SPM path when `SchemaNarrower` finds no mutant to blame, and only when schematizable mutants remain besides the ones narrowing took out. Delegates to `FallbackExecutor`, which rebuilds one schematized file at a time. Mutants in files that still fail to compile are marked `.unviable`. The fallback gets `input.excluding(_:)` with the ids narrowing took out: those mutants already go to the incompatible path, and before this each of them got a second verdict from the fallback.
 
 **Incompatible path:** always runs after the schematizable path. Delegates to `IncompatibleMutantExecutor`. Mutants `SchemaNarrower` took out of the schema join it, rewritten with `MutationRewriter` from the original file; one whose rewrite leaves the source unchanged is recorded `.unviable` through `ResultRecorder`.
 
@@ -870,6 +870,16 @@ The value produced by `DiscoveryPipeline` and consumed by `MutantExecutor`.
 |---|---|
 | `schematizedFiles` | One entry per source file containing schematizable mutations, each ending with its own support declarations |
 | `mutants` | All mutants, sorted by global index; `isSchematizable` distinguishes the two populations |
+
+### Execution/RunnerInput+Excluding.swift
+
+```swift
+extension RunnerInput {
+    func excluding(_ ids: Set<String>) -> RunnerInput
+}
+```
+
+The same input without the mutants of `ids`, for the fallback after `SchemaNarrower` gives up. A file left with no schematizable mutant is dropped. A file that keeps some gets its schema made again from the original source with `SchemaNarrower.regeneratedSchema` and only those mutants, so the excluded `case` that broke the build is not built again. When that schema cannot be made, the file keeps the schema it had. With no ids, the input comes back as it is.
 
 ---
 

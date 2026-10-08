@@ -65,7 +65,7 @@ RunnerInput
 
 ### Regions the suite deliberately does not cover
 
-Region coverage is **99.84% — six regions of 3698 missed**. The regions left are listed here with the reason, so that the next person measuring does not spend a second afternoon rediscovering them. Everything not on this list is expected to be covered; a new uncovered region is a gap, not a member of this set.
+Region coverage is **99.84% — six regions of 3711 missed**. The regions left are listed here with the reason, so that the next person measuring does not spend a second afternoon rediscovering them. Everything not on this list is expected to be covered; a new uncovered region is a gap, not a member of this set.
 
 **How the figure is measured.** From the repository root:
 
@@ -79,7 +79,7 @@ xcrun llvm-cov report "$TEST_BINARY" -instr-profile "$BIN_PATH/codecov/default.p
 
 The `TOTAL` row of that report is the one source of the figure above, and the rows with a missed region are the files to look in. To see where in a file, `xcrun llvm-cov show "$TEST_BINARY" -instr-profile "$BIN_PATH/codecov/default.profdata" <file> -show-regions`, or the regions with a zero count and kind 0 (code regions) in `xcrun llvm-cov export` over the same files. Two things make other counts differ:
 
-- **The report's line column is not the line coverage.** It counts the lines of every function it instantiates, so a closure or autoclosure that never runs — the fallback of a `??` — shows as a missed function with a missed line, while the lcov export the Sonar analysis imports folds that line into the function around it. Line coverage from the lcov is 8232 of 8233; the line left is the `_exit` below.
+- **The report's line column is not the line coverage.** It counts the lines of every function it instantiates, so a closure or autoclosure that never runs — the fallback of a `??` — shows as a missed function with a missed line, while the lcov export the Sonar analysis imports folds that line into the function around it. Line coverage from the lcov is 8266 of 8267; the line left is the `_exit` below.
 - **Passing a function as an argument is a region.** `uniquingKeysWith: Uniquing.first` or `isAlive: ProcessTree.isAlive` compile to a thunk that only runs when the function is called — for a uniquing rule, only on a duplicate key. That is why `Uniquing` builds its dictionaries with loops rather than taking a function.
 
 Each entry was tried before it was listed. The rule from #95 applies: a region that cannot be made to fail under a negative control is a candidate for deletion, not for a test. Going from 71 missed regions to six (#154), fallbacks no input reaches were deleted or rewritten without the optional — the shard error's missing description, the locator's non-usage errors and its child-path `?? name`, a protocol name in a declaration path, an empty ternary slice, the instrumenter's substring, the integrity reason, the shard balance's `min`, a merge's second search for missing verdicts, the warm Xcode path's content and result-bundle listing, a SARIF rule index looked up with a fallback, and an `.expr` item that is an `if` or `switch`, which the parser never produces — and the rest were covered by tests.
