@@ -329,6 +329,25 @@ struct SwiftMutationTestingPlanTests {
             uniqueKeysWithValues: payload.files.values.flatMap(\.mutants).map { ($0.fingerprint, $0.status) })
     }
 
+    @Test("Given reproduce with no mutant and no launcher, when run, then the empty reference is refused")
+    func aReproductionWithoutAMutantIsRefused() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        try Self.writeProject(in: dir)
+        let planPath = dir.appendingPathComponent("plan.json").path
+        _ = await SwiftMutationTesting.run(args: ["plan", dir.path, "--output", planPath, "--quiet"])
+        let configuration = try ConfigurationResolver().resolve(
+            cliArguments: ParsedArguments(projectPath: dir.path), fileValues: [:]
+        )
+        let command = ReproduceCommand(
+            options: ParsedArguments.PlanOptions(path: planPath), configuration: configuration, launcher: nil
+        )
+
+        await #expect(throws: PlanError.unknownMutant("")) {
+            _ = try await command.execute()
+        }
+    }
+
     static func writeProject(in dir: URL) throws {
         try "func f(_ a: Bool, _ b: Bool) -> Bool { a && b }\nfunc h(_ x: Int) -> Bool { x > 0 ? true : false }\n"
             .write(
