@@ -1,6 +1,8 @@
 import Foundation
 
 struct ApplicationVerifier: Sendable {
+    var read: @Sendable (String) -> String? = { try? String(contentsOfFile: $0, encoding: .utf8) }
+
     func verify(
         schematizedFiles: [SchematizedFile],
         mutants: [MutantDescriptor],
@@ -15,10 +17,8 @@ struct ApplicationVerifier: Sendable {
 
             guard
                 original.hasPrefix(projectRoot + "/"),
-                let content = try? String(
-                    contentsOfFile: sandbox.rootURL.path + original.dropFirst(projectRoot.count), encoding: .utf8
-                ),
-                content != (try? String(contentsOfFile: original, encoding: .utf8))
+                let content = read(sandbox.rootURL.path + original.dropFirst(projectRoot.count)),
+                content != read(original)
             else { throw IntegrityError.schemaNotApplied(path: file.originalPath) }
 
             guard content.contains(SupportDeclarations.perFile(for: file.originalPath)) else {
@@ -28,7 +28,7 @@ struct ApplicationVerifier: Sendable {
             written[original] = content
         }
 
-        var files = OriginalFiles()
+        var files = OriginalFiles(read: read)
         let missing = mutants.filter { !isApplied($0, written: written, files: &files) }.map(Self.label)
 
         guard missing.isEmpty else { throw IntegrityError.mutantsNotApplied(mutants: missing) }
@@ -41,12 +41,13 @@ struct ApplicationVerifier: Sendable {
     }
 
     private struct OriginalFiles {
+        let read: (String) -> String?
         private var contents: [String: String?] = [:]
         private var canonicalPaths: [String: String] = [:]
 
         mutating func content(of path: String) -> String? {
             if let cached = contents[path] { return cached }
-            let content = try? String(contentsOfFile: path, encoding: .utf8)
+            let content = read(path)
             contents[path] = content
             return content
         }
