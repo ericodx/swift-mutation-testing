@@ -83,8 +83,8 @@ final class TypeScopeVisitor: SyntaxVisitor {
         guard statements.count == 1, let item = statements.first?.item else { return false }
 
         switch item {
-        case .expr(let expr):
-            return expr.is(IfExprSyntax.self) || expr.is(SwitchExprSyntax.self) ? isExpression(expr) : true
+        case .expr:
+            return true
         case .stmt(let stmt):
             return stmt.as(ExpressionStmtSyntax.self).map { isExpression($0.expression) } ?? false
         case .decl:
