@@ -12,16 +12,16 @@ extension IncompatibleMutantExecutor {
         }
 
         var results: [Int: ExecutionResult] = [:]
-        var viable: [(Int, MutantDescriptor)] = []
+        var viable: [WarmMutant] = []
         for (index, mutant) in mutants.enumerated() {
-            guard mutant.mutatedSourceContent != nil else {
+            guard let content = mutant.mutatedSourceContent else {
                 results[index] = await storeAndReport(
                     mutant: mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
                     buildOutput: "The mutation could not be applied to the source file."
                 )
                 continue
             }
-            viable.append((index, mutant))
+            viable.append(WarmMutant(index: index, mutant: mutant, content: content))
         }
 
         if !viable.isEmpty {
@@ -43,6 +43,12 @@ extension IncompatibleMutantExecutor {
         }
 
         return mutants.indices.compactMap { results[$0] }
+    }
+
+    struct WarmMutant: Sendable {
+        let index: Int
+        let mutant: MutantDescriptor
+        let content: String
     }
 
     struct XcodeWorker: Sendable {
@@ -97,7 +103,7 @@ extension IncompatibleMutantExecutor {
     }
 
     private func runXcodeWarm(
-        _ mutants: [(Int, MutantDescriptor)],
+        _ mutants: [WarmMutant],
         on workers: [XcodeWorker],
         configuration: RunnerConfiguration
     ) async throws -> [(Int, ExecutionResult)] {
@@ -106,12 +112,12 @@ extension IncompatibleMutantExecutor {
         guard !ready.isEmpty else {
             let failed = workers[0].build
             var results: [(Int, ExecutionResult)] = []
-            for (index, mutant) in mutants {
+            for warm in mutants {
                 results.append(
                     (
-                        index,
+                        warm.index,
                         await storeAndReport(
-                            mutant: mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
+                            mutant: warm.mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
                             buildOutput: failed.output, status: buildStatus(exitCode: failed.exitCode)
                         )
                     )
@@ -126,8 +132,8 @@ extension IncompatibleMutantExecutor {
                 let mine = numbered.filter { $0.offset % ready.count == slot }.map(\.element)
                 group.addTask {
                     var done: [(Int, ExecutionResult)] = []
-                    for (index, mutant) in mine {
-                        done.append((index, try await runWarm(mutant, on: worker, configuration: configuration)))
+                    for warm in mine {
+                        done.append((warm.index, try await runWarm(warm, on: worker, configuration: configuration)))
                     }
                     return done
                 }
@@ -140,8 +146,9 @@ extension IncompatibleMutantExecutor {
     }
 
     private func runWarm(
-        _ mutant: MutantDescriptor, on worker: XcodeWorker, configuration: RunnerConfiguration
+        _ warm: WarmMutant, on worker: XcodeWorker, configuration: RunnerConfiguration
     ) async throws -> ExecutionResult {
+        let mutant = warm.mutant
         let projectRoot = URL(fileURLWithPath: configuration.projectPath).resolvingSymlinksInPath().path
         let originalPath = URL(fileURLWithPath: mutant.filePath).resolvingSymlinksInPath().path
         guard originalPath.hasPrefix(projectRoot + "/") else {
@@ -155,23 +162,24 @@ extension IncompatibleMutantExecutor {
 
         do {
             let result = try await buildAndTestWarm(
-                mutant, at: sandboxPath, on: worker, configuration: configuration
+                warm, at: sandboxPath, on: worker, configuration: configuration
             )
             try SandboxLink.restore(at: sandboxPath, to: originalPath)
-            removeResultBundles(in: worker.sandbox)
+            try? removeResultBundles(in: worker.sandbox)
             return result
         } catch {
             try? SandboxLink.restore(at: sandboxPath, to: originalPath)
-            removeResultBundles(in: worker.sandbox)
+            try? removeResultBundles(in: worker.sandbox)
             throw error
         }
     }
 
     private func buildAndTestWarm(
-        _ mutant: MutantDescriptor, at sandboxPath: String, on worker: XcodeWorker,
+        _ warm: WarmMutant, at sandboxPath: String, on worker: XcodeWorker,
         configuration: RunnerConfiguration
     ) async throws -> ExecutionResult {
-        let content = mutant.mutatedSourceContent ?? ""
+        let mutant = warm.mutant
+        let content = warm.content
 
         if let instrumented = ActivationInstrumenter(importStyle: importStyle).instrument(mutant) {
             let attempt = XcodeAttempt(
@@ -204,10 +212,9 @@ extension IncompatibleMutantExecutor {
         try content.write(toFile: path, atomically: true, encoding: .utf8)
     }
 
-    private func removeResultBundles(in sandbox: Sandbox) {
+    private func removeResultBundles(in sandbox: Sandbox) throws {
         let root = sandbox.rootURL
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
-        for name in names where name.hasSuffix(".xcresult") {
+        for name in try FileManager.default.contentsOfDirectory(atPath: root.path) where name.hasSuffix(".xcresult") {
             try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
         }
     }
