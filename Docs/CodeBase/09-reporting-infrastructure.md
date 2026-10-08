@@ -970,8 +970,6 @@ struct TestFilesHasher: Sendable {
     struct Snapshot: Sendable { let paths: [String]; let contents: [String: String]; let hashes: [String: String] }
 
     func snapshot(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> Snapshot
-    func hashPerFile(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> [String: String]
-    func testFilePaths(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> [String]
 }
 ```
 
@@ -979,9 +977,7 @@ Provides per-file test hashing and test file path enumeration for granular cache
 
 | Method | Description |
 |---|---|
-| `snapshot(projectPath:)` | Lists the test files once and reads each once: `paths` in enumeration order, `contents` by absolute path for the files that read as text, `hashes` as `hashPerFile` returns them. `MutantExecutor` takes one per run and builds the cache invalidation, the `KillerTestFileResolver` index and the targeted suites from it; it used to list the tree twice and read every test file three times |
-| `hashPerFile(projectPath:)` | Returns a dictionary mapping relative test file paths to their SHA256 content hashes. Symlinks pointing outside the project root use absolute paths as keys to avoid collisions |
-| `testFilePaths(projectPath:)` | Returns all test file paths in the project |
+| `snapshot(projectPath:)` | Lists the test files once and reads each once: `paths` in enumeration order, `contents` by absolute path for the files that read as text, `hashes` mapping each readable file's relative path to its SHA256 content hash (a symlink pointing outside the project root keeps its absolute path as key, to avoid collisions). `MutantExecutor` takes one per run and builds the cache invalidation, the `KillerTestFileResolver` index and the targeted suites from it; it used to list the tree twice and read every test file three times |
 
 **Test file collection:** Swift files under a directory whose name ends with `Tests`, or whose filename matches `*Tests.swift`. Only the directories between the project root and the file count — the path is made relative with `ProjectRelativePath` first — so a project checked out under, say, `~/Work/IntegrationTests/App` does not have every file taken for a test file.
 

@@ -14,7 +14,7 @@ A mutation is **schematizable** when it falls inside a function body — anywher
 
 ```mermaid
 flowchart TD
-    MP[MutationPoint] --> TSV[TypeScopeVisitor\ninnermostScope]
+    MP[MutationPoint] --> TSV[FunctionBodyScopes\ninnermostScope]
     TSV -- scope found --> SCHEMA[Schematizable\nembedded in switch]
     TSV -- no scope --> INCOMPAT[Incompatible\nfull rewrite per mutant]
 ```
@@ -63,9 +63,7 @@ FunctionBodyScope
 └── statementsEndOffset   — byte offset after last statement
 ```
 
-`innermostScope(containing:)` returns the tightest scope that contains a given UTF-8 offset, enabling correct handling of nested functions and closures.
-
-`isSchematizable(utf8Offset:)` is the Boolean interface used by `SchematizationStage` to classify each mutation point.
+The scopes are kept, once per file, on `ParsedSource.functionScopes` (`FunctionBodyScopes`). Its `innermostScope(containing:)` returns the tightest scope that contains a given UTF-8 offset, enabling correct handling of nested functions and closures, and its `isSchematizable(utf8Offset:)` is the Boolean interface `MutantIndexingStage` uses to classify each mutation point.
 
 ## Per-file support declarations
 

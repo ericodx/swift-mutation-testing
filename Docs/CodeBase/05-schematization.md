@@ -106,6 +106,12 @@ Byte-range edits on a string's UTF-8 form, the unit SwiftSyntax offsets count in
 
 ```swift
 final class TypeScopeVisitor: SyntaxVisitor {
+    private(set) var scopes: [FunctionBodyScope]
+    var functionScopes: FunctionBodyScopes
+}
+
+struct FunctionBodyScopes: Sendable {
+    let scopes: [FunctionBodyScope]
     func isSchematizable(utf8Offset: Int) -> Bool
     func innermostScope(containing utf8Offset: Int) -> FunctionBodyScope?
 }
@@ -122,7 +128,7 @@ Walks the AST and records every `FunctionBodyScope`. Records scopes for:
 
 `innermostScope(containing:)` returns the tightest scope that contains the offset, enabling correct handling of nested functions and closures.
 
-Both delegate to `FunctionBodyScopes` (`Discovery/Schematization/FunctionBodyScopes.swift`), the `Sendable` value `functionScopes` hands out, so that the scopes of a file can be kept on its `ParsedSource` and asked without the visitor. It keeps the scopes sorted by start (the outer of two that start together first) with each one's enclosing scope: a lookup finds by binary search the last scope starting at or before the offset, and climbs the enclosing scopes from there until one still holds it — the first that does is the innermost, since bodies nest or are disjoint. That is a binary search plus the nesting depth per mutant, where it used to filter every scope of the file.
+Both live on `FunctionBodyScopes` (`Discovery/Schematization/FunctionBodyScopes.swift`), the `Sendable` value the visitor's `functionScopes` hands out, so that the scopes of a file are kept on its `ParsedSource` and asked without the visitor. It keeps the scopes sorted by start (the outer of two that start together first) with each one's enclosing scope: a lookup finds by binary search the last scope starting at or before the offset, and climbs the enclosing scopes from there until one still holds it — the first that does is the innermost, since bodies nest or are disjoint. That is a binary search plus the nesting depth per mutant, where it used to filter every scope of the file.
 
 ---
 
