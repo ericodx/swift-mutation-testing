@@ -100,12 +100,4 @@ final class TypeScopeVisitor: SyntaxVisitor {
     var functionScopes: FunctionBodyScopes {
         FunctionBodyScopes(scopes: scopes)
     }
-
-    func isSchematizable(utf8Offset: Int) -> Bool {
-        functionScopes.isSchematizable(utf8Offset: utf8Offset)
-    }
-
-    func innermostScope(containing utf8Offset: Int) -> FunctionBodyScope? {
-        functionScopes.innermostScope(containing: utf8Offset)
-    }
 }

@@ -30,17 +30,6 @@ struct TestFilesHasher: Sendable {
         return Snapshot(paths: paths, contents: contents, hashes: hashes)
     }
 
-    func hashPerFile(
-        projectPath: String,
-        enumerate: FileEnumerator = Self.defaultEnumerator
-    ) -> [String: String] {
-        snapshot(projectPath: projectPath, enumerate: enumerate).hashes
-    }
-
-    func testFilePaths(projectPath: String, enumerate: FileEnumerator = Self.defaultEnumerator) -> [String] {
-        collectTestFilePaths(under: URL(fileURLWithPath: projectPath), enumerate: enumerate)
-    }
-
     private func collectTestFilePaths(under directory: URL, enumerate: FileEnumerator) -> [String] {
         guard let enumerator = enumerate(directory) else { return [] }
 
