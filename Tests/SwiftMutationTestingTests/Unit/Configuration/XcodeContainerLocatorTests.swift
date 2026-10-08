@@ -173,6 +173,66 @@ struct XcodeContainerLocatorTests {
         )
     }
 
+    @Test("Given every kind of workspace location, when its projects are read, then each resolves against its base")
+    func everyLocationKindResolves() throws {
+        let root = try Self.root(["App.xcworkspace"])
+        defer { FileHelpers.cleanup(root) }
+        try Self.contents(
+            """
+            <Workspace version = "1.0">
+               <Group name = "Unnamed">
+                  <FileRef location = "group:App/App.xcodeproj"></FileRef>
+               </Group>
+               <Group location = "group:">
+                  <FileRef location = "group:Same/Same.xcodeproj"></FileRef>
+               </Group>
+               <Group location = "container:">
+                  <FileRef location = "group:Root/Root.xcodeproj"></FileRef>
+               </Group>
+               <FileRef location = "container:Libs/Core/Core.xcodeproj"></FileRef>
+               <FileRef location = "absolute:/elsewhere/Out.xcodeproj"></FileRef>
+               <FileRef location = "nocolon.xcodeproj"></FileRef>
+            </Workspace>
+            """, of: "App.xcworkspace", in: root
+        )
+
+        #expect(
+            XcodeContainerLocator.projects(referencedBy: "App.xcworkspace", in: root) == [
+                "App/App.xcodeproj", "Same/Same.xcodeproj", "Root/Root.xcodeproj", "Libs/Core/Core.xcodeproj",
+                "/elsewhere/Out.xcodeproj",
+            ]
+        )
+    }
+
+    @Test("Given a workspace with no contents file, when its projects are read, then there are none")
+    func aWorkspaceWithoutContentsHasNoProjects() throws {
+        let root = try Self.root(["App.xcworkspace"])
+        defer { FileHelpers.cleanup(root) }
+
+        #expect(XcodeContainerLocator.projects(referencedBy: "App.xcworkspace", in: root).isEmpty)
+    }
+
+    @Test("Given workspaces referencing three projects outside the root, when located, then all three are named")
+    func severalOutsideReferencesAreListed() throws {
+        let root = try Self.root(["App.xcworkspace"])
+        defer { FileHelpers.cleanup(root) }
+        try Self.contents(
+            """
+            <Workspace version = "1.0">
+               <FileRef location = "absolute:/a/A.xcodeproj"></FileRef>
+               <FileRef location = "absolute:/b/B.xcodeproj"></FileRef>
+               <FileRef location = "absolute:/c/C.xcodeproj"></FileRef>
+            </Workspace>
+            """, of: "App.xcworkspace", in: root
+        )
+
+        #expect {
+            try XcodeContainerLocator.locate(in: root, workspace: nil, project: nil)
+        } throws: { error in
+            (error as? UsageError)?.message.contains("/a/A.xcodeproj, /b/B.xcodeproj and /c/C.xcodeproj") == true
+        }
+    }
+
     // MARK: - Fixture
 
     static func root(_ directories: [String]) throws -> URL {
