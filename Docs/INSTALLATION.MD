@@ -3,8 +3,8 @@
 ## Requirements
 
 - macOS 15 or later
-- Xcode 16 or later (for building from source)
-- Swift 6.2 or later (for building from source)
+- Xcode, whose toolchain builds and tests the projects the tool runs on (`xcodebuild`, `xcrun`, `swift`)
+- Swift 6.2 or later, which comes with Xcode 26 (for building from source; `Package.swift` declares `swift-tools-version: 6.2`)
 
 ---
 
@@ -21,7 +21,7 @@ Verify the installation:
 
 ```bash
 swift-mutation-testing --version
-# swift-mutation-testing 0.1.0
+# swift-mutation-testing 0.1.0 [arm64-macos15]
 ```
 
 ### Updating
@@ -140,5 +140,5 @@ claude plugin marketplace remove swift-mutation-testing  # optional
 ```bash
 swift-mutation-testing --version   # print version
 swift-mutation-testing --help      # print all available options and flags
-swift-mutation-testing /path/to/project init  # generate a starter .swift-mutation-testing.yml
+swift-mutation-testing init /path/to/project  # generate a starter .swift-mutation-testing.yml
 ```

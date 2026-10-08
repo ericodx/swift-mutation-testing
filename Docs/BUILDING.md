@@ -7,8 +7,8 @@ are covered in [Installation](INSTALLATION.MD).
 ## Prerequisites
 
 - macOS 15 or later
-- Xcode 16 or later
-- Swift 6.2 or later
+- Xcode 26 or later
+- Swift 6.2 or later (`Package.swift` declares `swift-tools-version: 6.2`)
 - Git
 - pre-commit, for local repository hooks
 
@@ -37,8 +37,10 @@ capture stdout or drive real processes, and two of them running at once read
 each other's output.
 
 `make coverage` writes a coverage report for SonarCloud, and `make sonar`
-publishes it. Region coverage is the number that matters here: the regions the
-suite deliberately leaves uncovered are listed, with a reason each, in
+publishes it. `make regions`, run after `make coverage`, prints the region
+coverage of every file under `Sources/` from the profile it left. Region
+coverage is the number that matters here: the regions the suite deliberately
+leaves uncovered are listed, with a reason each, in
 [Docs/CodeBase/README.md](CodeBase/README.md), and anything uncovered that is
 not on that list is a gap.
 
@@ -62,13 +64,15 @@ inside the repository.
 
 ## Fixture Projects
 
-The repository includes two small projects for local validation:
+The repository includes small projects for local validation:
 
 - `Fixtures/CalcLibrary` is a Swift Package Manager fixture.
 - `Fixtures/CalcApp` is an Xcode project fixture.
 - `Fixtures/CalcModules` is a Swift Package Manager fixture with two library
   targets and a test target for each. The multi-module integration test runs
   it and checks that one build tests every mutant of both modules.
+- `Fixtures/CalcWorkspace` is an Xcode workspace fixture, for the workspace
+  integration tests.
 
 Run the SPM fixture without a scheme or destination:
 

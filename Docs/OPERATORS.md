@@ -58,7 +58,7 @@ Run on 2026-10-04 and 05 (this repository last), with `swift-mutation-testing 0.
 | `RemoveSideEffects` | experimental | 5 of 5 | 69.3% | 1.9% | 27.8% (79) | 19619 ms |
 | `SwapTernary` | conservative | 4 of 5 | 94.9% | 0.0% | 7.1% (14) | 6006 ms |
 
-The tier column is what the criteria give for the numbers in the row; the tiers in force are in [Current tiers](#current-tiers) below, with the decisions that led there.
+The tier column is what the criteria give for the numbers in the row; the tiers in force are in [Current tiers](#current-tiers) above, with the decisions that led there.
 
 ### Projects
 
@@ -70,7 +70,7 @@ The tier column is what the criteria give for the numbers in the row; the tiers 
 | swift-cpd | `7c4e7bb5e3` | 987 | 92.2% | 880 / 76 / 21 / 0 / 10 | 7 | 15 min |
 | swift-mutation-testing | `533a4be6e4` | 1275 | 80.9% | 1001 / 239 / 12 / 0 / 23 | 3 | 146 min |
 
-`swift-cpd` runs at the `main` commit that fixed its test helper (ericodx/swift-cpd#39: the executable was looked up through `Bundle.allBundles`, which finds no `.xctest` under `swiftpm-testing-helper`, so the suite failed before any mutation); no release carries the fix yet. Its seven integrity warnings are crashes and failures of its own suite in runs where the mutant never ran — a suite that is not fully deterministic under fifteen parallel runs; they are listed in its report and count as kills in its score. This repository's run is the one that matters most to the tool itself: {SELF_SENTENCE} There is no Xcode app in this campaign.
+`swift-cpd` runs at the `main` commit that fixed its test helper (ericodx/swift-cpd#39: the executable was looked up through `Bundle.allBundles`, which finds no `.xctest` under `swiftpm-testing-helper`, so the suite failed before any mutation); no release carries the fix yet. Its seven integrity warnings are crashes and failures of its own suite in runs where the mutant never ran — a suite that is not fully deterministic under fifteen parallel runs; they are listed in its report and count as kills in its score. This repository's run is the one that matters most to the tool itself: 1275 mutants at 80.9% over every operator, with 3 integrity warnings, measured after the fixes described under [Decisions](#decisions); over the `default` tier's three operators the same report scores 93.4%. There is no Xcode app in this campaign.
 
 ### Review of survivors
 

@@ -59,7 +59,7 @@ Each entry in `files` corresponds to one source file that contains at least one 
 | `source` | `string` | full UTF-8 file content | ✓ |
 | `mutants` | `MutantResult[]` | see below | partial |
 
-File paths in the `files` dictionary are relative to `projectRoot`, with a leading `/`: both paths are resolved through symlinks before the root is stripped (`ProjectRelativePath`), so a project under `/tmp` or `/var`, which macOS reaches through `/private`, still gets `/Sources/…` keys.
+File paths in the `files` dictionary are relative to `projectRoot`, with a leading `/`: both paths are resolved through symlinks before the root is stripped (`ProjectRelativePath`), so a project under `/tmp` or `/var`, which macOS reaches through `/private`, still gets `/Sources/…` keys. A file outside the project keeps its absolute path as its key.
 
 ---
 
@@ -76,7 +76,7 @@ Each object in the `mutants` array describes one mutation point and its outcome.
 | `location.start.line` | `integer >= 1` | 1-based line number | ✓ |
 | `location.start.column` | `integer >= 1` | 1-based column number | ✓ |
 | `location.end.line` | `integer >= 1` | same as start line | ✓ |
-| `location.end.column` | `integer >= 1` | `start.column + originalText.count` | ✓ |
+| `location.end.column` | `integer >= 1` | `start.column` + the UTF-8 length of `originalText` | ✓ |
 | `status` | enum (see below) | one of the schema's values | ✓ — see [status mapping](#status-mapping) |
 | `statusReason` | `string?` | `"crash"` for a mutant killed by a crash; `"killed without activation"`, `"crash without activation"` or `"timed out without activation"` when the mutated code never ran; omitted otherwise | ✓ |
 | `killedBy` | `string[]?` | the name of the test that killed the mutant, omitted when no test is named | ✓ |
@@ -85,7 +85,7 @@ Each object in the `mutants` array describes one mutation point and its outcome.
 | `fingerprint` | — | the mutant's stable identity, see [Baselines](USAGE.MD#baselines) | ✓ — an extra property, which the schema allows |
 | `activated` | — | whether the mutated code ran during the mutant's tests; omitted when that was not measured | ✓ — an extra property, which the schema allows |
 
-Both lines and columns are 1-based, as the schema defines them and as SwiftSyntax's `SourceLocation` reports them.
+Both lines and columns are 1-based, as the schema defines them and as SwiftSyntax's `SourceLocation` reports them. Columns count UTF-8 bytes, as `SourceLocation` does; on a line with only ASCII before the mutation that is the character column.
 
 `killedBy` holds a single test: a mutant's run stops at the first failing test, so there is never more than one to name.
 
