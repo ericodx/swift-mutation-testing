@@ -4,14 +4,17 @@ import Foundation
 
 actor SPMErrorAtLineMock: ProcessLaunching {
     private let locations: [(fileName: String, line: Int)]
+    private let failingBuilds: Int
     private var buildCallCount = 0
 
     init(fileName: String = "Foo.swift", line: Int) {
         locations = [(fileName: fileName, line: line)]
+        failingBuilds = 1
     }
 
-    init(locations: [(fileName: String, line: Int)]) {
+    init(locations: [(fileName: String, line: Int)], failingBuilds: Int = 1) {
         self.locations = locations
+        self.failingBuilds = failingBuilds
     }
 
     func launch(
@@ -29,7 +32,7 @@ actor SPMErrorAtLineMock: ProcessLaunching {
 
         buildCallCount += 1
 
-        guard buildCallCount == 1 else { return (0, "") }
+        guard buildCallCount <= failingBuilds else { return (0, "") }
 
         let root = request.workingDirectoryURL.path
         let canonicalRoot = root.withCString { pointer -> String in

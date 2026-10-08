@@ -231,6 +231,56 @@ struct MutantExecutorNarrowingEdgeTests {
         #expect(byMutant["swift-mutation-testing_0"] == .survived)
     }
 
+    @Test("Given narrowing gives up after excluding a mutant, when the fallback runs, then each mutant has one verdict")
+    func aMutantTheNarrowerExcludedIsNotTestedAgainByTheFallback() async throws {
+        let directory = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(directory) }
+
+        let kept = directory.appendingPathComponent("Foo.swift")
+        let broken = directory.appendingPathComponent("Bar.swift")
+        try "func f() { let x = true }".write(to: kept, atomically: true, encoding: .utf8)
+        try "func g() { let y = true }".write(to: broken, atomically: true, encoding: .utf8)
+
+        let mutants = [
+            makeMutantDescriptor(
+                id: "swift-mutation-testing_0", filePath: kept.path, utf8Offset: 19,
+                originalText: "true", mutatedText: "false", replacementKind: .booleanLiteral,
+                isSchematizable: true, sourceContentHash: "hash"
+            ),
+            makeMutantDescriptor(
+                id: "swift-mutation-testing_1", filePath: broken.path, utf8Offset: 19,
+                originalText: "true", mutatedText: "false", replacementKind: .booleanLiteral,
+                isSchematizable: true, sourceContentHash: "hash"
+            ),
+        ]
+        let keptSchema = try #require(SchemaNarrower.regeneratedSchema(originalPath: kept.path, keeping: [mutants[0]]))
+        let brokenSchema = try #require(
+            SchemaNarrower.regeneratedSchema(originalPath: broken.path, keeping: [mutants[1]])
+        )
+        let caseLine = try #require(
+            brokenSchema.components(separatedBy: "\n").firstIndex { $0.contains("case \"swift-mutation-testing_1\":") }
+        )
+
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: directory.path, projectType: .spm),
+            launcher: SPMErrorAtLineMock(locations: [(fileName: "Bar.swift", line: caseLine + 2)], failingBuilds: 2)
+        )
+
+        let results = try await executor.execute(
+            makeRunnerInput(
+                projectPath: directory.path,
+                projectType: .spm,
+                schematizedFiles: [
+                    SchematizedFile(originalPath: kept.path, schematizedContent: keptSchema),
+                    SchematizedFile(originalPath: broken.path, schematizedContent: brokenSchema),
+                ],
+                mutants: mutants
+            )
+        )
+
+        #expect(results.map(\.descriptor.id).sorted() == ["swift-mutation-testing_0", "swift-mutation-testing_1"])
+    }
+
     private struct Fixture {
         let directory: URL
         let sourceFile: URL
