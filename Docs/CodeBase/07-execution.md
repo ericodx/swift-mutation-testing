@@ -548,7 +548,7 @@ A reproduction keeps the earlier path (`runXcodeCold`): a sandbox of its own per
 | iOS Simulator | cold sandboxes, 2 at a time | 105.0 s (−41%) | 128.1 s |
 | iOS Simulator | warm sandboxes, 2 workers | 76.8 s (−57%) | 100.5 s (−56%) |
 
-All three versions had `-collect-test-diagnostics never` for the comparison. The fixture's cold build is short; on a project whose build takes minutes the cold build each mutant used to pay dominates even more, while the incremental rebuild grows only with the mutated file and what depends on it.
+All three versions had `-collect-test-diagnostics never` for the comparison. `Scripts/xcode-incompatible-benchmark/benchmark.swift` makes the fixture (`fixture`), times a version (`run`) and prints the table (`summarize`); its header gives the worktree recipe for comparing versions and the patch an older one needs for the diagnostics flag. The fixture's cold build is short; on a project whose build takes minutes the cold build each mutant used to pay dominates even more, while the incremental rebuild grows only with the mutated file and what depends on it.
 
 The build and the `test-without-building` run come from `ToolRequests` and share its derived data directory, `.xmr-derived-data` (this path used `.derived-data` before). Every `test-without-building`, here and in `TestExecutionStage`, passes `-collect-test-diagnostics never` (`ToolRequests.noTestDiagnostics`): by default `xcodebuild` collects a sysdiagnose-like report whenever a test fails, which the tool never reads. On the iOS Simulator that made each failing run take twice as long (about 20 s against 9 s on the benchmark fixture) and, with several runs at once, now and then never finish, so that killed mutants came back as timeouts after the full limit.
 
