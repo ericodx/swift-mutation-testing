@@ -41,6 +41,10 @@ struct ApplicationVerifier: Sendable {
     }
 
     private struct OriginalFiles {
+        init(read: @escaping (String) -> String?) {
+            self.read = read
+        }
+
         let read: (String) -> String?
         private var contents: [String: String?] = [:]
         private var canonicalPaths: [String: String] = [:]
