@@ -16,9 +16,7 @@ struct PlanJournal: Sendable {
     init(path: String, mutants: [MutantDescriptor], warning: OnceWarning = OnceWarning()) {
         self.path = path
         self.warning = warning
-        fingerprintByKey = Dictionary(
-            mutants.map { (MutantCacheKey.make(for: $0), $0.fingerprint) }, uniquingKeysWith: { first, _ in first }
-        )
+        fingerprintByKey = Uniquing.keepingFirst(mutants.map { (MutantCacheKey.make(for: $0), $0.fingerprint) })
     }
 
     static func path(projectPath: String, planSha256: String, shard: Shard?) -> String {
@@ -45,9 +43,7 @@ struct PlanJournal: Sendable {
     }
 
     static func entries(at path: String) -> [String: Entry] {
-        Dictionary(
-            JSONLines.read(Entry.self, from: path).map { ($0.fingerprint, $0) }, uniquingKeysWith: { _, last in last }
-        )
+        Uniquing.keepingLast(JSONLines.read(Entry.self, from: path).map { ($0.fingerprint, $0) })
     }
 
     static func remove(at path: String) {

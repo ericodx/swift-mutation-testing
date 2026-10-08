@@ -8,7 +8,7 @@ enum CloneName {
         "\(prefix)\(pid)-\(session)-\(index)"
     }
 
-    static func isOrphaned(_ name: String, isAlive: (pid_t) -> Bool = ProcessTree.isAlive) -> Bool {
+    static func isOrphaned(_ name: String, isAlive: (pid_t) -> Bool) -> Bool {
         guard name.hasPrefix(prefix) else { return false }
 
         let fields = name.dropFirst(prefix.count).split(separator: "-", omittingEmptySubsequences: false)

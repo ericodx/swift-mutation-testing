@@ -171,6 +171,7 @@ struct TypeScopeVisitorTests {
             ),
             ("func f(_ n: Int) -> Int { switch n { case 0: 1\ndefault: let x = 2; return x } }", .statements),
             ("func f(_ c: Bool) -> Int { if c { let x = 1 } else { 2 } }", .statements),
+            ("func f(_ n: Int) -> Int { switch n {\n#if DEBUG\ncase 0: 1\n#endif\ndefault: 2\n} }", .statements),
         ]
     )
     func bodyShapeIsRecorded(code: String, expected: FunctionBodyShape) {

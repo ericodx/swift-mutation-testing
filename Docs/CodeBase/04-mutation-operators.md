@@ -63,9 +63,9 @@ class MutationSyntaxVisitor: SyntaxVisitor {
 }
 ```
 
-Every operator's visitor inherits one rule: the condition of an `#if`, `#elseif` or `#else` clause is never visited. It is a compile-time expression — `#if DEBUG && !os(Windows)`, `#elseif compiler(<6.1)` — whose `&&`, `||`, `<` and literals are not code that runs, and a mutation there changes what compiles instead of what executes. The clause's code is walked as usual, whichever branch the build will take; the points that fall in a branch the host build leaves out are dropped afterwards, by the filter in [Inactive `#if` branches](#inactive-if-branches).
+Every operator's visitor inherits one rule: the condition of an `#if`, `#elseif` or `#else` clause is never visited — `visit(_: IfConfigClauseSyntax)` walks the clause's elements itself and skips its children. It is a compile-time expression — `#if DEBUG && !os(Windows)`, `#elseif compiler(<6.1)` — whose `&&`, `||`, `<` and literals are not code that runs, and a mutation there changes what compiles instead of what executes. The clause's code is walked as usual, whichever branch the build will take; the points that fall in a branch the host build leaves out are dropped afterwards, by the filter in [Inactive `#if` branches](#inactive-if-branches).
 
-Base class for all operator visitors. Subclasses override `visit(_:)` methods to detect applicable nodes and append `MutationPoint` values to `mutations`. The initializer is `required` so that `VisitorOperator` can create any subclass from its type. `locationConverter` is the source's own (`ParsedSource.locationConverter`), not one built per visitor.
+Base class for all operator visitors, walking in `.sourceAccurate` mode. Subclasses override `visit(_:)` methods to detect applicable nodes and append `MutationPoint` values to `mutations`. The initializer is `required` so that `VisitorOperator` can create any subclass from its type. `locationConverter` is the source's own (`ParsedSource.locationConverter`), not one built per visitor.
 
 | Field | Description |
 |---|---|
@@ -105,9 +105,16 @@ Classifies the structural shape of the replacement, independent of the specific 
 
 ```swift
 typealias RelationalOperatorReplacement = VisitorOperator<RelationalOperatorVisitor>
+
+final class RelationalOperatorVisitor: MutationSyntaxVisitor, OperatorVisitor {
+    static let operatorIdentifier: String
+    static let summary: String
+    static let explanation: String
+    override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind
+}
 ```
 
-Replaces comparison operators with their complements. Each token may produce multiple `MutationPoint` values (one per replacement).
+Replaces each comparison operator with its neighbours — the bound moved by one (`>` → `>=`) and the direction reversed (`>` → `<`), or equality negated. Each token may produce multiple `MutationPoint` values (one per replacement).
 
 **Replacement table:**
 
@@ -120,7 +127,7 @@ Replaces comparison operators with their complements. Each token may produce mul
 | `==` | `!=` |
 | `!=` | `==` |
 
-Visitor: `RelationalOperatorVisitor` — visits `BinaryOperatorExprSyntax`.
+Visitor: `RelationalOperatorVisitor` — visits every token whose kind is `.binaryOperator` with one of these spellings, reported at the token. Summary `Relational operator replacement`; `ReplacementKind.binaryOperator`; description `> → >=`.
 
 ---
 
@@ -128,11 +135,18 @@ Visitor: `RelationalOperatorVisitor` — visits `BinaryOperatorExprSyntax`.
 
 ```swift
 typealias BooleanLiteralReplacement = VisitorOperator<BooleanLiteralVisitor>
+
+final class BooleanLiteralVisitor: MutationSyntaxVisitor, OperatorVisitor {
+    static let operatorIdentifier: String
+    static let summary: String
+    static let explanation: String
+    override func visit(_ node: BooleanLiteralExprSyntax) -> SyntaxVisitorContinueKind
+}
 ```
 
 Flips `true` ↔ `false`.
 
-Visitor: `BooleanLiteralVisitor` — visits `BooleanLiteralExprSyntax`.
+Visitor: `BooleanLiteralVisitor` — visits `BooleanLiteralExprSyntax`, reported at its literal token. Summary `Boolean literal replacement`; `ReplacementKind.booleanLiteral`; description `true → false`.
 
 ---
 
@@ -140,11 +154,18 @@ Visitor: `BooleanLiteralVisitor` — visits `BooleanLiteralExprSyntax`.
 
 ```swift
 typealias LogicalOperatorReplacement = VisitorOperator<LogicalOperatorVisitor>
+
+final class LogicalOperatorVisitor: MutationSyntaxVisitor, OperatorVisitor {
+    static let operatorIdentifier: String
+    static let summary: String
+    static let explanation: String
+    override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind
+}
 ```
 
 Swaps `&&` ↔ `||`.
 
-Visitor: `LogicalOperatorVisitor` — visits `BinaryOperatorExprSyntax` where the operator token is `&&` or `||`.
+Visitor: `LogicalOperatorVisitor` — visits every `.binaryOperator` token spelled `&&` or `||`. Summary `Logical operator replacement`; `ReplacementKind.binaryOperator`; description `&& → ||`.
 
 ---
 
@@ -152,6 +173,14 @@ Visitor: `LogicalOperatorVisitor` — visits `BinaryOperatorExprSyntax` where th
 
 ```swift
 typealias ArithmeticOperatorReplacement = VisitorOperator<ArithmeticOperatorVisitor>
+
+final class ArithmeticOperatorVisitor: MutationSyntaxVisitor, OperatorVisitor {
+    static let operatorIdentifier: String
+    static let summary: String
+    static let explanation: String
+    static let isLoopRisky: Bool
+    override func visit(_ token: TokenSyntax) -> SyntaxVisitorContinueKind
+}
 ```
 
 Swaps arithmetic operators: `+` ↔ `-`, `*` ↔ `/`, `%` → `*`.
@@ -160,7 +189,7 @@ Skips `+` and `-` when either operand is a string literal, which would otherwise
 
 The `*` of an availability check, `#available(macOS 10.15, *)` or `@available(*, deprecated)`, is tokenized as a binary operator too; its parent is an `AvailabilityArgumentSyntax`, and the visitor leaves it alone.
 
-Visitor: `ArithmeticOperatorVisitor` — visits `BinaryOperatorExprSyntax`.
+Visitor: `ArithmeticOperatorVisitor` — visits every `.binaryOperator` token spelled `+`, `-`, `*`, `/` or `%`. Summary `Arithmetic operator replacement`; `ReplacementKind.binaryOperator`; description `+ → -`; loop-risky.
 
 ---
 
@@ -168,11 +197,18 @@ Visitor: `ArithmeticOperatorVisitor` — visits `BinaryOperatorExprSyntax`.
 
 ```swift
 typealias NegateConditional = VisitorOperator<NegateConditionalVisitor>
+
+final class NegateConditionalVisitor: MutationSyntaxVisitor, OperatorVisitor {
+    static let operatorIdentifier: String
+    static let summary: String
+    static let explanation: String
+    override func visit(_ node: ConditionElementSyntax) -> SyntaxVisitorContinueKind
+}
 ```
 
 Wraps a condition expression in `!()`.
 
-Visitor: `NegateConditionalVisitor` — visits `ConditionElementSyntax`.
+Visitor: `NegateConditionalVisitor` — visits `ConditionElementSyntax` whose condition is an expression, so the conditions of `if`, `guard` and `while`; an optional binding (`if let`), a `case` pattern and an availability check are left alone. The point is at the expression's first token and its text is the trimmed expression. Summary `Negate conditional`; `ReplacementKind.wrapWithNegation`; description `x > 0 → !(x > 0)`.
 
 ---
 
@@ -180,6 +216,13 @@ Visitor: `NegateConditionalVisitor` — visits `ConditionElementSyntax`.
 
 ```swift
 typealias SwapTernary = VisitorOperator<SwapTernaryVisitor>
+
+final class SwapTernaryVisitor: MutationSyntaxVisitor, OperatorVisitor {
+    static let operatorIdentifier: String
+    static let summary: String
+    static let explanation: String
+    override func visit(_ node: UnresolvedTernaryExprSyntax) -> SyntaxVisitorContinueKind
+}
 ```
 
 Swaps the true and false branches of a ternary expression.
@@ -190,7 +233,7 @@ A ternary whose branches are identical is skipped at discovery: swapping them pr
 
 The condition, the branches and the original text are joined from the expression list's elements; the first element's leading trivia is dropped, so a comment above the statement is not part of the mutation and the text starts where its offset says.
 
-Visitor: `SwapTernaryVisitor` — visits `UnresolvedTernaryExprSyntax`.
+Visitor: `SwapTernaryVisitor` — visits `UnresolvedTernaryExprSyntax` inside an `ExprListSyntax` (SwiftSyntax leaves operators unfolded). Summary `Swap ternary`; `ReplacementKind.swapTernary`; description `swap ternary branches`.
 
 ---
 
@@ -198,6 +241,14 @@ Visitor: `SwapTernaryVisitor` — visits `UnresolvedTernaryExprSyntax`.
 
 ```swift
 typealias RemoveSideEffects = VisitorOperator<RemoveSideEffectsVisitor>
+
+final class RemoveSideEffectsVisitor: MutationSyntaxVisitor, OperatorVisitor {
+    static let operatorIdentifier: String
+    static let summary: String
+    static let explanation: String
+    static let isLoopRisky: Bool
+    override func visit(_ node: CodeBlockItemSyntax) -> SyntaxVisitorContinueKind
+}
 ```
 
 Removes standalone function call statements. Three things are never removed, each because removing them produces a mutant that cannot compile rather than one the tests could catch:
@@ -208,7 +259,7 @@ Removes standalone function call statements. Three things are never removed, eac
 
 **Inside a `while` or `repeat`.** Handled by the infinite-loop filter below, not by the operator itself.
 
-Visitor: `RemoveSideEffectsVisitor` — visits `CodeBlockItemSyntax` whose expression is a function call. The reported line, column and offset come from the node's position after leading trivia, so a call preceded by a comment is reported at the call.
+Visitor: `RemoveSideEffectsVisitor` — visits `CodeBlockItemSyntax` whose expression is a function call; the deny-list is matched against the called expression's text, which is how `super.init` and `self.init` are recognised. The reported line, column and offset come from the node's position after leading trivia, so a call preceded by a comment is reported at the call. Summary `Remove side effects`; `ReplacementKind.removeStatement`, mutated text empty; description `remove <callee>()`; loop-risky.
 
 ---
 
@@ -218,11 +269,11 @@ Visitor: `RemoveSideEffectsVisitor` — visits `CodeBlockItemSyntax` whose expre
 
 ```swift
 struct SuppressionAnnotationExtractor: Sendable {
-    func extractSuppressedRanges(from syntax: SourceFileSyntax) -> [Range<AbsolutePosition>]
+    func extractSuppressedRanges(from syntax: SourceFileSyntax, converter: SourceLocationConverter? = nil) -> [Range<AbsolutePosition>]
 }
 ```
 
-Delegates to `SuppressionVisitor` and returns the collected suppressed byte ranges.
+Delegates to `SuppressionVisitor` and returns the collected suppressed byte ranges. The visitor needs a `SourceLocationConverter` to find lines; without one given, the extractor builds one over the syntax.
 
 ---
 
@@ -231,10 +282,11 @@ Delegates to `SuppressionVisitor` and returns the collected suppressed byte rang
 ```swift
 struct SuppressionFilter: MutationExclusion {
     func ranges(in syntax: SourceFileSyntax) -> [Range<AbsolutePosition>]
+    func ranges(in source: ParsedSource) -> [Range<AbsolutePosition>]
 }
 ```
 
-A `MutationExclusion` whose ranges are the suppressed ones `SuppressionAnnotationExtractor` finds. Its `ranges(in:)` for a `ParsedSource` hands the extractor the file's converter; given only the syntax, the extractor builds one. `MutationExclusion` declares both forms, the `ParsedSource` one defaulting to the syntax one. It keeps the default `applies(to:)`, so the shared `filter` removes any `MutationPoint` whose `utf8Offset` (as `AbsolutePosition`) falls within a suppressed range.
+A `MutationExclusion` whose ranges are the suppressed ones `SuppressionAnnotationExtractor` finds. Its `ranges(in:)` for a `ParsedSource` hands the extractor the file's `locationConverter`; given only the syntax, the extractor builds one. `MutationExclusion` declares both forms, the `ParsedSource` one defaulting to the syntax one. It keeps the default `applies(to:)`, so the shared `filter` removes any `MutationPoint` whose `utf8Offset` (as `AbsolutePosition`) falls within a suppressed range.
 
 ---
 
@@ -244,6 +296,7 @@ A `MutationExclusion` whose ranges are the suppressed ones `SuppressionAnnotatio
 final class SuppressionVisitor: SyntaxVisitor {
     static let disableDirective: String            // "swift-mutation-testing:disable"
     static let disableNextLineDirective: String    // "swift-mutation-testing:disable-next-line"
+    static let attributeName: String
     init(converter: SourceLocationConverter)
     private(set) var suppressedRanges: [Range<AbsolutePosition>]
     static func directive(in piece: TriviaPiece) -> String?
@@ -252,8 +305,8 @@ final class SuppressionVisitor: SyntaxVisitor {
 
 Records two kinds of range:
 
-- **A declaration** whose leading trivia holds a `//` comment starting with `swift-mutation-testing:disable`, or which carries the `@SwiftMutationTestingDisabled` attribute (honoured for projects that declare it; Swift rejects it otherwise): the declaration from its first token to its last.
-- **A line**: for every `//` comment starting with `swift-mutation-testing:disable-next-line`, in any token's leading or trailing trivia, the whole line after the comment's, located with the `SourceLocationConverter`.
+- **A declaration** whose leading trivia holds a `//` comment starting with `swift-mutation-testing:disable`, or which carries the `@SwiftMutationTestingDisabled` attribute (`attributeName`; honoured for projects that declare it, Swift rejects it otherwise): the declaration from its first token to its last, trivia excluded. Its children are still visited, so a nested declaration or line adds its own range.
+- **A line**: for every `//` comment starting with `swift-mutation-testing:disable-next-line`, in any token's leading or trailing trivia, the whole line after the comment's — from its first column to the start of the next — located with the `SourceLocationConverter`.
 
 `directive(in:)` takes the comment's first word after `//`, so text after it is a free reason and a lookalike (`disabled`, a block comment, the word mid-sentence) does nothing.
 
@@ -273,11 +326,12 @@ Mutation points of those two operators — the ones whose `isLoopRisky` is `true
 
 ```swift
 final class InfiniteLoopBodyVisitor: SyntaxVisitor {
+    init()
     private(set) var loopBodyRanges: [Range<AbsolutePosition>]
 }
 ```
 
-Collects the body range of every `WhileStmtSyntax` and `RepeatStmtSyntax`, nested ones included.
+Collects the body range of every `WhileStmtSyntax` and `RepeatStmtSyntax`, nested ones included — the body's code block with its trivia, braces included. The `while` condition is outside it, so a mutation of the condition itself is kept.
 
 ### Discovery/InfiniteLoopPrevention/InfiniteLoopBodyExtractor.swift
 
@@ -313,6 +367,8 @@ A mutant inside an `#if os(Windows)` or `#if canImport(Glibc)` branch compiles t
 
 ```swift
 struct HostBuildConfiguration: BuildConfiguration {
+    enum ImportError: Error { case undecidable(module: String) }
+
     static let modulesPresent: Set<String>
     static let modulesAbsent: Set<String>
     static var hostArchitecture: String
@@ -321,18 +377,20 @@ struct HostBuildConfiguration: BuildConfiguration {
 }
 ```
 
-The build the tool runs: macOS, the host architecture, `DEBUG` and `SWIFT_PACKAGE` set, the Objective-C runtime, Mach-O, 64-bit pointers, language version 6 and the compiler the tool was built with. Everything but `canImport` is delegated to SwiftIfConfig's `StaticBuildConfiguration`. `canImport` is answered from two curated lists — Apple's and the toolchain's modules present, the other platforms' C libraries and UI frameworks absent — and throws for any other module, which is the signal the extractor below reads as *undecidable*. The type is not `Sendable`, so the extractor builds one per file.
+The build the tool runs: macOS, the host architecture, `DEBUG` and `SWIFT_PACKAGE` set, the Objective-C runtime, Mach-O, 64-bit pointers, language version 6 and the compiler the tool was built with. Everything but `canImport` is delegated to SwiftIfConfig's `StaticBuildConfiguration`. `canImport` is answered from two curated lists — Apple's and the toolchain's modules present, the other platforms' C libraries and UI frameworks absent — and throws `ImportError.undecidable` for any other module, which is the signal the extractor below reads as *undecidable*. `hostCompilerVersion` is the newest of 6.1 to 6.4 the building compiler satisfies, `hostArchitecture` `arm64` or `x86_64`. The type is not `Sendable`, so the extractor builds one per file.
 
 ### Discovery/IfConfig/InactiveRegionExtractor.swift
 
 ```swift
 struct InactiveRegionExtractor: Sendable {
+    let compilerVersion: VersionTuple
     init(compilerVersion: VersionTuple = HostBuildConfiguration.hostCompilerVersion)
     func extractInactiveRanges(from syntax: SourceFileSyntax) -> [Range<AbsolutePosition>]
+    static func undecidableDeclarations(at errorPositions: [AbsolutePosition], among clauses: [IfConfigClauseSyntax]) -> Set<SyntaxIdentifier>?
 }
 ```
 
-Asks SwiftIfConfig for the configured regions of the file and returns the range of every clause that is not active — *inactive* ones and *unparsed* ones alike, the latter being the branches a `swift(…)` or `compiler(…)` check turns off. An `#if` whose condition cannot be decided — a `canImport` of a module in neither list, a malformed condition — keeps every one of its clauses, because SwiftIfConfig would otherwise take its `#else` for the active one; and should such an error not be traceable to a clause, the file keeps everything. Dropping a real mutant is the error this code avoids.
+Asks SwiftIfConfig for the configured regions of the file and returns the range of every clause that is not active — *inactive* ones and *unparsed* ones alike, the latter being the branches a `swift(…)` or `compiler(…)` check turns off. An `#if` whose condition cannot be decided — a `canImport` of a module in neither list, a malformed condition — keeps every one of its clauses, because SwiftIfConfig would otherwise take its `#else` for the active one; and should such an error not be traceable to a clause, the file keeps everything. `undecidableDeclarations` maps each error position to the `#if` whose clause condition holds it, `nil` when one maps to none. Dropping a real mutant is the error this code avoids.
 
 ### Discovery/IfConfig/InactiveRegionFilter.swift
 

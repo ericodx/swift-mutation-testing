@@ -87,4 +87,14 @@ struct CacheStoreNoCacheTests {
 
         #expect(FileManager.default.fileExists(atPath: storePath))
     }
+
+    @Test("Given noCache, when a measured verdict is stored, then no activation is read back")
+    func noCacheReadsBackNoActivation() async {
+        let store = CacheStore(storePath: "/tmp/never-written.json", noCache: true)
+        let key = makeMutantCacheKey()
+
+        await store.store(status: .survived, for: key, activated: true)
+
+        #expect(await store.activated(for: key) == nil)
+    }
 }

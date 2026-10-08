@@ -28,7 +28,8 @@ Delegates to the appropriate parser based on project type:
 
 ```swift
 struct ResultParser: Sendable {
-    init(launcher: any ProcessLaunching)
+    let launcher: any ProcessLaunching
+
     func parse(
         exitCode: Int32,
         output: String,
@@ -38,21 +39,23 @@ struct ResultParser: Sendable {
 }
 ```
 
-Determines the `TestRunOutcome` of a completed test invocation.
+Determines the `TestRunOutcome` of a completed `xcodebuild` test invocation.
 
 ```mermaid
 flowchart TD
-    EC{exit code?} -- -1 --> TO[.timedOut]
-    EC -- 0 --> SUCCESS[.testsSucceeded]
-    EC -- non-zero --> XCR[XCResultParser.parse xcresultPath]
-    XCR -- failures found --> KILLED[.testsKilled reason from xcresult]
-    XCR -- no failures --> STDOUT[TestOutputParser.parse output]
-    STDOUT -- failure pattern --> KILLED2[.testsKilled reason from stdout]
-    STDOUT -- crash pattern --> CRASH[.processCrashed]
-    STDOUT -- no pattern --> KILLED3[.testsKilled other]
+    EC{"exit code?"} -->|"-1"| TO[".timedOut"]
+    EC -->|"0"| SUCCESS[".testsSucceeded"]
+    EC -->|"other"| TOOL["xcrun xcresulttool get test-results tests --path xcresultPath"]
+    TOOL -->|"exit 0"| XCR["XCResultParser.parse(json)"]
+    XCR -->|".killed(by:)"| KILLED[".testsFailed(failingTest:)"]
+    XCR -->|".crashed"| CRASH[".crashed"]
+    TOOL -->|"non-zero exit"| STDOUT["TestOutputParser.parse(output)"]
+    STDOUT -->|".killed(by:)"| KILLED2[".testsFailed(failingTest:)"]
+    STDOUT -->|".crashed"| CRASH2[".crashed"]
+    STDOUT -->|".unviable"| UNVIABLE[".unviable"]
 ```
 
-Exit code `-1` is the sentinel set by `ProcessLauncher` when it kills the process due to timeout. Exit code `0` with no test failures is `.testsSucceeded` (survived). For non-zero exit codes, `XCResultParser` is tried first against the `.xcresult` bundle; `TestOutputParser` is the stdout/stderr fallback.
+Exit code `-1` is the sentinel `ProcessRunner` returns when it ended the process itself, at the timeout or on cancellation. Exit code `0` is `.testsSucceeded` (survived). For any other exit code, `xcresulttool` is run through the launcher, with the same `timeout`, against the `.xcresult` bundle; when it succeeds, its JSON alone decides the outcome, and a bundle that names no failed test case is a crash. `TestOutputParser` over stdout/stderr is the fallback only when `xcresulttool` itself fails.
 
 ---
 
@@ -60,8 +63,8 @@ Exit code `-1` is the sentinel set by `ProcessLauncher` when it kills the proces
 
 ```swift
 enum TestRunOutcome: Sendable {
-    case testsSucceeded
     case testsFailed(failingTest: String)
+    case testsSucceeded
     case crashed
     case timedOut
     case buildFailed
@@ -76,8 +79,8 @@ Intermediate result from `TestResultResolver`/`ResultParser`/`SPMResultParser`, 
 
 | Case | Maps to |
 |---|---|
-| `testsSucceeded` | `.survived` |
 | `testsFailed(failingTest:)` | `.killed(by: failingTest)` |
+| `testsSucceeded` | `.survived` |
 | `crashed` | `.killedByCrash` |
 | `timedOut` | `.timeout` |
 | `buildFailed` | `.unviable` |
@@ -103,7 +106,7 @@ struct TestOutputParser: Sendable {
 }
 ```
 
-Scans stdout/stderr for known failure and crash patterns when `xcresulttool` yields no results.
+Scans stdout/stderr for known failure and crash patterns: the whole verdict for an SPM run, and the fallback for an Xcode run when `xcresulttool` fails. `failingTest(in:)` reads one line, `failingTests(in:)` lists every failing test of an output once, in order, and `OutputStopRule.firstTestFailure` stops a run at the first line `failingTest(in:)` names a test from.
 
 **Failure patterns detected:**
 
@@ -128,7 +131,7 @@ known issue` is excluded too.
 
 `Fatal error`, `EXC_BAD_INSTRUCTION`
 
-Returns `.testsKilled(reason: <first matching line>)` for test failures, `.processCrashed` for crashes, or `.testsKilled(reason: "other")` when no pattern matches but the exit code was non-zero.
+`parse(_:)` returns `.killed(by:)` with the name of the first failing test, read line by line. Without one it returns `.crashed` when a crash pattern appears or when the output shows that tests ran — `Test Suite`, `Test run started`, `Testing started`, `** TEST FAILED **`, `Executed`, `◇ Suite`, `Test run with` — and `.unviable` when it shows neither.
 
 ---
 
@@ -146,11 +149,12 @@ Parses SPM test results from exit code and stdout/stderr output only (no `.xcres
 
 | Condition | Outcome |
 |---|---|
-| Exit code `-1` | `.timedOut` |
+| Exit code `-1` (`timedOutExitCode`) | `.timedOut` |
 | Exit code `0` | `.testsSucceeded` |
-| Non-zero + test failure pattern | `.testsFailed(failingTest:)` |
-| Non-zero + empty output | `.crashed` |
-| Non-zero + no parseable failure | `.unviable` |
+| Other + a failing test named | `.testsFailed(failingTest:)` |
+| Other + a crash pattern or test output | `.crashed` |
+| Other + empty output | `.crashed` |
+| Other + non-empty output with neither | `.unviable` |
 
 ---
 
@@ -158,12 +162,16 @@ Parses SPM test results from exit code and stdout/stderr output only (no `.xcres
 
 ```swift
 struct XCResultParser: Sendable {
-    init(launcher: any ProcessLaunching)
-    func parse(xcresultPath: String) async throws -> TestRunOutcome?
+    enum Result: Sendable {
+        case killed(by: String)
+        case crashed
+    }
+
+    func parse(_ json: String) -> Result
 }
 ```
 
-Invokes `xcresulttool get test-results tests` on the `.xcresult` bundle and parses the JSON output. Walks the `testNodes` tree recursively looking for nodes where `nodeType == "Test Case"` and `result == "Failed"`. Returns the first failure message as `.testsKilled(reason:)`, or `nil` if no failures are found or the invocation fails.
+Parses the JSON `xcresulttool get test-results tests` prints; `ResultParser` runs the tool and hands the output over. Walks the `testNodes` tree depth-first for the first node with `nodeType == "Test Case"` and `result == "Failed"`, and returns its `nodeIdentifier` as `.killed(by:)`. JSON that does not parse, has no `testNodes`, or names no failed test case is `.crashed`: the tests exited non-zero without a test failing.
 
 ---
 
@@ -188,7 +196,16 @@ What a cached verdict was tested against; `scheme` and `destination` are `nil` f
 actor CacheStore {
     static let directoryName: String
     static let formatVersion: Int
-    static let journalName: String           // "journal.jsonl"
+    static let journalName: String
+
+    struct CacheMetadata: Codable, Sendable {
+        let formatVersion: Int
+        let testFileHashes: [String: String]
+        let testSelection: CacheTestSelection?
+        init(testFileHashes: [String: String], testSelection: CacheTestSelection? = nil,
+             formatVersion: Int = CacheStore.formatVersion)
+    }
+
     init(
         storePath: String,
         noCache: Bool = false,
@@ -219,9 +236,10 @@ Persists execution results across runs with granular per-file invalidation. All 
 | Constant | Value |
 |---|---|
 | `directoryName` | `".swift-mutation-testing-cache"` |
+| `journalName` | `"journal.jsonl"` |
 | `formatVersion` | `3` — bump whenever the shape of `results.json` or `metadata.json` changes, or the meaning of what it holds. `2` added `activated`, so caches written before the activation marker existed are discarded once; `3` discards caches whose incompatible mutants were stored before their activation was measured, which would otherwise keep reporting them as not measured |
 
-Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of `CacheEntry` values (key + status + killerTestFile + activated).
+Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of the private `CacheEntry` values (key + status + killerTestFile + activated), with `metadata.json` and the journal in the same directory. A `.timeout` is never cached: `store` records it in the `PlanJournal`, if any, and keeps nothing itself, so the mutant is tested again on the next run.
 
 **The journal.** `store(…)` also appends the entry as one JSON line to `journal.jsonl` (`JSONLines.append`, the helper `PlanJournal` shares), next to `results.json`, the moment it is called — before any report, before `persist()`; a line that cannot be written is reported once through `journalWarning`. `load()` reads `results.json` and then replays the journal over it, the journal's verdicts winning, and does the replay even when `results.json` does not exist yet; a line cut short by a crash is skipped (`JSONLines.read`). `persist()` writes `results.json` and removes the journal. So a run that ends before `persist()` — `Ctrl+C`, a crash, a lost machine — leaves every verdict it reached, and the next `load()` starts from them. `MutantExecutor` writes the cache's metadata at the start of the run for the same reason: the journal must be read back against the test files it ran with. Under `noCache` nothing is journaled here; a `PlanJournal` given at init still records every verdict, timeouts included, since it is the progress of a planned run rather than a cache (see [11 — Plans](11-plans.md)). `store` takes the mutant's test `duration` for it.
 
@@ -242,9 +260,9 @@ Up to 1.5.0 any decode failure ended the run. 1.4.0 added `filePath` to `MutantC
 | `cachedResult(for:)` | The whole cached verdict of a mutant — status, killer test file, activation — as an `ExecutionResult` with `fromCache: true` and `testDuration: 0`; `nil` on a miss. Every executor reads the cache through it (via `ResultRecorder.cached(_:)`) instead of assembling the result from the three lookups |
 | `store(status:for:killerTestFile:activated:duration:)` | Stores an execution result with optional killer test file and activation metadata |
 | `changedTestFiles(current:)` | Compares current per-file test hashes against stored metadata to produce a `TestFileDiff` |
-| `invalidate(diff:)` | Removes cached entries based on status-aware rules (see Architecture docs) |
+| `invalidate(diff:)` | When the diff has changes: keeps `unviable` verdicts, keeps a kill unless its killer test file was modified or removed — or is unknown — and forgets every other verdict, since a new or changed test may now detect it |
 | `persistMetadata(_:)` | Writes `CacheMetadata` (format version, test file hashes and test selection) to disk alongside the results cache |
-| `discard(unlessMadeWith:)` | Forgets every verdict, and the journal, when the stored metadata names another `CacheTestSelection`, or none; returns whether it did. Without metadata it keeps everything |
+| `discard(unlessMadeWith:)` | Forgets every verdict, and the journal, when the stored metadata names another `CacheTestSelection`, or none; returns whether it did (`@discardableResult`). Without metadata, or with no verdict loaded, it keeps everything |
 
 **The test selection.** A verdict says what one set of tests did to a mutant, and nothing about another set. `CacheTestSelection`, built from `RunnerConfiguration.BuildOptions`, records what the tests ran against: the Xcode scheme, destination and container, `--target`, and the testing library. `MutantExecutor.prepareCacheStore` calls `discard(unlessMadeWith:)` right after `load()`, printing a note through `StandardError` when it discards, and the metadata written at the start of the run carries the selection, so an interrupted run's journal is tied to it too. Before this, a run with another `--target` replayed nearly every verdict of the previous one (#135). The selection stays out of `MutantCacheKey`: two targets cannot share one cache, but keying verdicts per target would make every lookup depend on the configuration, for a case — alternating targets over one cache — that a CI job avoids by caching per job.
 
@@ -274,13 +292,14 @@ Stable across test-only changes; those are handled granularly by `CacheStore.inv
 
 | Field | Source |
 |---|---|
-| `fileContentHash` | SHA256 of `mutatedSourceContent` for incompatible mutants; SHA256 of the source file at `filePath` for schematizable mutants |
+| `filePath` | `MutantDescriptor.filePath` |
+| `fileContentHash` | `MutantDescriptor.sourceContentHash`: `hash(of:)` over the unmutated source file, for schematizable and incompatible mutants alike |
 | `operatorIdentifier` | Operator name |
 | `utf8Offset` | Mutation position |
 | `originalText` | Token before mutation |
 | `mutatedText` | Token after mutation |
 
-`make(for:)` computes `fileContentHash` from `descriptor.mutatedSourceContent` (for incompatible mutants) or from the on-disk content at `descriptor.filePath` (for schematizable mutants).
+`make(for:)` copies the six fields from the descriptor; it reads nothing from disk.
 
 ---
 
@@ -310,6 +329,8 @@ Represents changes to test files between cache runs. Produced by `CacheStore.cha
 
 ```swift
 struct KillerTestFileResolver: Sendable {
+    let testFilePaths: [String]
+
     init(testFilePaths: [String], projectPath: String, read: (String) -> String? = …)
     func resolve(testName: String) -> String?
     static func declaredFunctions(in content: String) -> [String]
@@ -319,7 +340,7 @@ struct KillerTestFileResolver: Sendable {
 
 Maps killer test names back to their source file paths. Supports XCTest class names (e.g. `CalculatorTests`), Swift Testing function names (e.g. `addReturnsSum()`) and Swift Testing titles (`@Test("adds two numbers")`).
 
-Resolution strategy: an XCTest name (`Class.method` or `Module.Class.method`) names the file called after its class. Anything else is looked up in two tables built once in `init`, each test file read a single time: `func <name>` declarations by name, and `@Test("…")` titles by their exact text. A Swift Testing name is matched by its base name — `aCheck(value:)` by `aCheck` — and failing that as a title. The first file in `testFilePaths` wins a name declared twice. It used to read every test file for each killed mutant and take the first one that had any `@Test` and mentioned the name anywhere — in a call, a comment, another test's title — and a wrong file is a killed verdict that is not invalidated when its real test changes.
+Resolution strategy: an XCTest name (`Class.method` or `Module.Class.method`) names the file called after its class. Anything else, or an XCTest-shaped name with no such file, is looked up in two tables built once in `init`, each test file read a single time through `read` (by default as UTF-8, a file that cannot be read contributing nothing): `func <name>` declarations by name (`declaredFunctions(in:)`), and `@Test("…")` titles by their exact text (`testTitles(in:)`). A Swift Testing name is taken after its last `/` and matched by its base name — `aCheck(value:)` by `aCheck` — and failing that as a title. The first file in `testFilePaths` wins a name declared twice. It used to read every test file for each killed mutant and take the first one that had any `@Test` and mentioned the name anywhere — in a call, a comment, another test's title — and a wrong file is a killed verdict that is not invalidated when its real test changes.
 
 Candidates are absolute, since matching a suffix and reading a file both need a real path, but the result is returned **project-relative** via `ProjectRelativePath`. That is the form `TestFilesHasher.snapshot`'s `hashes` keys its hashes by, and `CacheStore.invalidate` compares the two directly — when they disagreed, no killed verdict was ever invalidated by an edit to the test that killed it.
 

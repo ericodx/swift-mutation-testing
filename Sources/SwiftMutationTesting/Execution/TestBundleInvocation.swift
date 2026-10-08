@@ -102,12 +102,12 @@ struct TestBundleInvocation: Sendable {
             executableURL: URL(fileURLWithPath: DeveloperToolchain.testingHelperPath),
             arguments: arguments,
             environment: nil,
-            additionalEnvironment: environment.merging(
-                [
-                    "DYLD_FRAMEWORK_PATH": DeveloperToolchain.frameworksPath,
-                    "DYLD_LIBRARY_PATH": DeveloperToolchain.librariesPath,
+            additionalEnvironment: Uniquing.keepingFirst(
+                environment.map { ($0.key, $0.value) } + [
+                    ("DYLD_FRAMEWORK_PATH", DeveloperToolchain.frameworksPath),
+                    ("DYLD_LIBRARY_PATH", DeveloperToolchain.librariesPath),
                 ]
-            ) { current, _ in current },
+            ),
             workingDirectoryURL: workingDirectory,
             timeout: timeout
         )

@@ -142,7 +142,7 @@ struct CommandLineParser: Sendable {
         case "--shard":
             let raw = try nextValue(for: flag, at: &index, in: arguments)
             guard let shard = Shard(parsing: raw) else {
-                throw UsageError(message: PlanError.invalidShard(raw).errorDescription ?? raw)
+                throw UsageError(message: PlanError.invalidShard(raw).localizedDescription)
             }
             values.plan.shard = shard
 

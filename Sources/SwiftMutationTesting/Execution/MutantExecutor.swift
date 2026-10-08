@@ -199,7 +199,7 @@ struct MutantExecutor: Sendable {
             )
             results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
         } else if !testableSchematizable.isEmpty {
-            results += try await runFallback(deps: deps, input: input, pool: pool)
+            results += try await runFallback(deps: deps, input: input.excluding(excludedIDs), pool: pool)
         }
 
         results += try await runIncompatible(

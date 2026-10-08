@@ -39,7 +39,7 @@ struct ProjectDetector: Sendable {
                 in: projectURL, workspace: nil, project: nil, fileSystem: fileSystem)
         } catch {
             container = nil
-            note = (error as? UsageError)?.message ?? error.localizedDescription
+            note = error.message
         }
 
         var schemes: [String] = []

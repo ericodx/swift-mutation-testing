@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to **SwiftMutationTesting**.
 
-Swift Mutation Testing is a Swift CLI that executes mutation testing for Xcode + XCTest projects. It receives a pre-processed `RunnerInput` and is exclusively responsible for the execution cycle: sandbox → build → test → result.
+Swift Mutation Testing is a Swift CLI that runs mutation testing on Xcode projects and workspaces and on Swift packages, with XCTest or Swift Testing. It discovers the mutants, writes them into a sandbox copy of the project, builds it, runs the tests against each mutant and reports the result: discovery → sandbox → build → test → report.
 
 For an overview of the project goals and scope, see the [README](README.md).
 
@@ -20,12 +20,12 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 SwiftMutationTesting follows a strict set of technical principles:
 
 - The original project is **never modified** — all mutations happen inside an isolated sandbox
-- `xcodebuild build-for-testing` runs **exactly once** for all schematizable mutants
+- The schema is built **once** for all schematizable mutants — `xcodebuild build-for-testing` for Xcode, `swift build --build-tests` for packages
 - No mutant results are **lost or duplicated**
 - Mutant **positions (file, line, column) are accurate** in all reported results
 - A cancelled task never leaves a **simulator slot permanently acquired** from the pool
 - Every schematized file **declares its own** support block, `@usableFromInline internal` and named after the file (`__swiftMutationTestingID_<hash>`), and nothing else in the sandbox declares it
-- **Zero external dependencies** — CryptoKit and Foundation are Apple frameworks, no packages permitted
+- **No dependency beyond swift-syntax** — CryptoKit and Foundation are Apple frameworks; no other package is permitted
 - Full compatibility with **Swift 6 Strict Concurrency**
 - Pipeline stages are **stateless pure transformations** — no shared mutable state between them
 
@@ -87,8 +87,7 @@ For local build, test, fixture, and pre-commit setup, see
 - Use Swift Testing (`@Suite`, `@Test`) with Given/When/Then naming
 - Use a mock conforming to `ProcessLaunching` — never invoke real `xcodebuild`, `xcrun simctl`, or `xcresulttool` in unit tests
 - Use `FileHelpers` for any test that touches the filesystem (temp directories only)
-- Use `SnapshotHelpers` when testing reporter output format
-- Integration tests must use a real Xcode fixture project and be tagged separately
+- Integration tests must use a real fixture project from `Fixtures/` and be tagged `.integration`
 - Tests must be **deterministic and isolated** — same input always produces the same output
 - Target code coverage: **90%+**
 

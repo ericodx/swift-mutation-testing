@@ -26,6 +26,16 @@ struct ProcessArgumentsTests {
         #expect(ProcessArguments.parse(buffer) == ["tool"])
     }
 
+    @Test("Given an argument that is not UTF-8, when parsed, then it comes back empty and the others intact")
+    func anArgumentThatIsNotTextIsEmpty() {
+        var buffer = withUnsafeBytes(of: Int32(2)) { Array($0) }
+        buffer += Array("/bin/tool".utf8) + [0, 0]
+        buffer += Array("tool".utf8) + [0]
+        buffer += [0xFF, 0xFE, 0]
+
+        #expect(ProcessArguments.parse(buffer) == ["tool", ""])
+    }
+
     @Test("Given a running process of ours, when its arguments are read, then they are its argv")
     func readsTheArgumentsOfALiveProcess() async throws {
         let process = Process()

@@ -12,7 +12,7 @@ This document explains every possible outcome for a mutant, what causes it, and 
    - [Survived](#survived-)
    - [Unviable](#unviable-)
    - [Timeout](#timeout-)
-   - [No coverage](#no-coverage--)
+   - [No coverage](#no-coverage-)
    - [Integrity warnings](#integrity-warnings)
 2. [Mutation score](#mutation-score)
 3. [Schematizable vs incompatible mutants](#schematizable-vs-incompatible-mutants)
@@ -179,7 +179,7 @@ A score of 100% means every mutant that could be executed was detected by at lea
 
 ### The number on the README badge
 
-The badge is this repository's own score on the `default` tier, taken from the self-run of the operator campaign — the entry `"."` of `Scripts/operator-campaign/corpus.json`, with its arguments: `Fixtures/` (test data), `Scripts/` (the campaign tooling, which no test runs) and the two sandbox files whose mutants would delete the run's own sandboxes are left out, and the timeout is 300 s so that a surviving mutant's full suite fits. The campaign runs every operator, so the badge's number is the score recomputed over the mutants of the `default` tier's operators in that report; `Docs/OPERATORS.md` has the full result and the date. It is a record run, not a push-time number: it moves when the campaign is rerun.
+The badge is this repository's own score on the `default` tier, taken from the self-run of the operator campaign — the entry `"."` of `Scripts/operator-campaign/corpus.json`, with its arguments: `Fixtures/` (test data), `Scripts/` (the campaign tooling, which no test runs) and the two sandbox files whose mutants would delete the run's own sandboxes are left out, and the timeout is 300 s so that a surviving mutant's full suite fits. The campaign runs every operator, so the badge's number is the score recomputed over the mutants of the `default` tier's operators in that report; `Docs/OPERATORS.md` has the full result and the date. It is a record run, not a push-time number: it moves when the campaign is rerun. The last self-run, on 2026-10-08, gives 99.8% on the `default` tier (99.2% over every operator).
 
 ---
 
@@ -191,7 +191,7 @@ This is the most important internal distinction in how the tool operates. It dir
 
 Running one full build + test cycle per mutant would make mutation testing impractically slow for any real project. For a project with 200 mutants and a 20-second build, a naive approach would take over an hour just in build time.
 
-The tool avoids this by **schematization**: rewriting source files to embed all mutations at once behind a runtime switch, building the project a single time, and then activating one mutant per test run by setting an environment variable. This reduces the total build cost to a single build regardless of the number of mutants. This works for both Xcode projects (`xcodebuild build-for-testing` / `test-without-building`) and SPM packages (`swift build --build-tests` / `swift test --skip-build`).
+The tool avoids this by **schematization**: rewriting source files to embed all mutations at once behind a runtime switch, building the project a single time, and then activating one mutant per test run by setting an environment variable. This reduces the total build cost to a single build regardless of the number of mutants. This works for both Xcode projects (`xcodebuild build-for-testing`, then `test-without-building`) and SPM packages (`swift build --build-tests`, then the compiled test bundles run directly — `xcrun xctest` for XCTest, the toolchain's `swiftpm-testing-helper` for Swift Testing — with `swift test --skip-build` when the build left no bundle).
 
 ```swift
 // Original source
@@ -252,16 +252,16 @@ enum ExitCode: Int32 {
 }
 ```
 
-In all of these cases, the mutation site is not inside any executable scope that can host a `switch` statement. The tool falls back to applying the mutation directly to the source file and running a full build + test cycle per mutant. For SPM projects, incompatible mutants use a shared sandbox — the mutated file is written, `swift test` runs, and the original is restored.
+In all of these cases, the mutation site is not inside any executable scope that can host a `switch` statement. The tool falls back to applying the mutation directly to the source file and running a build + test cycle per mutant. Each worker gets a sandbox of its own, built once; for every mutant it writes the mutated file, rebuilds, runs the tests, and restores the original.
 
 ### Performance implications
 
 | | Schematizable | Incompatible |
 |---|---|---|
-| Builds required | 1 (shared) | 1 per mutant (Xcode) or shared sandbox (SPM) |
-| Test command | `test-without-building` (Xcode) / `swift test --skip-build` (SPM) | full build + test per mutant |
-| Parallel execution | yes, N workers | sequential |
-| Typical cost | seconds per mutant | full build + test per mutant |
+| Builds required | 1 (shared) | 1 per worker, then 1 incremental rebuild per mutant |
+| Test command | `test-without-building` (Xcode) / the test bundles (SPM) | build + test per mutant |
+| Parallel execution | yes, `--concurrency` workers | a quarter of the workers, at least 1 |
+| Typical cost | seconds per mutant | an incremental build + test per mutant |
 
 Incompatible mutants are the expensive ones: each needs its own rebuild before its tests can run. The rebuild is incremental — the sandbox is built once and only the mutated file is recompiled after that — and the mutants are spread over a quarter of the workers, but a project with 10 incompatible mutants still pays roughly 10 rebuilds plus 10 test runs on top of the shared build for schematizable mutants. The progress output calls this out explicitly:
 

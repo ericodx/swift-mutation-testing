@@ -57,6 +57,13 @@ struct EdgeCaseCoverageTests {
         #expect(host.endianness == .little)
     }
 
+    @Test("Given canImport with no module named, when asked, then the host cannot decide it")
+    func canImportOfNothingIsUndecidable() {
+        #expect(throws: HostBuildConfiguration.ImportError.self) {
+            try HostBuildConfiguration().canImport(importPath: [], version: .unversioned)
+        }
+    }
+
     @Test("Given an error outside every #if condition, when mapped, then no declaration can be dropped safely")
     func anErrorOutsideEveryConditionMapsToNothing() throws {
         let syntax = Parser.parse(source: "let a = 1\n#if canImport(Nope)\nlet b = 2\n#endif\n")

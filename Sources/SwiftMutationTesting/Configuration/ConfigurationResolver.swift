@@ -200,7 +200,15 @@ struct ConfigurationResolver: Sendable {
         let fileDisabled = resolveList(cli: [], keys: ["disabled-mutators"], from: fileValues)
         let disabled = Set(cli.filter.disabledMutators + fileDisabled)
 
-        return OperatorRegistry.operatorNames(upTo: tier).filter { !disabled.contains($0) }
+        let enabled = OperatorRegistry.operatorNames(upTo: tier).filter { !disabled.contains($0) }
+        guard !enabled.isEmpty else {
+            throw UsageError(
+                message: "the disabled mutators leave no operator of the '\(tier.rawValue)' tier to run; "
+                    + "enable one or choose a larger --operator-tier"
+            )
+        }
+
+        return enabled
     }
 
     private func resolvedOperatorTier(cli: ParsedArguments, fileValues: [String: String]) throws -> OperatorTier {

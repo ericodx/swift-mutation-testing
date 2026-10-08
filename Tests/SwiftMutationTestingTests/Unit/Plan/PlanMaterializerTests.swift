@@ -126,6 +126,24 @@ struct PlanMaterializerTests {
 
     static let execution = PlanMaterializer.ExecutionOptions(timeout: 30, concurrency: 1, noCache: true)
 
+    @Test("Given a plan whose mutant names a file the plan does not list, when loaded, then that file is missing")
+    func aMutantOfAnUnlistedFileIsMissing() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        try Self.writeProject(in: dir)
+        let planned = try await Planner().plan(input: Self.discoveryInput(for: dir)).plan
+        let stray = try #require(planned.mutants.first)
+        let plan = Plan(
+            formatVersion: planned.formatVersion, toolVersion: planned.toolVersion, project: planned.project,
+            scope: planned.scope, files: planned.files.filter { $0.path != stray.file }, mutants: [stray]
+        )
+
+        #expect(throws: PlanError.missingFile(file: stray.file)) {
+            try PlanMaterializer().load(plan: plan, projectPath: dir.path)
+        }
+        #expect(PlanMaterializer.descriptor(of: stray, at: 0, in: plan, projectPath: dir.path).sourceContentHash == "")
+    }
+
     static func writeProject(in dir: URL) throws {
         let sources = dir.appendingPathComponent("Sources")
         try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)

@@ -5,7 +5,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/ericodx/swift-mutation-testing/main-analysis.yml?branch=main&style=flat-square&logo=github&logoColor=white&label=CI&color=4CAF50)](https://github.com/ericodx/swift-mutation-testing/actions)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=ericodx-swift-mutation-testing&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=ericodx-swift-mutation-testing)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=ericodx-swift-mutation-testing&metric=coverage)](https://sonarcloud.io/summary/new_code?id=ericodx-swift-mutation-testing)
-[![Mutation score](https://img.shields.io/badge/mutation%20score-99.1%25-lightgray?logo=jest&logoColor=white)](https://github.com/ericodx/swift-mutation-testing/blob/main/Docs/MUTATION-RESULTS.md)
+[![Mutation score](https://img.shields.io/badge/mutation%20score-99.8%25-lightgray?logo=jest&logoColor=white)](https://github.com/ericodx/swift-mutation-testing/blob/main/Docs/MUTATION-RESULTS.md)
 
 **Measure and improve test effectiveness in Swift codebases using mutation testing.**
 
@@ -31,7 +31,7 @@ Mutation testing introduces controlled changes to your code to verify that your 
 - Pull request annotations through GitHub code scanning, and a job summary, from the SARIF and Markdown reports
 - Simulator pool management for iOS/tvOS/watchOS targets
 - Mutation suppression by comment — `// swift-mutation-testing:disable` on a declaration, `// swift-mutation-testing:disable-next-line` on a line
-- Quality gate for CI: minimum score, maximum drop, and no new survivors against a committed baseline
+- Quality gate for CI: minimum score, maximum drop, no new survivors against a committed baseline, and a limit on integrity warnings
 - Configurable via YAML or CLI flags
 - CI/CD ready with caching support
 
@@ -67,9 +67,9 @@ Building for testing...
   ✓ 3 simulators ready
 
 Testing mutants...
-  ✓ 1/147  RelationalOperatorReplacement  Validator.swift:18
-  ✗ 2/147  NegateConditional              Validator.swift:34
-  ✓ 3/147  BooleanLiteralReplacement      FeatureFlags.swift:9
+  ✓ 1/147  LogicalOperatorReplacement  Validator.swift:18
+  ✗ 2/147  NegateConditional           Validator.swift:34
+  ✓ 3/147  SwapTernary                 FeatureFlags.swift:9
 
 Results by file:
   Sources/Validator.swift      score: 72.4%   killed: 21   survived: 8   timeout: 0   unviable: 0   no coverage: 0
@@ -81,7 +81,7 @@ Undetected mutants:
 Overall mutation score: 85.3%
 Detected: 122 (killed 122, timeout 0) / Undetected: 21 (survived 21, no coverage 0)
 Killed: 122 / Survived: 21 / Timeouts: 0 / Unviable: 4 / NoCoverage: 0
-Total duration: 312.7s
+Total duration: 5m 12s
 ```
 
 ## Configuration
@@ -106,9 +106,10 @@ destination: platform=iOS Simulator,name=iPhone 16
 # concurrency: 4
 ```
 
-**Mutation operators** (both project types — all active by default):
+**Mutation operators** (both project types). A run takes the operators of the `default` tier — `LogicalOperatorReplacement`, `NegateConditional` and `SwapTernary`; `operator-tier: experimental` runs all seven. `active: false` leaves an operator out; `active: true` adds nothing the tier does not already run:
 
 ```yaml
+# operator-tier: experimental
 mutators:
   - name: RelationalOperatorReplacement
     active: true

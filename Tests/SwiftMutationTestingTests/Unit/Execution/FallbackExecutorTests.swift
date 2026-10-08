@@ -50,6 +50,36 @@ struct FallbackExecutorTests {
         #expect(results.count == 1)
     }
 
+    @Test("Given an SPM fallback build that leaves test bundles, when execute called, then the tests run from them")
+    func spmFallbackRunsTheBundlesItBuilt() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+        let launcher = TwoBundleLauncher()
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+        let mutant = makeMutantDescriptor(
+            id: "m0", filePath: sourceFile.path, originalText: "true", mutatedText: "false",
+            operatorIdentifier: "BooleanLiteralReplacement", replacementKind: .booleanLiteral,
+            description: "true → false", isSchematizable: true
+        )
+        let input = makeRunnerInput(
+            projectPath: dir.path, projectType: .spm,
+            schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+            mutants: [mutant]
+        )
+
+        let results = try await FallbackExecutor(
+            deps: makeExecutionDeps(launcher: launcher, cacheStorePath: dir.appendingPathComponent("c.json").path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm)
+        ).execute(input: input, pool: pool)
+
+        #expect(results.count == 1)
+        #expect(Set(await launcher.runs.map(\.bundle)).isSubset(of: Set(TwoBundleLauncher.bundles)))
+        #expect(!(await launcher.runs.isEmpty))
+    }
+
     @Test("Given the fallback build times out, when execute called, then mutants are timeout and nothing is cached")
     func fallbackBuildTimeoutIsNotRecordedAsUnviable() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

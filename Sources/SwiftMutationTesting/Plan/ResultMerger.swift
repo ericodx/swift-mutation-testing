@@ -29,26 +29,29 @@ struct ResultMerger: Sendable {
             }
         }
 
-        let missing = plan.mutants.filter { verdicts[$0.fingerprint] == nil }
+        var found: [(index: Int, mutant: Plan.Mutant, verdict: Verdict)] = []
+        var missing: [Plan.Mutant] = []
+        for (index, mutant) in plan.mutants.enumerated() {
+            if let verdict = verdicts[mutant.fingerprint] {
+                found.append((index, mutant, verdict))
+            } else {
+                missing.append(mutant)
+            }
+        }
         guard missing.isEmpty else {
             throw MergeError.missing(
                 count: missing.count, sample: missing.prefix(5).map { "\($0.fingerprint) (\($0.file):\($0.line))" }
             )
         }
 
-        var results: [ExecutionResult] = []
         let fileHashes = PlanMaterializer.fileHashes(of: plan)
-        for (index, mutant) in plan.mutants.enumerated() {
-            guard let verdict = verdicts[mutant.fingerprint] else { continue }
-            let descriptor = PlanMaterializer.descriptor(
-                of: mutant, at: index, fileHashes: fileHashes, projectPath: projectPath)
-            results.append(
-                ExecutionResult(
-                    descriptor: descriptor,
-                    status: try Self.status(of: verdict.mutant, in: verdict.path),
-                    testDuration: Double(verdict.mutant.duration ?? 0) / 1000,
-                    activated: verdict.mutant.activated
-                )
+        let results = try found.map { index, mutant, verdict in
+            ExecutionResult(
+                descriptor: PlanMaterializer.descriptor(
+                    of: mutant, at: index, fileHashes: fileHashes, projectPath: projectPath),
+                status: try Self.status(of: verdict.mutant, in: verdict.path),
+                testDuration: Double(verdict.mutant.duration ?? 0) / 1000,
+                activated: verdict.mutant.activated
             )
         }
 

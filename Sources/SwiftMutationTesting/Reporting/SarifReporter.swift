@@ -28,13 +28,13 @@ struct SarifReporter: Sendable {
 
         let reported = Array(undetected.prefix(resultLimit))
         let operators = Array(Set(reported.map(\.descriptor.operatorIdentifier))).sorted()
-        let ruleIndex = Dictionary(uniqueKeysWithValues: operators.enumerated().map { ($1, $0) })
         var lines = SourceLines()
         let paths = ProjectRelativePath.Resolver(projectPath: projectRoot)
 
         let results = reported.map { result in
             sarifResult(
-                for: result, ruleIndex: ruleIndex[result.descriptor.operatorIdentifier] ?? 0, paths: paths,
+                for: result, ruleIndex: Self.position(of: result.descriptor.operatorIdentifier, in: operators),
+                paths: paths,
                 lines: &lines
             )
         }
@@ -57,6 +57,16 @@ struct SarifReporter: Sendable {
                 )
             ]
         )
+    }
+
+    static func position(of identifier: String, in sorted: [String]) -> Int {
+        var low = 0
+        var high = sorted.count
+        while low < high {
+            let middle = (low + high) / 2
+            if sorted[middle] < identifier { low = middle + 1 } else { high = middle }
+        }
+        return low
     }
 
     // MARK: - Private

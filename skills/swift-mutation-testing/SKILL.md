@@ -46,10 +46,10 @@ Narrowing the scope:
 | One module, folder or file | `--sources-path Sources/MyModule`, or a single `.swift` file to re-check it after adding a test |
 | Skip generated or vendored code | `--exclude "**/Generated/**"` (a glob, relative to the project root) or `--exclude /Generated/` (a fragment of the path); repeatable |
 | A few operators | `--operator RelationalOperatorReplacement --operator NegateConditional` |
-| Every operator, including the experimental ones | `--operator-tier experimental`; the default tier is `default`, see `Docs/OPERATORS.md` |
+| Every operator, including the experimental ones | `--operator-tier experimental`; the default tier is `default` — `LogicalOperatorReplacement`, `NegateConditional`, `SwapTernary` — see `Docs/OPERATORS.md` |
 | One test target | `--target MyPackageTests` |
 
-Test files (`Tests/`, `*Tests.swift`, `Mocks/`, `.build/`), package manifests (`Package.swift`, `Package@swift-*.swift`) and `Snippets/` are never mutated, and neither are the branches of an `#if` the macOS build leaves out (`#if os(Windows)`, `#if canImport(Glibc)`).
+Test files (`Tests/`, `Mocks/`, `Stubs/`, `Fakes/`, `TestHelpers/`, `TestSupport/`, `*Tests.swift`, `*Mock.swift`, `*Spec.swift`), build output (`.build/`, `DerivedData/`), package manifests (`Package.swift`, `Package@swift-*.swift`) and `Snippets/` are never mutated, and neither are the branches of an `#if` the macOS build leaves out (`#if os(Windows)`, `#if canImport(Glibc)`).
 
 A second run on unchanged code is fast: verdicts are cached in `.swift-mutation-testing-cache/`, keyed by file contents. Editing a source file re-tests that file's mutants; editing a test file re-tests the mutants that survived, and the killed ones whose killing test lives in that file. Use `--no-cache` only to rule out the cache when a result looks wrong.
 
@@ -74,7 +74,7 @@ Each mutant in the JSON report (`files["/Sources/Foo.swift"].mutants[]`) carries
 | `status` | Meaning | Action |
 |---|---|---|
 | `Killed` | A test failed with the mutant active. `statusReason: "crash"` means the process crashed instead | None |
-| `Timeout` | The suite never finished, even when rerun alone. Counts as detected | None, unless there are many: check `--timeout` |
+| `Timeout` | The suite never finished, even when rerun with fewer workers. Counts as detected | None, unless there are many: check `--timeout` |
 | `Survived` | The suite passed with the mutant active | **Write a test** (step 5) |
 | `NoCoverage` | The suite passed and the mutated code never ran — measured, not guessed: every mutant records when its code executes | Write a test that reaches the code first |
 | `CompileError` | The mutant did not compile | None. It is a property of the operator, not of the tests, and it is outside the score |
@@ -152,5 +152,5 @@ To keep code out of the run, use `--exclude` (or `exclude:` in the config file) 
 - **A baseline only compares with the same scope.** A run whose operators, `--sources-path` or `--exclude` differ from the baseline's stops with exit code `1` and lists the differences. Run with the baseline's scope, or write a new baseline on purpose.
 - **One run per project at a time.** Two runs on the same project write the same cache.
 - **Xcode needs a destination that exists.** An iOS simulator destination must name an installed simulator; for code that runs on macOS, `platform=macOS` is faster and needs no simulator.
-- **Timeouts cost time.** Each one waits for `--timeout` (30 s for packages, 120 s for Xcode by default), and it is rerun once alone before it is reported.
+- **Timeouts cost time.** Each one waits for twice `--timeout` in the parallel pass (`--timeout` is 30 s for packages, 120 s for Xcode by default), then is rerun once with fewer workers, under `--timeout`, before it is reported.
 - **Do not leave the reports in the repository** unless the user asks: add `mutation-report.json` and `.swift-mutation-testing-cache/` to `.gitignore`.

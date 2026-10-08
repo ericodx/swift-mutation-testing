@@ -8,7 +8,7 @@ enum XcodeContainerLocator {
 
     static func locate(
         in root: URL, workspace: String?, project: String?, fileSystem: FileSystem = FileSystem()
-    ) throws -> XcodeContainer? {
+    ) throws(UsageError) -> XcodeContainer? {
         if workspace != nil, project != nil {
             throw UsageError(message: "--workspace and --project cannot be used together; give one container")
         }
@@ -78,9 +78,9 @@ enum XcodeContainerLocator {
                     let url = directory.appendingPathComponent(name)
                     guard fileSystem.directoryExists(url.path) else { continue }
                     if name.hasSuffix(".xcworkspace"), directory != root {
-                        workspaces.append(relative(url.path, to: root) ?? name)
+                        workspaces.append(String(url.path.dropFirst(root.path.count + 1)))
                     } else if name.hasSuffix(".xcodeproj"), directory != root {
-                        projects.append(relative(url.path, to: root) ?? name)
+                        projects.append(String(url.path.dropFirst(root.path.count + 1)))
                     } else if !name.hasSuffix(".xcworkspace"), !name.hasSuffix(".xcodeproj") {
                         next.append(url)
                     }
@@ -101,7 +101,7 @@ enum XcodeContainerLocator {
 
     private static func existing(
         _ path: String, extension ext: String, flag: String, in root: URL, fileSystem: FileSystem
-    ) throws -> String {
+    ) throws(UsageError) -> String {
         let url = path.hasPrefix("/") ? URL(fileURLWithPath: path) : root.appendingPathComponent(path)
         guard url.pathExtension == ext, fileSystem.directoryExists(url.path) else {
             throw UsageError(message: "\(flag) '\(path)' is not a .\(ext) under \(root.path)")
@@ -112,7 +112,7 @@ enum XcodeContainerLocator {
         return relative
     }
 
-    private static func requireReferencesInside(_ root: URL, workspace: String) throws {
+    private static func requireReferencesInside(_ root: URL, workspace: String) throws(UsageError) {
         let outside = references(of: workspace, in: root).filter { relative($0, to: root) == nil }
         guard outside.isEmpty else {
             throw UsageError(
@@ -125,7 +125,8 @@ enum XcodeContainerLocator {
     private static func references(of workspace: String, in root: URL) -> [String] {
         let workspaceURL = root.appendingPathComponent(workspace)
         let contents = workspaceURL.appendingPathComponent("contents.xcworkspacedata")
-        guard let parser = XMLParser(contentsOf: contents) else { return [] }
+        guard let data = FileManager.default.contents(atPath: contents.path) else { return [] }
+        let parser = XMLParser(data: data)
         let collector = ReferenceCollector(container: workspaceURL.deletingLastPathComponent())
         parser.delegate = collector
         parser.parse()
@@ -140,9 +141,8 @@ enum XcodeContainerLocator {
     }
 
     private static func list(_ names: [String]) -> String {
-        names.count <= 1
-            ? names.joined()
-            : names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
+        guard names.count > 1, let last = names.last else { return names.joined() }
+        return names.dropLast().joined(separator: ", ") + " and " + last
     }
 
     private final class ReferenceCollector: NSObject, XMLParserDelegate {
