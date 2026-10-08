@@ -777,7 +777,7 @@ enum VersionedJSON {
     }
 
     static func read<Document: Decodable>(
-        _ type: Document.Type, from path: String, version: Int, decoder: JSONDecoder = JSONDecoder(),
+        _: Document.Type, from path: String, version: Int, decoder: JSONDecoder = JSONDecoder(),
         failures: Failures
     ) throws -> Document
     static func encode(_ document: some Encodable, dates: JSONEncoder.DateEncodingStrategy = .deferredToDate) throws -> Data
@@ -795,7 +795,7 @@ The format shared by `PlanStore` and `BaselineStore`. `read` decodes a document 
 enum JSONLines {
     static func append(_ value: some Encodable, to path: String) throws
     static func failureWarning(for path: String, error: any Error) -> String
-    static func read<Value: Decodable>(_ type: Value.Type, from path: String) -> [Value]
+    static func read<Value: Decodable>(_: Value.Type, from path: String) -> [Value]
 }
 ```
 

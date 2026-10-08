@@ -34,13 +34,13 @@ enum OperatorRegistry {
     static let loopRiskyNames: Set<String>
     static func operatorNames(upTo tier: OperatorTier) -> [String]
     static func operators(named identifiers: [String]) -> [any MutationOperator]
-    static func `operator`(named identifier: String) -> (any MutationOperator)?
+    static func mutationOperator(named identifier: String) -> (any MutationOperator)?
 }
 ```
 
 Every mutation operator, in the order discovery runs them, with the tier it belongs to. The names are the operators' own `identifier`s, so the registry holds no second copy of them.
 
-`allOperatorNames` is the ordered list of all registered operator identifiers. `ConfigurationFileWriter` uses it to populate the operators section of the generated YAML, and `Planner` and `BaselineScope` record it when the operator list is empty. `operatorNames(upTo:)` is the same list cut at a tier: the identifiers whose `OperatorTier` is at most the given one, in registry order. `loopRiskyNames` is the set of operators whose `isLoopRisky` is `true`, the default `InfiniteLoopFilter` leaves out of loop bodies. `operators(named:)` returns the operators to run, and `operator(named:)` the one with an identifier — `SarifRuleCatalog` reads each rule's name and description from it.
+`allOperatorNames` is the ordered list of all registered operator identifiers. `ConfigurationFileWriter` uses it to populate the operators section of the generated YAML, and `Planner` and `BaselineScope` record it when the operator list is empty. `operatorNames(upTo:)` is the same list cut at a tier: the identifiers whose `OperatorTier` is at most the given one, in registry order. `loopRiskyNames` is the set of operators whose `isLoopRisky` is `true`, the default `InfiniteLoopFilter` leaves out of loop bodies. `operators(named:)` returns the operators to run, and `mutationOperator(named:)` the one with an identifier — `SarifRuleCatalog` reads each rule's name and description from it.
 
 **Operator registry** (registration order is fixed; the tier comes from the campaign in `Docs/OPERATORS.md`):
 
