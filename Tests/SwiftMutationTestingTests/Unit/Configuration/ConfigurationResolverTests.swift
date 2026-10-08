@@ -323,6 +323,38 @@ struct ConfigurationResolverTests {
         #expect(result.filter.operators.contains("NegateConditional"))
     }
 
+    @Test("Given every operator of the tier disabled, when resolved, then it is a usage error, not every operator")
+    func disablingTheWholeTierIsAUsageError() {
+        let error = #expect(throws: UsageError.self) {
+            try resolver.resolve(
+                cliArguments: ParsedArguments(
+                    build: .init(scheme: "App", destination: "d"),
+                    filter: .init(disabledMutators: ["LogicalOperatorReplacement", "NegateConditional"])
+                ),
+                fileValues: ["disabled-mutators": "SwapTernary"]
+            )
+        }
+
+        #expect(error?.message.contains("'default' tier") == true)
+    }
+
+    @Test("Given the default tier disabled but a larger tier chosen, when resolved, then the rest of that tier runs")
+    func disablingTheDefaultTierLeavesALargerTierItsOtherOperators() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(
+                build: .init(scheme: "App", destination: "d"),
+                filter: .init(
+                    disabledMutators: ["LogicalOperatorReplacement", "NegateConditional", "SwapTernary"],
+                    operatorTier: "experimental"
+                )
+            ),
+            fileValues: [:]
+        )
+
+        #expect(result.filter.operators.contains("RemoveSideEffects"))
+        #expect(!result.filter.operators.contains("SwapTernary"))
+    }
+
     @Test("Given --operator via CLI and disabledMutators in file, when resolved, then CLI --operator wins")
     func cliOperatorOverridesDisabledMutators() throws {
         let result = try resolver.resolve(
