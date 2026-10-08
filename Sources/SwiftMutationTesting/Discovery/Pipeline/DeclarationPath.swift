@@ -38,7 +38,6 @@ enum DeclarationPath {
         if let decl = node.as(StructDeclSyntax.self) { return decl.name.text }
         if let decl = node.as(EnumDeclSyntax.self) { return decl.name.text }
         if let decl = node.as(ActorDeclSyntax.self) { return decl.name.text }
-        if let decl = node.as(ProtocolDeclSyntax.self) { return decl.name.text }
         if let decl = node.as(ExtensionDeclSyntax.self) { return decl.extendedType.trimmedDescription }
         return nil
     }

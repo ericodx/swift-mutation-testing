@@ -8,7 +8,7 @@ enum XcodeContainerLocator {
 
     static func locate(
         in root: URL, workspace: String?, project: String?, fileSystem: FileSystem = FileSystem()
-    ) throws -> XcodeContainer? {
+    ) throws(UsageError) -> XcodeContainer? {
         if workspace != nil, project != nil {
             throw UsageError(message: "--workspace and --project cannot be used together; give one container")
         }
@@ -101,7 +101,7 @@ enum XcodeContainerLocator {
 
     private static func existing(
         _ path: String, extension ext: String, flag: String, in root: URL, fileSystem: FileSystem
-    ) throws -> String {
+    ) throws(UsageError) -> String {
         let url = path.hasPrefix("/") ? URL(fileURLWithPath: path) : root.appendingPathComponent(path)
         guard url.pathExtension == ext, fileSystem.directoryExists(url.path) else {
             throw UsageError(message: "\(flag) '\(path)' is not a .\(ext) under \(root.path)")
@@ -112,7 +112,7 @@ enum XcodeContainerLocator {
         return relative
     }
 
-    private static func requireReferencesInside(_ root: URL, workspace: String) throws {
+    private static func requireReferencesInside(_ root: URL, workspace: String) throws(UsageError) {
         let outside = references(of: workspace, in: root).filter { relative($0, to: root) == nil }
         guard outside.isEmpty else {
             throw UsageError(

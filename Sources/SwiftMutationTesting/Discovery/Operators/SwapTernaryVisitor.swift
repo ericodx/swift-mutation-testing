@@ -57,8 +57,9 @@ final class SwapTernaryVisitor: MutationSyntaxVisitor, OperatorVisitor {
     }
 
     private func joined(_ elements: ArraySlice<ExprSyntax>) -> String {
-        guard let first = elements.first else { return "" }
-        let rest = elements.dropFirst().map(\.description).joined()
-        return (first.with(\.leadingTrivia, []).description + rest).trimmingCharacters(in: .whitespacesAndNewlines)
+        elements.enumerated()
+            .map { $0.offset == 0 ? $0.element.with(\.leadingTrivia, []).description : $0.element.description }
+            .joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
