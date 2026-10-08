@@ -13,14 +13,9 @@ enum JSONLines {
         }
 
         let handle = try FileHandle(forWritingTo: url)
-        do {
-            try handle.seekToEnd()
-            try handle.write(contentsOf: line)
-        } catch {
-            try? handle.close()
-            throw error
-        }
-        try handle.close()
+        defer { try? handle.close() }
+        try handle.seekToEnd()
+        try handle.write(contentsOf: line)
     }
 
     static func failureWarning(for path: String, error: any Error) -> String {
