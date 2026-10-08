@@ -582,6 +582,18 @@ Return value `-1` from either method means the process was killed by the timeout
 
 ---
 
+## Infrastructure/RunnerLaunching.swift
+
+```swift
+protocol RunnerLaunching: ProcessLaunching {
+    func makeRunner() -> ProcessRunner
+}
+```
+
+A launcher that runs every process through a fresh `ProcessRunner`. Its extension gives `launch` and `launchCapturing`, each delegating to `makeRunner()`, so `SPMProcessLauncher` and `XcodeProcessLauncher` supply only the runner — their timeout handling and post-termination cleanup — instead of repeating the same two methods.
+
+---
+
 ## Infrastructure/ProcessRequest.swift
 
 ```swift
@@ -657,11 +669,9 @@ This is what makes a killed mutant cheap. A mutant is killed by its *first* fail
 ## Infrastructure/SPMProcessLauncher.swift
 
 ```swift
-struct SPMProcessLauncher: Sendable, ProcessLaunching {
+struct SPMProcessLauncher: Sendable, RunnerLaunching {
     static func terminate(pid: pid_t, escalation: TimeoutEscalation, kill: SystemCalls.Kill = Darwin.kill)
-
-    func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
-    func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
+    func makeRunner() -> ProcessRunner
 }
 ```
 
@@ -680,11 +690,9 @@ The group is frozen **before** the descendants are collected, and the snapshot i
 ## Infrastructure/XcodeProcessLauncher.swift
 
 ```swift
-struct XcodeProcessLauncher: Sendable, ProcessLaunching {
+struct XcodeProcessLauncher: Sendable, RunnerLaunching {
     static func terminate(pid: pid_t, escalation: TimeoutEscalation, kill: SystemCalls.Kill = Darwin.kill)
-
-    func launch(executableURL:arguments:workingDirectoryURL:timeout:) async throws -> Int32
-    func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String)
+    func makeRunner() -> ProcessRunner
 }
 ```
 
