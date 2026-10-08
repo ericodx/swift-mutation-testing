@@ -39,7 +39,7 @@ struct OperatorRegistryTests {
 
             #expect(rule.shortDescription.text != name)
             #expect(rule.fullDescription.text != "Mutates the code.")
-            #expect(OperatorRegistry.operator(named: name)?.summary == rule.shortDescription.text)
+            #expect(OperatorRegistry.mutationOperator(named: name)?.summary == rule.shortDescription.text)
         }
     }
 
@@ -50,7 +50,7 @@ struct OperatorRegistryTests {
 
     @Test("Given a name no operator has, when looked up, then there is none")
     func anUnknownNameNamesNoOperator() {
-        #expect(OperatorRegistry.operator(named: "FutureOperator") == nil)
+        #expect(OperatorRegistry.mutationOperator(named: "FutureOperator") == nil)
     }
 
     @Test("Given operator names, when the operators are built, then each one reports the name it was asked by")
