@@ -103,6 +103,15 @@ struct ActivationInstrumenterTests {
 
     // MARK: - Helpers
 
+    @Test("Given a file whose operators do not fold elsewhere, when instrumented, then the mutation is still wrapped")
+    func aFoldErrorElsewhereDoesNotStopInstrumenting() throws {
+        let content = "let limit = 10 - 1\nlet bad = 1 == 2 == 3"
+
+        let result = try #require(instrument(content, at: "-"))
+
+        #expect(result.contains(SupportDeclarations.activatingCall(for: Self.path)))
+    }
+
     private func instrument(
         _ mutated: String,
         at needle: String,

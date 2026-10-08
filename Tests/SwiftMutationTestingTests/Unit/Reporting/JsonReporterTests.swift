@@ -195,6 +195,23 @@ struct JsonReporterTests {
         #expect(files?.keys.sorted() == ["/Sources/Calc.swift"])
     }
 
+    @Test("Given a mutant in a file outside the project root, when report called, then its key is the absolute path")
+    func aFileOutsideTheRootKeepsItsAbsolutePath() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let outputPath = dir.appendingPathComponent("mutation.json").path
+
+        try JsonReporter(outputPath: outputPath, projectRoot: "/abs/MyApp").report(
+            RunnerSummary(
+                results: [makeExecutionResult(filePath: "/elsewhere/Calc.swift", status: .survived)], totalDuration: 0
+            )
+        )
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: outputPath))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect((json?["files"] as? [String: Any])?.keys.sorted() == ["/elsewhere/Calc.swift"])
+    }
+
     @Test("Given a mutant killed by a crash, when report called, then it is Killed with crash as the reason")
     func crashedMutantIsKilledWithReason() throws {
         let mutant = try reportedMutant(status: .killedByCrash)

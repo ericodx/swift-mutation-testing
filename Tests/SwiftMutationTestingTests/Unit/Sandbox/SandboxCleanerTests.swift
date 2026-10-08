@@ -289,6 +289,7 @@ struct SandboxCleanerTests {
         let recorder = ExitRecorder()
 
         SandboxCleaner.installSignalHandlers()
+        SandboxCleaner.installSignalHandlers()
         let interrupt = signal(SIGINT, SIG_DFL)
         let terminate = signal(SIGTERM, SIG_DFL)
         let hangUp = signal(SIGHUP, SIG_DFL)

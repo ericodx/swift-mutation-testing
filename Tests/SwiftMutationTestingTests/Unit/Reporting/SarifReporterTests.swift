@@ -164,6 +164,14 @@ struct SarifReporterTests {
 
     // MARK: - Helpers
 
+    @Test("Given the file system root as the project, when reported, then the base URI is the root once")
+    func theRootAsTheProjectHasOneSlash() throws {
+        let log = try report([makeExecutionResult(filePath: "/A.swift", status: .survived)], projectRoot: "/")
+
+        let base = try #require(run(of: log)["originalUriBaseIds"] as? [String: [String: String]])
+        #expect(base["%SRCROOT%"]?["uri"] == "file:///")
+    }
+
     private func report(_ results: [ExecutionResult], projectRoot: String = "/tmp") throws -> [String: Any] {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
