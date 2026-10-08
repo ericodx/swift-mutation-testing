@@ -221,7 +221,7 @@ struct SimulatorPoolTests {
 
     @Test("Given output that is not a device list, when orphaned clones are looked for, then none are named")
     func unreadableListNamesNoOrphan() {
-        #expect(SimulatorPool.orphanedClones(in: "not json").isEmpty)
+        #expect(SimulatorPool.orphanedClones(in: "not json", isAlive: { _ in false }).isEmpty)
     }
 
     @Test("Given a clone left by a run that is gone, when a pool is set up, then that clone is deleted")
