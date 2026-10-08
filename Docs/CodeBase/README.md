@@ -8,17 +8,17 @@ Type-level reference for every public and internal type in `swift-mutation-testi
 
 | Document | Coverage |
 |---|---|
-| [01 — Entry Point](01-entry-point.md) | `SwiftMutationTesting`, `Command` and its seven commands (`HelpCommand`, `VersionCommand`, `InitCommand`, `PlanCommand`, `MergeCommand`, `ReproduceCommand`, `RunCommand`), `RunConclusion`, `CommandSupport`, `ExitCode`, `HelpText`, `UsageError` |
+| [01 — Entry Point](01-entry-point.md) | the executable's `main.swift`, `SwiftMutationTesting`, `Command` and its seven commands (`HelpCommand`, `VersionCommand`, `InitCommand`, `PlanCommand`, `MergeCommand`, `ReproduceCommand`, `RunCommand`), `RunConclusion`, `CommandSupport`, `ExitCode`, `HelpText`, `Version`, `UsageError` |
 | [02 — Configuration](02-configuration.md) | `CommandLineParser`, `ParsedArguments`, `RunnerConfiguration`, `BuildOptions`, `ReportingOptions`, `FilterOptions`, `ProjectType`, `XcodeContainer`, `XcodeContainerLocator`, `TestingFramework`, `ConfigurationResolver`, `ConfigurationFileParser`, `ConfigurationFileWriter`, `ProjectDetector`, `DetectedProject`, `GateOptions` |
-| [03 — Discovery Pipeline](03-discovery-pipeline.md) | `DiscoveryPipeline`, `OperatorRegistry`, `OperatorTier`, `DiscoveryInput`, `FileDiscoveryStage`, `FileDiscoveryError`, `ParsingStage`, `MutantDiscoveryStage`, `MutantIndexingStage`, `SchematizationStage`, `IncompatibleRewritingStage`, `SourceFile`, `ParsedSource`, `MutationPoint`, `IndexedMutationPoint`, `MutantDescriptor`, `MutantID`, `MutationExclusion`, `DeclarationPath`, `MutantFingerprint` |
+| [03 — Discovery Pipeline](03-discovery-pipeline.md) | `DiscoveryPipeline`, `OperatorRegistry`, `OperatorTier`, `DiscoveryInput`, `FileDiscoveryStage`, `ExcludePattern`, `FileDiscoveryError`, `ParsingStage`, `MutantDiscoveryStage`, `MutantIndexingStage`, `SchematizationStage`, `IncompatibleRewritingStage`, `SourceFile`, `ParsedSource`, `MutationPoint`, `IndexedMutationPoint`, `MutantDescriptor`, `MutantID`, `MutationExclusion`, `DeclarationPath`, `MutantFingerprint` |
 | [04 — Mutation Operators](04-mutation-operators.md) | `MutationOperator`, `OperatorVisitor`, `VisitorOperator`, `MutationSyntaxVisitor`, `ReplacementKind`, all 7 operator typealiases and visitors, `SuppressionAnnotationExtractor`, `SuppressionFilter`, `SuppressionVisitor`, `InfiniteLoopBodyVisitor`, `InfiniteLoopBodyExtractor`, `InfiniteLoopFilter`, `HostBuildConfiguration`, `InactiveRegionExtractor`, `InactiveRegionFilter` |
-| [05 — Schematization](05-schematization.md) | `SchemataGenerator`, `SupportDeclarations`, `ActivationInstrumenter`, `ImportStyle`, `FunctionBodyShape`, `MutationRewriter`, `UTF8Splice`, `TypeScopeVisitor`, `FunctionBodyScope`, `SchematizedFile` |
-| [06 — Sandbox & Build](06-sandbox-build.md) | `SandboxFactory`, `SandboxName`, `SandboxCleaner`, `OrphanedProcessReaper`, `SandboxRegistry`, `Sandbox`, `BuildStage`, `ToolRequests`, `BuildArtifact`, `BuildError` |
-| [07 — Execution](07-execution.md) | `MutantExecutor`, `SchemaNarrower`, `BaselineProbe`, `ResultRecorder`, `ExecutionDeps`, `ApplicationVerifier`, `IntegrityError`, `ActivationMarker`, `TestExecutionStage`, `TestExecutionContext`, `TestBundle`, `TestTargetSelection`, `TargetedSuite`, `TestLaunchResult`, `TestBundleInvocation`, `DeveloperToolchain`, `TargetedSuites`, `FallbackExecutor`, `IncompatibleMutantExecutor`, `SimulatorPool`, `SimulatorSlot`, `SimulatorManager`, `SimulatorError`, `MutationCounter`, `RunnerInput`, `ExecutionResult`, `ExecutionStatus`, `BaselineError` |
-| [08 — Result Parsing & Cache](08-result-parsing-cache.md) | `TestResultResolver`, `ResultParser`, `SPMResultParser`, `TestRunOutcome`, `TestOutputParser`, `XCResultParser`, `CacheStore`, `CacheTestSelection`, `MutantCacheKey`, `KillerTestFileResolver` |
-| [09 — Reporting & Infrastructure](09-reporting-infrastructure.md) | `ProgressReporter`, `ConsoleProgressReporter`, `SilentProgressReporter`, `RunnerEvent`, `RunnerSummary`, `RunnerSummary+DetectionLine`, `RunnerSummary+Integrity`, `ExecutionResult+ReportStatusReason`, `ReportFormat`, `ReportWriter`, `TextReporter`, `JsonReporter`, `HtmlReporter`, `SonarReporter`, `SarifReporter`, all `Sarif*` types, `MarkdownReporter`, `GateResult+Summary`, `MutantLogWriter`, all `MutationReport*` types, all `Sonar*` types, `ProcessLaunching`, `ProcessRunner`, `ProcessRequest`, `OutputStopRule`, `OutputWatcher`, `SPMProcessLauncher`, `XcodeProcessLauncher`, `SleepInhibitor`, `StandardOutput`, `StandardError`, `FileSystem`, `VersionedJSON`, `JSONLines`, `SystemCalls`, `CanonicalPath`, `ProcessTree`, `ProcessArguments`, `TimeoutEscalation`, `ProcessGroupRegistry`, `XCTestRunPlist`, `TestFilesHasher`, `ProjectRelativePath` |
-| [10 — Quality Gate](10-quality-gate.md) | `QualityGate`, `GatePolicy`, `GateResult`, `GateError`, `Baseline`, `BaselineScope`, `BaselineEntry`, `BaselineStore`, `GateReporter` |
-| [11 — Plans](11-plans.md) | `Plan`, `PlanStore`, `PlanError`, `Planner`, `PlanMaterializer`, `PlanJournal`, `PlanResumer`, `Shard`, `ShardSelector`, `RunIdentity`, `RunnerConfiguration+Plan`, `ResultMerger`, `MergeError`, `Reproducer` |
+| [05 — Schematization](05-schematization.md) | `SchemataGenerator`, `SchemaGeneration`, `SupportDeclarations`, `ActivationInstrumenter`, `ImportStyle`, `FunctionBodyShape`, `MutationRewriter`, `UTF8Splice`, `TypeScopeVisitor`, `FunctionBodyScopes`, `FunctionBodyScope`, `SchematizedFile` |
+| [06 — Sandbox & Build](06-sandbox-build.md) | `SandboxFactory`, `SandboxLink`, `SandboxName`, `SandboxCleaner`, `OrphanedProcessReaper`, `SandboxRegistry`, `Sandbox`, `BuildStage`, `ToolRequests`, `BuildArtifact`, `BuildError` |
+| [07 — Execution](07-execution.md) | `MutantExecutor`, `SchemaNarrower`, `BaselineProbe`, `ResultRecorder`, `ExecutionDeps`, `ApplicationVerifier`, `IntegrityError`, `ActivationMarker`, `TestExecutionStage`, `TestExecutionContext`, `TestBundle`, `TestTargetSelection`, `TargetedSuite`, `TestLaunchResult`, `TestBundleInvocation`, `DeveloperToolchain`, `TargetedSuites`, `FallbackExecutor`, `IncompatibleMutantExecutor`, `SimulatorPool`, `CloneName`, `SimulatorSlot`, `SimulatorManager`, `SimulatorError`, `MutationCounter`, `RunnerInput`, `ExecutionResult`, `ExecutionStatus`, `BaselineError` |
+| [08 — Result Parsing & Cache](08-result-parsing-cache.md) | `TestResultResolver`, `ResultParser`, `TestRunOutcome`, `TestOutputParser`, `SPMResultParser`, `XCResultParser`, `CacheTestSelection`, `CacheStore`, `CacheMetadata`, `MutantCacheKey`, `TestFileDiff`, `KillerTestFileResolver` |
+| [09 — Reporting & Infrastructure](09-reporting-infrastructure.md) | `ProgressReporter`, `ConsoleProgressReporter`, `SilentProgressReporter`, `RunnerEvent`, `RunnerSummary`, `ExecutionResult+ReportStatusReason`, `RunnerSummary+DetectionLine`, `RunnerSummary+Cache`, `TextReporter`, `JsonReporter`, `HtmlReporter`, `String+HtmlEscaped`, `SonarReporter`, `SarifReporter`, all `Sarif*` types and `SarifRuleCatalog`, `MarkdownReporter`, `GateResult+Summary`, `ReportFormat`, `ReportWriter`, `ExecutionStatus+MutationReportStatus`, `ExecutionStatus+ProgressIcon`, all `MutationReport*` types (with `MutationReportConfig`), all `Sonar*` types, `MutantLogWriter`, `ProcessLaunching`, `RunnerLaunching`, `ProcessRequest`, `ProcessRunner`, `SPMProcessLauncher`, `XcodeProcessLauncher`, `SleepInhibitor`, `StandardOutput`, `StandardError`, `FileSystem`, `VersionedJSON`, `JSONLines`, `OnceWarning`, `OutputStopRule`, `OutputWatcher`, `SystemCalls`, `CanonicalPath`, `ProcessTree`, `ProcessArguments`, `TimeoutEscalation`, `ProcessGroupRegistry`, `XCTestRunPlist`, `ProjectRelativePath`, `TestFilesHasher`, `Uniquing` |
+| [10 — Quality Gate](10-quality-gate.md) | `GatePolicy`, `QualityGate`, `GateResult`, `Baseline`, `BaselineScope`, `BaselineEntry`, `BaselineStore`, `GateError`, `GateReporter` |
+| [11 — Plans](11-plans.md) | `Plan`, `PlanStore`, `PlanError`, `Planner`, `PlanMaterializer`, `Shard`, `ShardSelector`, `PlanJournal`, `PlanResumer`, `RunIdentity`, `RunnerConfiguration+Plan`, `ResultMerger`, `MergeError`, `Reproducer`, `Reproduction` |
 
 ---
 
@@ -43,7 +43,7 @@ RunnerInput
   → FallbackExecutor (on build failure)     → [ExecutionResult]
   → IncompatibleMutantExecutor              → [ExecutionResult]
   → RunnerSummary
-  → ReportWriter → Reporters
+  → RunConclusion → TextReporter, QualityGate, ReportWriter → Reporters, GateReporter
 ```
 
 ### Actors
@@ -61,6 +61,7 @@ RunnerInput
 |---|---|
 | `0` | Success |
 | `1` | Error (usage, build failure, unexpected) |
+| `2` | Quality gate failed (`ExitCode.gateFailed`) |
 
 ### Regions the suite deliberately does not cover
 
