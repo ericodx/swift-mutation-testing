@@ -92,6 +92,28 @@ struct PlanEdgeCaseTests {
         #expect(exit == .error)
     }
 
+    @Test(
+        "Given a result of each status, when the verdict is given, then it is described with its reason",
+        arguments: [
+            (ExecutionStatus.killed(by: "Suite.check"), Bool?.some(true), "Verdict: killed by Suite.check"),
+            (.killedByCrash, nil, "Verdict: killed, the test process crashed (crash)"),
+            (.timeout, false, "Verdict: timeout (timed out without activation)"),
+            (.noCoverage, false, "Verdict: no coverage, no test ran the mutated code"),
+            (.survived, true, "Verdict: survived"),
+            (.unviable, nil, "Verdict: unviable, the mutant does not compile"),
+        ]
+    )
+    func eachStatusIsDescribed(status: ExecutionStatus, activated: Bool?, expected: String) {
+        let result = ExecutionResult(
+            descriptor: makeMutantDescriptor(), status: status, testDuration: 0, activated: activated
+        )
+
+        let (line, exit) = Reproducer.verdict(of: [result])
+
+        #expect(line == expected)
+        #expect(exit == .success)
+    }
+
     // MARK: - Helpers
 
     private static let execution = PlanMaterializer.ExecutionOptions(timeout: 60, concurrency: 1, noCache: true)

@@ -73,4 +73,40 @@ struct PlanAndMergeErrorTests {
     func discoveryErrorsDescribeThemselves(error: FileDiscoveryError, message: String) {
         #expect(error.errorDescription == message)
     }
+
+    @Test("Given one mutant missing, when described, then the noun is singular and nothing more is counted")
+    func oneMissingMutantIsSingular() {
+        let message = MergeError.missing(count: 1, sample: ["f0 (A.swift:1)"]).errorDescription
+
+        #expect(message?.hasPrefix("1 mutant has no verdict in any result") == true)
+        #expect(message?.contains("more") == false)
+    }
+
+    @Test("Given more mutants missing than the sample shows, when described, then the rest are counted")
+    func missingMutantsBeyondTheSampleAreCounted() {
+        let message = MergeError.missing(count: 7, sample: ["a", "b", "c", "d", "e"]).errorDescription
+
+        #expect(message?.hasPrefix("7 mutants have no verdict in any result") == true)
+        #expect(message?.contains("  … and 2 more") == true)
+    }
+
+    @Test("Given an Xcode plan's project, when read back, then its project container and type hold")
+    func anXcodePlanProjectReadsBack() {
+        let project = Plan.Project(
+            type: .xcode(scheme: "App", destination: "platform=macOS"), testTarget: nil,
+            container: .project("App.xcodeproj")
+        )
+
+        #expect(project.xcodeContainer == .project("App.xcodeproj"))
+        #expect(project.projectType == .xcode(scheme: "App", destination: "platform=macOS"))
+    }
+
+    @Test("Given an Xcode plan's project with no scheme, when decoded, then it has no project type")
+    func anXcodeProjectWithoutASchemeHasNoType() throws {
+        let project = try JSONDecoder().decode(
+            Plan.Project.self, from: Data(#"{"type": "xcode", "destination": "platform=macOS"}"#.utf8)
+        )
+
+        #expect(project.projectType == nil)
+    }
 }

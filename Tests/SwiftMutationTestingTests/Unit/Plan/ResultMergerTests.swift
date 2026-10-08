@@ -111,6 +111,37 @@ struct ResultMergerTests {
         ),
     ]
 
+    @Test("Given a result with a timed-out mutant, when merged, then it is a timeout")
+    func aTimeoutIsMerged() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let path = try Self.writeResult(
+            in: dir, name: "a.json", plan: Self.plan,
+            verdicts: Self.mutants.map { ($0, ExecutionStatus.timeout, true) }
+        )
+
+        let merged = try ResultMerger().merge(resultPaths: [path], plan: Self.plan, projectPath: dir.path)
+
+        #expect(merged.results.map(\.status) == Array(repeating: .timeout, count: Self.mutants.count))
+    }
+
+    @Test("Given a result with a status no version writes, when merged, then the merge is refused naming it")
+    func anUnknownStatusIsRefused() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let path = try Self.writeResult(
+            in: dir, name: "a.json", plan: Self.plan,
+            verdicts: Self.mutants.map { ($0, ExecutionStatus.survived, true) }
+        )
+        let json = try String(contentsOfFile: path, encoding: .utf8)
+        try json.replacingOccurrences(of: "\"Survived\"", with: "\"Pending\"")
+            .write(toFile: path, atomically: true, encoding: .utf8)
+
+        #expect(throws: MergeError.unknownStatus(path: path, status: "Pending")) {
+            try ResultMerger().merge(resultPaths: [path], plan: Self.plan, projectPath: dir.path)
+        }
+    }
+
     static let plan = Plan(
         formatVersion: Plan.formatVersion, toolVersion: "0", project: Plan.Project(type: .spm, testTarget: nil),
         scope: Plan.Scope(

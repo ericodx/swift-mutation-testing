@@ -42,4 +42,11 @@ struct IntegrityErrorTests {
         #expect(message?.hasPrefix("3 mutants were killed, but no mutant's code was ever seen running.") == true)
         #expect(message?.contains("every verdict is suspect") == true)
     }
+
+    @Test("Given one kill without any activation, when described, then the count is singular")
+    func oneKillWithoutActivationIsSingular() {
+        let message = IntegrityError.activationNeverObserved(killed: 1).errorDescription
+
+        #expect(message?.hasPrefix("1 mutant was killed, but no mutant's code was ever seen running.") == true)
+    }
 }
