@@ -8,6 +8,7 @@ import Foundation
 //   run <fixture> <results-dir> --tool <swift-mutation-testing> --label <name> --destination <destination>
 //       [--concurrency <n>] [--repetitions <n>]
 //   summarize <results-dir> [--baseline <label>]
+//   timings <fixture> --destination <destination> [--repetitions <n>] [--limit <seconds>]
 //
 // `fixture` copies CalcApp and adds <n> generated source files (300 by default) to its project, a
 // Constants.swift of `static let` initialisers whose 11 mutations are all incompatible, a project that builds
@@ -22,6 +23,13 @@ import Foundation
 //
 // `summarize` prints the medians per label as a Markdown table, the change against --baseline (the first
 // label otherwise), and refuses when two runs reached different verdicts, since their times do not compare.
+//
+// `timings` measures, with xcodebuild alone and on a copy of the fixture, what the warm sandboxes and the
+// diagnostics flag save each mutant: a cold build-for-testing, an incremental one after a one-line change to
+// Constants.swift, and a test-without-building that has a failing test, with and without
+// `-collect-test-diagnostics never`. It prints the medians of <n> runs of each (3 by default). A run still going
+// after --limit seconds (120 by default) is stopped and counted as "over the limit": a failing run that
+// collects diagnostics on the simulator can take ten minutes.
 //
 // Comparing versions: build each one in a worktree of its own and pass its binary as --tool.
 //
@@ -370,6 +378,92 @@ func verdictLine(_ verdicts: [String: Int]) -> String {
     verdicts.sorted { $0.key < $1.key }.map { "\($0.value) \($0.key)" }.joined(separator: ", ")
 }
 
+// MARK: - Timing xcodebuild alone
+
+func timings(fixture: URL, destination: String, repetitions: Int, limit: Double) throws {
+    let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("smt-timings-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: scratch) }
+    let project = scratch.appendingPathComponent("project")
+    try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+    try FileManager.default.copyItem(at: fixture, to: project)
+    let constants = project.appendingPathComponent("Sources/Constants.swift")
+    let original = try String(contentsOf: constants, encoding: .utf8)
+
+    func xcodebuild(_ action: [String], derivedData: URL) throws -> (seconds: Double, exitCode: Int32) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        process.arguments =
+            ["xcodebuild"] + action
+            + ["-scheme", "CalcApp", "-destination", destination, "-derivedDataPath", derivedData.path, "-quiet"]
+        process.currentDirectoryURL = project
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let start = Date()
+        try process.run()
+        while process.isRunning, Date().timeIntervalSince(start) < limit {
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        guard !process.isRunning else {
+            process.terminate()
+            process.waitUntilExit()
+            return (.infinity, -1)
+        }
+        return (Date().timeIntervalSince(start), process.terminationStatus)
+    }
+
+    func shown(_ values: [Double]) -> String {
+        let stopped = values.filter { $0 == .infinity }.count
+        let value = median(values)
+        let time = value == .infinity ? "over \(seconds(limit))" : seconds(value)
+        return stopped == 0 ? time : "\(time) (\(stopped) of \(values.count) stopped at \(seconds(limit)))"
+    }
+
+    func setMaximum(_ expression: String) throws {
+        try original.replacingOccurrences(of: "maximum = 90 + 10", with: "maximum = \(expression)")
+            .write(to: constants, atomically: true, encoding: .utf8)
+    }
+
+    var cold: [Double] = []
+    for repetition in 1 ... repetitions {
+        let derivedData = scratch.appendingPathComponent("cold-\(repetition)")
+        let build = try xcodebuild(["build-for-testing"], derivedData: derivedData)
+        guard build.exitCode == 0 else { throw BenchmarkError("the fixture does not build for \(destination)") }
+        cold.append(build.seconds)
+    }
+
+    let warm = scratch.appendingPathComponent("cold-1")
+    _ = try xcodebuild(["build-for-testing"], derivedData: warm)
+    var incremental: [Double] = []
+    for repetition in 1 ... repetitions {
+        try setMaximum(repetition % 2 == 0 ? "90 + 10" : "90 * 10")
+        incremental.append(try xcodebuild(["build-for-testing"], derivedData: warm).seconds)
+    }
+
+    try setMaximum("90 - 10")
+    _ = try xcodebuild(["build-for-testing"], derivedData: warm)
+    var collecting: [Double] = []
+    var skipping: [Double] = []
+    for _ in 1 ... repetitions {
+        let withDiagnostics = try xcodebuild(["test-without-building"], derivedData: warm)
+        let withoutDiagnostics = try xcodebuild(
+            ["test-without-building", "-collect-test-diagnostics", "never"], derivedData: warm
+        )
+        guard withDiagnostics.exitCode != 0, withoutDiagnostics.exitCode != 0 else {
+            throw BenchmarkError("the mutated fixture's tests passed; the failing run measures nothing")
+        }
+        collecting.append(withDiagnostics.seconds)
+        skipping.append(withoutDiagnostics.seconds)
+    }
+
+    print("Medians of \(repetitions) runs on \(destination):\n")
+    print("| Step | Time |")
+    print("|---|---|")
+    print("| Cold build-for-testing | \(shown(cold)) |")
+    print("| Incremental build-for-testing, one file changed | \(shown(incremental)) |")
+    print("| Failing test-without-building, diagnostics collected | \(shown(collecting)) |")
+    print("| Failing test-without-building, -collect-test-diagnostics never | \(shown(skipping)) |")
+}
+
 // MARK: - Helpers
 
 struct BenchmarkError: Error, CustomStringConvertible {
@@ -389,7 +483,7 @@ setbuf(stdout, nil)
 do {
     let arguments = Array(CommandLine.arguments.dropFirst())
     guard let command = arguments.first else {
-        throw BenchmarkError("usage: benchmark.swift fixture|run|summarize …")
+        throw BenchmarkError("usage: benchmark.swift fixture|run|summarize|timings …")
     }
     let script = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
 
@@ -421,6 +515,17 @@ do {
             tool: tool, label: label, destination: destination,
             concurrency: option("--concurrency", in: arguments).flatMap(Int.init) ?? 1,
             repetitions: option("--repetitions", in: arguments).flatMap(Int.init) ?? 3
+        )
+
+    case "timings":
+        guard arguments.count >= 2, let destination = option("--destination", in: arguments) else {
+            throw BenchmarkError(
+                "usage: timings <fixture> --destination <destination> [--repetitions <n>] [--limit <seconds>]")
+        }
+        try timings(
+            fixture: URL(fileURLWithPath: arguments[1]), destination: destination,
+            repetitions: option("--repetitions", in: arguments).flatMap(Int.init) ?? 3,
+            limit: option("--limit", in: arguments).flatMap(Double.init) ?? 120
         )
 
     case "summarize":
