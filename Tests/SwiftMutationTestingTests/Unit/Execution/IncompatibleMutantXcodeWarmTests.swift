@@ -76,6 +76,35 @@ struct IncompatibleMutantXcodeWarmTests {
         #expect(await launcher.requests.filter { $0.arguments.first == "build-for-testing" }.count == 1)
     }
 
+    @Test(
+        "Given one worker warmed and the other failing to start, when executed, then the error ends it and frees both")
+    func aWorkerFailingToWarmFreesTheOther() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let launcher = SecondWarmBuildThrows()
+        let pool = SimulatorPool(baseUDID: nil, size: 2, destination: "platform=macOS", launcher: launcher)
+        try await pool.setUp()
+        let executor = IncompatibleMutantExecutor(
+            deps: makeExecutionDeps(launcher: launcher, cacheStorePath: dir.appendingPathComponent("c.json").path),
+            sandboxFactory: SandboxFactory()
+        )
+        let file = dir.appendingPathComponent("Foo.swift")
+        try "let x = 0".write(to: file, atomically: true, encoding: .utf8)
+        let mutants = (0 ..< 2).map {
+            makeMutantDescriptor(id: "m\($0)", filePath: file.path, mutatedSourceContent: "let x = \($0)")
+        }
+
+        await #expect(throws: CocoaError.self) {
+            _ = try await executor.execute(
+                mutants, configuration: makeRunnerConfiguration(projectPath: dir.path, concurrency: 8), pool: pool
+            )
+        }
+
+        let first = try await pool.acquire()
+        let second = try await pool.acquire()
+        #expect([first, second].count == 2, "both slots went back to the pool")
+    }
+
     // MARK: - Private
 
     private func run(
@@ -99,5 +128,23 @@ struct IncompatibleMutantXcodeWarmTests {
         }
 
         return try await executor.execute(mutants, configuration: configuration, pool: pool)
+    }
+}
+
+private actor SecondWarmBuildThrows: ProcessLaunching {
+    private var builds = 0
+
+    func launch(
+        executableURL: URL, arguments: [String], workingDirectoryURL: URL, timeout: Double
+    ) async throws -> Int32 {
+        0
+    }
+
+    func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String) {
+        guard request.arguments.first == "build-for-testing" else { return (0, "") }
+        builds += 1
+        guard builds == 2 else { return (0, "") }
+        try await Task.sleep(for: .milliseconds(300))
+        throw CocoaError(.fileReadNoSuchFile)
     }
 }

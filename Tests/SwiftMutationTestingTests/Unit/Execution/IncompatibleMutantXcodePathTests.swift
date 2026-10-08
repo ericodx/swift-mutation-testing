@@ -61,10 +61,30 @@ struct IncompatibleMutantXcodePathTests {
         #expect(await launcher.builtInstrumented.isEmpty)
     }
 
+    @Test("Given a reproduction whose instrumented build fails, when executed, then the plain mutant runs unmeasured")
+    func aReproductionWithAFailedInstrumentedBuildRunsThePlainMutant() async throws {
+        let (results, launcher) = try await execute(
+            reproducing: true, failsInstrumentedBuild: true, testRuns: [.passes(writesMarker: false)]
+        )
+
+        #expect(results.map(\.status) == [.survived])
+        #expect(results.map(\.activated) == [nil])
+        #expect(await launcher.builtInstrumented == [true, false])
+    }
+
+    @Test("Given a reproduction with no mutant to run, when executed, then nothing is built")
+    func aReproductionOfNothingBuildsNothing() async throws {
+        let (results, launcher) = try await execute(reproducing: true, mutants: 0, testRuns: [])
+
+        #expect(results.isEmpty)
+        #expect(await launcher.builtInstrumented.isEmpty)
+    }
+
     // MARK: - Private
 
     private func execute(
         reproducing: Bool = false,
+        mutants count: Int = 1,
         content: String? = mutated,
         failsInstrumentedBuild: Bool = false,
         testRuns: [ActivationScriptLauncher.TestRun]
@@ -95,11 +115,11 @@ struct IncompatibleMutantXcodePathTests {
         configuration.build.reproduction = reproduction
 
         let results = try await executor.execute(
-            [
+            (0 ..< count).map { _ in
                 makeMutantDescriptor(
                     filePath: file.path, line: 2, column: 26, utf8Offset: Self.offset, mutatedSourceContent: content
                 )
-            ],
+            },
             configuration: configuration,
             pool: pool
         )
