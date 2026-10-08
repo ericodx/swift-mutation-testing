@@ -29,20 +29,20 @@ swift build
 Run the test suite:
 
 ```bash
-make test        # swift test --no-parallel
+swift test --no-parallel
 ```
 
-Always `--no-parallel`, which is what `make test` and CI do. Several tests
-capture stdout or drive real processes, and two of them running at once read
-each other's output.
+Always `--no-parallel`, which is what CI does. Several tests capture stdout or
+drive real processes, and two of them running at once read each other's
+output.
 
-`make coverage` writes a coverage report for SonarCloud, and `make sonar`
-publishes it. `make regions`, run after `make coverage`, prints the region
-coverage of every file under `Sources/` from the profile it left. Region
-coverage is the number that matters here: the regions the suite deliberately
-leaves uncovered are listed, with a reason each, in
-[Docs/CodeBase/README.md](CodeBase/README.md), and anything uncovered that is
-not on that list is a gap.
+`swift test --enable-code-coverage --no-parallel` also writes a coverage
+profile. On every push to `main`, CI turns that profile into the report
+SonarCloud reads. Region coverage is the number that matters here: the
+commands that print it from the profile, and the regions the suite
+deliberately leaves uncovered with a reason each, are in
+[Docs/CodeBase/README.md](CodeBase/README.md#regions-the-suite-deliberately-does-not-cover).
+Anything uncovered that is not on that list is a gap.
 
 The suite includes unit tests and fixture-backed integration coverage. If the
 toolchain is older than the version required by `Package.swift`, upgrade Swift
