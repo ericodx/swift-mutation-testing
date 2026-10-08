@@ -104,12 +104,12 @@ struct KillerTestFileResolverTests {
 
         let hasher = TestFilesHasher()
         let resolver = KillerTestFileResolver(
-            testFilePaths: hasher.testFilePaths(projectPath: dir.path),
+            testFilePaths: hasher.snapshot(projectPath: dir.path).paths,
             projectPath: dir.path
         )
 
         let killerFile = try #require(resolver.resolve(testName: "CalculatorTests.testAddition"))
-        let hashedKeys = Set(hasher.hashPerFile(projectPath: dir.path).keys)
+        let hashedKeys = Set(hasher.snapshot(projectPath: dir.path).hashes.keys)
 
         #expect(hashedKeys.contains(killerFile), "\(killerFile) is not among \(hashedKeys)")
     }

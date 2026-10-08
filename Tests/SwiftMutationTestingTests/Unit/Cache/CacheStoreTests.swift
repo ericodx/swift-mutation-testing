@@ -330,7 +330,7 @@ struct CacheStoreTests {
 
         let hasher = TestFilesHasher()
         let resolver = KillerTestFileResolver(
-            testFilePaths: hasher.testFilePaths(projectPath: project.path),
+            testFilePaths: hasher.snapshot(projectPath: project.path).paths,
             projectPath: project.path
         )
         let store = CacheStore(storePath: project.appendingPathComponent("cache.json").path)
@@ -342,12 +342,12 @@ struct CacheStoreTests {
             killerTestFile: resolver.resolve(testName: "FooTests.testBar")
         )
         try await store.persistMetadata(
-            CacheStore.CacheMetadata(testFileHashes: hasher.hashPerFile(projectPath: project.path))
+            CacheStore.CacheMetadata(testFileHashes: hasher.snapshot(projectPath: project.path).hashes)
         )
 
         try "final class FooTests {}".write(to: testFile, atomically: true, encoding: .utf8)
 
-        let diff = try await store.changedTestFiles(current: hasher.hashPerFile(projectPath: project.path))
+        let diff = try await store.changedTestFiles(current: hasher.snapshot(projectPath: project.path).hashes)
         await store.invalidate(diff: diff)
 
         #expect(await store.result(for: key) == nil)

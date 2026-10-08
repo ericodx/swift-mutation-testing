@@ -43,7 +43,7 @@ struct TypeScopeVisitorTests {
         visitor.walk(source.syntax)
 
         let mutation = BooleanLiteralReplacement().mutations(in: source)[0]
-        #expect(visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
+        #expect(visitor.functionScopes.isSchematizable(utf8Offset: mutation.utf8Offset))
     }
 
     @Test("Given mutation at file scope, when checked, then isSchematizable returns false")
@@ -54,7 +54,7 @@ struct TypeScopeVisitorTests {
         visitor.walk(source.syntax)
 
         let mutation = BooleanLiteralReplacement().mutations(in: source)[0]
-        #expect(!visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
+        #expect(!visitor.functionScopes.isSchematizable(utf8Offset: mutation.utf8Offset))
     }
 
     @Test("Given computed property with implicit getter, when walked, then mutation inside is not schematizable")
@@ -65,7 +65,7 @@ struct TypeScopeVisitorTests {
         visitor.walk(source.syntax)
 
         let mutation = BooleanLiteralReplacement().mutations(in: source)[0]
-        #expect(!visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
+        #expect(!visitor.functionScopes.isSchematizable(utf8Offset: mutation.utf8Offset))
     }
 
     @Test("Given computed property with explicit getter, when walked, then mutation inside is schematizable")
@@ -76,7 +76,7 @@ struct TypeScopeVisitorTests {
         visitor.walk(source.syntax)
 
         let mutation = BooleanLiteralReplacement().mutations(in: source)[0]
-        #expect(visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
+        #expect(visitor.functionScopes.isSchematizable(utf8Offset: mutation.utf8Offset))
     }
 
     @Test("Given mutation inside global-scope closure, when checked, then isSchematizable returns false")
@@ -87,7 +87,7 @@ struct TypeScopeVisitorTests {
         visitor.walk(source.syntax)
 
         let mutation = BooleanLiteralReplacement().mutations(in: source)[0]
-        #expect(!visitor.isSchematizable(utf8Offset: mutation.utf8Offset))
+        #expect(!visitor.functionScopes.isSchematizable(utf8Offset: mutation.utf8Offset))
     }
 
     @Test("Given deinitializer with body, when walked, then records one scope")
@@ -104,14 +104,14 @@ struct TypeScopeVisitorTests {
         visitor.walk(source.syntax)
 
         let mutations = BooleanLiteralReplacement().mutations(in: source)
-        let insideBody = mutations.first { visitor.isSchematizable(utf8Offset: $0.utf8Offset) }
+        let insideBody = mutations.first { visitor.functionScopes.isSchematizable(utf8Offset: $0.utf8Offset) }
         #expect(insideBody != nil)
     }
 
     @Test("Given offset outside all scopes, when innermostScope queried, then returns nil")
     func innermostScopeReturnsNilForOffsetOutsideAllScopes() {
         let visitor = makeTypeScopeVisitor("func f() { let x = 1 }")
-        #expect(visitor.innermostScope(containing: 99999) == nil)
+        #expect(visitor.functionScopes.innermostScope(containing: 99999) == nil)
     }
 
     @Test("Given nested function, when innermostScope queried, then returns smallest containing scope")
@@ -126,7 +126,7 @@ struct TypeScopeVisitorTests {
         innerVisitor.walk(innerSource.syntax)
 
         guard let innerMutation = BooleanLiteralReplacement().mutations(in: innerSource).first,
-            let scope = innerVisitor.innermostScope(containing: innerMutation.utf8Offset)
+            let scope = innerVisitor.functionScopes.innermostScope(containing: innerMutation.utf8Offset)
         else {
             Issue.record("Expected a mutation and scope")
             return
