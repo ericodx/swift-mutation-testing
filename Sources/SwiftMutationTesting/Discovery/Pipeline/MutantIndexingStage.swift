@@ -7,19 +7,17 @@ struct MutantIndexingStage: Sendable {
         }
         let sorted = inOrder ? mutationPoints : mutationPoints.sorted(by: MutationPoint.inSourceOrder)
 
-        let scopesByPath = Uniquing.keepingFirst(sources.map { ($0.file.path, $0.functionScopes) })
-        let syntaxByPath = Dictionary(uniqueKeysWithValues: sources.map { ($0.file.path, $0.syntax) })
+        let sourceByPath = Dictionary(uniqueKeysWithValues: sources.map { ($0.file.path, $0) })
         var ordinals: [[String]: Int] = [:]
         let paths = ProjectRelativePath.Resolver(projectPath: projectPath)
 
         return sorted.enumerated().map { index, mutation in
-            let schematizable =
-                scopesByPath[mutation.filePath]?.isSchematizable(utf8Offset: mutation.utf8Offset) ?? false
+            let source = sourceByPath[mutation.filePath]
+            let schematizable = source?.functionScopes.isSchematizable(utf8Offset: mutation.utf8Offset) ?? false
             let relativePath = paths.make(for: mutation.filePath)
             let declarationPath =
-                syntaxByPath[mutation.filePath].map {
-                    DeclarationPath.of(utf8Offset: mutation.utf8Offset, in: $0)
-                } ?? DeclarationPath.topLevel
+                source.map { DeclarationPath.of(utf8Offset: mutation.utf8Offset, in: $0.syntax) }
+                ?? DeclarationPath.topLevel
             let identity = [
                 relativePath, declarationPath, mutation.operatorIdentifier, mutation.originalText, mutation.mutatedText,
             ]
