@@ -78,9 +78,9 @@ enum XcodeContainerLocator {
                     let url = directory.appendingPathComponent(name)
                     guard fileSystem.directoryExists(url.path) else { continue }
                     if name.hasSuffix(".xcworkspace"), directory != root {
-                        workspaces.append(relative(url.path, to: root) ?? name)
+                        workspaces.append(String(url.path.dropFirst(root.path.count + 1)))
                     } else if name.hasSuffix(".xcodeproj"), directory != root {
-                        projects.append(relative(url.path, to: root) ?? name)
+                        projects.append(String(url.path.dropFirst(root.path.count + 1)))
                     } else if !name.hasSuffix(".xcworkspace"), !name.hasSuffix(".xcodeproj") {
                         next.append(url)
                     }
@@ -140,9 +140,8 @@ enum XcodeContainerLocator {
     }
 
     private static func list(_ names: [String]) -> String {
-        names.count <= 1
-            ? names.joined()
-            : names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
+        guard names.count > 1, let last = names.last else { return names.joined() }
+        return names.dropLast().joined(separator: ", ") + " and " + last
     }
 
     private final class ReferenceCollector: NSObject, XMLParserDelegate {
