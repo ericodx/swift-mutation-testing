@@ -78,8 +78,8 @@ struct TextReporter: Sendable {
         for result in warnings.prefix(Self.integrityWarningsListed) {
             let desc = result.descriptor
             lines.append(
-                "  \(relative(desc.filePath)):\(desc.line):\(desc.column)"
-                    + "   \(desc.operatorIdentifier)   \(result.reportStatusReason ?? "")"
+                "  \(relative(desc.filePath)):\(desc.line):\(desc.column)   "
+                    + [desc.operatorIdentifier, result.reportStatusReason].compactMap { $0 }.joined(separator: "   ")
             )
         }
         if warnings.count > Self.integrityWarningsListed {

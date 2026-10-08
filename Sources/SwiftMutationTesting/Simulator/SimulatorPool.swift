@@ -138,7 +138,7 @@ actor SimulatorPool {
         await remove(clonedUDIDs)
     }
 
-    static func orphanedClones(in listOutput: String, isAlive: (pid_t) -> Bool = ProcessTree.isAlive) -> [String] {
+    static func orphanedClones(in listOutput: String, isAlive: (pid_t) -> Bool) -> [String] {
         guard
             let data = listOutput.data(using: .utf8),
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -170,7 +170,7 @@ actor SimulatorPool {
             listed.exitCode == 0
         else { return }
 
-        await remove(Self.orphanedClones(in: listed.output))
+        await remove(Self.orphanedClones(in: listed.output, isAlive: ProcessTree.isAlive))
     }
 
     private func remove(_ udids: [String]) async {

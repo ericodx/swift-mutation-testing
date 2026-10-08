@@ -84,7 +84,7 @@ struct ActivationInstrumenter: Sendable {
     private static func wrap(_ expression: ExprSyntax, in content: String, with call: String) -> String? {
         let start = expression.positionAfterSkippingLeadingTrivia.utf8Offset
         let end = expression.endPositionBeforeTrailingTrivia.utf8Offset
-        guard let wrapped = UTF8Splice.substring(of: content, from: start, to: end) else { return nil }
-        return UTF8Splice.replacing(from: start, to: end, in: content, with: "\(call)(\(wrapped))")
+        let wrapped = "\(call)(\(expression.trimmedDescription))"
+        return UTF8Splice.replacing(from: start, to: end, in: content, with: wrapped)
     }
 }

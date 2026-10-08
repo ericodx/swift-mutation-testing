@@ -66,7 +66,7 @@ struct SandboxFactory: Sendable {
         return Sandbox(rootURL: sandboxURL)
     }
 
-    private struct Replacements {
+    struct Replacements {
         let byCanonicalPath: [String: String]
         let byRelativePath: [String: String]
 
