@@ -27,10 +27,6 @@ extension MutationExclusion {
         }
     }
 
-    func filter(_ mutationPoints: [MutationPoint], in syntax: SourceFileSyntax) -> [MutationPoint] {
-        filter(mutationPoints, excluding: ranges(in: syntax))
-    }
-
     func filter(_ mutationPoints: [MutationPoint], in source: ParsedSource) -> [MutationPoint] {
         filter(mutationPoints, excluding: ranges(in: source))
     }
