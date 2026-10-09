@@ -494,7 +494,7 @@ do {
         }
         let source =
             option("--source", in: arguments).map { URL(fileURLWithPath: $0) }
-            ?? script.appendingPathComponent("../../Fixtures/CalcApp").standardizedFileURL
+            ?? script.appendingPathComponent("../../../Fixtures/CalcApp").standardizedFileURL
         try makeFixture(
             at: URL(fileURLWithPath: arguments[1]), from: source,
             fileCount: option("--files", in: arguments).flatMap(Int.init) ?? 300

@@ -179,7 +179,7 @@ A score of 100% means every mutant that could be executed was detected by at lea
 
 ### The number on the README badge
 
-The badge is this repository's own score on the `default` tier, taken from the self-run of the operator campaign — the entry `"."` of `Scripts/operator-campaign/corpus.json`, with its arguments: `Fixtures/` (test data), `Scripts/` (the campaign tooling, which no test runs) and the two sandbox files whose mutants would delete the run's own sandboxes are left out, and the timeout is 300 s so that a surviving mutant's full suite fits. The campaign runs every operator, so the badge's number is the score recomputed over the mutants of the `default` tier's operators in that report; `Docs/OPERATORS.md` has the full result and the date. It is a record run, not a push-time number: it moves when the campaign is rerun. The last self-run, on 2026-10-08, gives 99.8% on the `default` tier (99.2% over every operator).
+The badge is this repository's own score on the `default` tier, taken from the self-run of the operator campaign — the entry `"."` of `.github/scripts/operator-campaign/corpus.json`, with its arguments: `Fixtures/` (test data) and the two sandbox files whose mutants would delete the run's own sandboxes are left out, and the timeout is 300 s so that a surviving mutant's full suite fits. The campaign runs every operator, so the badge's number is the score recomputed over the mutants of the `default` tier's operators in that report; `Docs/OPERATORS.md` has the full result and the date. It is a record run, not a push-time number: it moves when the campaign is rerun. The last self-run, on 2026-10-08, gives 99.8% on the `default` tier (99.2% over every operator).
 
 ---
 
