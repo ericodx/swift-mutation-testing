@@ -48,14 +48,12 @@
       "--exclude",
       "/Fixtures/",
       "--exclude",
-      "/Scripts/",
-      "--exclude",
       "Sandbox/SandboxCleaner.swift",
       "--exclude",
       "Sandbox/SandboxName.swift",
       "--timeout",
       "300"
     ],
-    "note": "Fixtures are test data; Scripts holds the campaign tooling, which no test of the package runs. SandboxCleaner and SandboxName are left out because this repository's own tests call removeOrphaned() on the real sandbox directory: a mutant of the owner-is-alive check, run by those tests inside the sandbox, deletes the sandboxes of the run that is measuring it. The timeout is 300 s because a mutant that survives its tests runs the whole suite, which takes well over the default 30 s under fifteen workers; the suites that run the pipeline themselves are skipped inside a mutant's run by the notInsideAMutationRun trait."
+    "note": "Fixtures are test data. SandboxCleaner and SandboxName are left out because this repository's own tests call removeOrphaned() on the real sandbox directory: a mutant of the owner-is-alive check, run by those tests inside the sandbox, deletes the sandboxes of the run that is measuring it. The timeout is 300 s because a mutant that survives its tests runs the whole suite, which takes well over the default 30 s under fifteen workers; the suites that run the pipeline themselves are skipped inside a mutant's run by the notInsideAMutationRun trait."
   }
 ]
