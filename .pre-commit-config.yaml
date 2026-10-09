@@ -79,7 +79,7 @@ repos:
 
   # Codespell
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: v2.4.3
     hooks:
       - id: codespell
         name: ✓ Codespell
@@ -90,7 +90,7 @@ repos:
 
   # SwiftLint
   - repo: https://github.com/realm/SwiftLint
-    rev: 0.63.2
+    rev: 0.65.1
     hooks:
       - id: swiftlint
         name: ✓ SwiftLint
@@ -101,7 +101,7 @@ repos:
 
   # Swift Format
   - repo: https://github.com/apple/swift-format
-    rev: 602.0.0
+    rev: 604.0.0
     hooks:
       - id: swift-format
         name: ✓ Swift Format
@@ -111,7 +111,7 @@ repos:
 
   # Swift Code Duplication Detector
   - repo: https://github.com/ericodx/swift-cpd
-    rev: v1.2.0
+    rev: v1.5.0
     hooks:
       - id: swift-cpd
         name: ✓ Swift Code Duplication Detector
