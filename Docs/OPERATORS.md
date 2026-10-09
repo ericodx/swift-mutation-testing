@@ -14,7 +14,7 @@ The limits were proposed before any data existed. A campaign may show they need 
 
 ## Metrics
 
-Every number comes from the tool's own JSON reports, one per project, read by `Scripts/operator-campaign/campaign.swift aggregate`; the per-(operator, project) rows are in [`operators/results.csv`](operators/results.csv). A *cell* below is one operator in one project.
+Every number comes from the tool's own JSON reports, one per project, read by `.github/scripts/operator-campaign/campaign.swift aggregate`; the per-(operator, project) rows are in [`operators/results.csv`](operators/results.csv). A *cell* below is one operator in one project.
 
 | Metric | Definition |
 |---|---|
@@ -134,24 +134,24 @@ The campaign is three commands of a Foundation-only script, run from the root of
 
 ```bash
 swift build -c release
-swift Scripts/operator-campaign/campaign.swift run Scripts/operator-campaign/corpus.json out/campaign \
+swift .github/scripts/operator-campaign/campaign.swift run .github/scripts/operator-campaign/corpus.json out/campaign \
     --tool "$PWD/.build/release/swift-mutation-testing"
 ```
 
-`run` clones each project of [`corpus.json`](../Scripts/operator-campaign/corpus.json) at its commit into a temporary directory, runs the tool over it with `--no-cache --operator-tier experimental` and the project's own arguments (test target, exclusions, timeout), and leaves three files per project in the output directory: the JSON report, the console output and a `meta.json` with the commit, the tool and Swift versions, the machine, the date and the wall time. The entry `"."` is this repository, run from the working tree at `HEAD`. The whole corpus took about four hours on an Apple M4 Max in the record run, two and a half of them this repository's run; this repository's run alone took 67 minutes on 2026-10-08.
+`run` clones each project of [`corpus.json`](../.github/scripts/operator-campaign/corpus.json) at its commit into a temporary directory, runs the tool over it with `--no-cache --operator-tier experimental` and the project's own arguments (test target, exclusions, timeout), and leaves three files per project in the output directory: the JSON report, the console output and a `meta.json` with the commit, the tool and Swift versions, the machine, the date and the wall time. The entry `"."` is this repository, run from the working tree at `HEAD`. The whole corpus took about four hours on an Apple M4 Max in the record run, two and a half of them this repository's run; this repository's run alone took 67 minutes on 2026-10-08.
 
 ```bash
-swift Scripts/operator-campaign/campaign.swift sample out/campaign --csv out/equivalence.csv
+swift .github/scripts/operator-campaign/campaign.swift sample out/campaign --csv out/equivalence.csv
 ```
 
 `sample` draws up to 20 survivors per (operator, project) with a fixed seed (20261001), so the same reports give the same draw, and writes them with empty `verdict` and `note` columns. Those are filled by hand, one survivor at a time, read in its source: `equivalent` when no input could make the mutated program behave differently through anything observable, `not-equivalent` when some input could, even if no test checks it, and `not-measurable` only for code the build leaves out. A doubt is resolved as *not equivalent*, which never demotes an operator. The verdicts of the record campaign are in [`operators/equivalence.csv`](operators/equivalence.csv), keyed by the mutant's fingerprint, so a rerun that draws the same survivor can carry its verdict over; `sample` refuses to overwrite a file that may hold reviews unless told `--force`.
 
 ```bash
-swift Scripts/operator-campaign/campaign.swift aggregate out/campaign \
+swift .github/scripts/operator-campaign/campaign.swift aggregate out/campaign \
     --markdown Docs/operators/results.md --csv Docs/operators/results.csv --equivalence out/equivalence.csv
 ```
 
-`aggregate` computes the [metrics](#metrics) and the tier by the criteria for every operator, and the per-cell table. `campaign.swift check` aggregates a small fixture under `Scripts/operator-campaign/check/` and compares with its expected output; the pull-request workflow runs it, so the arithmetic cannot drift unnoticed.
+`aggregate` computes the [metrics](#metrics) and the tier by the criteria for every operator, and the per-cell table. `campaign.swift check` aggregates a small fixture under `.github/scripts/operator-campaign/check/` and compares with its expected output; the pull-request workflow runs it, so the arithmetic cannot drift unnoticed.
 
 **What to expect between runs.** Discovery is deterministic: the same commit of a project and the same commit of the tool give the same mutants. Kills are stable — `swift-algorithms` reported the same 857 kills in six runs — and the survivors with them, so the sample, and the verdicts that carry over, barely move. What moves is the handful of mutants at the edge of the timeout, and the integrity warnings of a suite that is not deterministic under load (`swift-cpd` had 3 in one run and 7 in the next, on the same commits). A kill rate moving by more than a point between two runs on the same commits is a signal to look at the console output, not at the operator. A different machine changes the cost per mutant and the wall times, nothing else.
 
