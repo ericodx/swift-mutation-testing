@@ -44,6 +44,34 @@ struct QualityGateTests {
         #expect(!result.passed)
     }
 
+    @Test("Given no mutant that could be tested, when evaluated with a minimum, then the gate fails")
+    func noScoreFailsTheMinimum() {
+        let result = gate.evaluate(unviableOnly(), policy: GatePolicy(minScore: 0), baseline: nil)
+
+        #expect(result.checks == [.minScore(score: nil, minimum: 0)])
+        #expect(!result.passed)
+    }
+
+    @Test("Given no mutant that could be tested, when evaluated with a maximum drop, then the gate fails")
+    func noScoreFailsTheMaximumDrop() {
+        let result = gate.evaluate(
+            unviableOnly(), policy: GatePolicy(maxScoreDrop: 100), baseline: makeBaseline(score: 80)
+        )
+
+        #expect(result.checks == [.scoreDrop(drop: nil, maximum: 100)])
+        #expect(!result.passed)
+    }
+
+    @Test("Given a baseline without a score, when evaluated with a maximum drop, then the score did not drop")
+    func baselineWithoutAScoreHasNoDrop() {
+        let result = gate.evaluate(
+            summary(killed: 1, survived: ["a"]), policy: GatePolicy(maxScoreDrop: 0), baseline: makeBaseline(score: nil)
+        )
+
+        #expect(result.checks == [.scoreDrop(drop: 0, maximum: 0)])
+        #expect(result.passed)
+    }
+
     @Test("Given undetected mutants all in the baseline, when evaluated, then none is new and the gate passes")
     func knownUndetectedMutantsAreNotNew() {
         let result = gate.evaluate(
@@ -197,6 +225,10 @@ struct QualityGateTests {
                 + noCoverage.map { makeExecutionResult(status: .noCoverage, fingerprint: $0) },
             totalDuration: 0
         )
+    }
+
+    private func unviableOnly() -> RunnerSummary {
+        RunnerSummary(results: [makeExecutionResult(status: .unviable)], totalDuration: 0)
     }
 
     private func withIntegrityWarnings(_ count: Int) -> RunnerSummary {

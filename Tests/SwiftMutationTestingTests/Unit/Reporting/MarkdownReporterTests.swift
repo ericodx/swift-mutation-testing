@@ -160,7 +160,7 @@ struct MarkdownReporterTests {
     func omitsEmptyTables() {
         let output = reporter.format(RunnerSummary(results: [], totalDuration: 0))
 
-        #expect(output.contains("**Mutation score: 100.0%**"))
+        #expect(output.contains("**Mutation score: n/a**"))
         #expect(!output.contains("### Results by file"))
         #expect(!output.contains("### Undetected mutants"))
     }

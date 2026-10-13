@@ -19,6 +19,18 @@ struct BaselineStoreTests {
         #expect(try store.read(from: path) == baseline)
     }
 
+    @Test("Given a baseline without a score, when read back, then it still has none")
+    func roundTripsWithoutAScore() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let path = dir.appendingPathComponent("baseline.json").path
+        let baseline = makeBaseline(score: nil)
+
+        try store.write(baseline, to: path)
+
+        #expect(try store.read(from: path).score == nil)
+    }
+
     @Test("Given the same baseline written twice, when compared, then the files are identical and keys sorted")
     func writesDeterministically() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

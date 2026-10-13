@@ -28,6 +28,24 @@ struct HtmlReporterTests {
         #expect(html.contains("Mutation Testing Report"))
     }
 
+    @Test("Given only unviable mutants, when report called, then the score is n/a")
+    func reportShowsNoScoreWithoutTestedMutants() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let outputPath = dir.appendingPathComponent("report.html").path
+        let summary = RunnerSummary(
+            results: [makeExecutionResult(filePath: "/abs/MyApp/Sources/Calc.swift", status: .unviable)],
+            totalDuration: 1
+        )
+
+        try HtmlReporter(outputPath: outputPath, projectRoot: "/abs/MyApp").report(summary)
+
+        let html = try String(contentsOfFile: outputPath, encoding: .utf8)
+        #expect(html.contains("Score: n/a"))
+        #expect(html.contains("<td class=\"score-none\">n/a</td>"))
+    }
+
     @Test("Given a mutant, when report called, then file path is relative to project root")
     func filePathIsRelativeToProjectRoot() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
