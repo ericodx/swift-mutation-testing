@@ -174,6 +174,9 @@ struct CommandLineParser: Sendable {
         case "--project":
             values.build.xcodeProject = try nextValue(for: flag, at: &index, in: arguments)
 
+        case "--xcodebuild-arg":
+            values.build.xcodebuildArguments.append(try nextValue(for: flag, at: &index, in: arguments))
+
         case "--timeout":
             values.build.timeout = try nextDouble(for: flag, at: &index, in: arguments)
 

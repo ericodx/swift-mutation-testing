@@ -28,6 +28,7 @@ struct ParsedArguments: Sendable {
         var testingFramework: String?
         var workspace: String?
         var xcodeProject: String?
+        var xcodebuildArguments: [String] = []
     }
 
     struct ReportingOptions: Sendable {

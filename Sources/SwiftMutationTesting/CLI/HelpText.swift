@@ -29,6 +29,7 @@ enum HelpText {
           --workspace <path>            The .xcworkspace to build, relative to the project (Xcode only)
           --project <path>              The .xcodeproj to build, relative to the project (Xcode only).
                                         Without either, the one container at the root; two are an error
+          --xcodebuild-arg <arg>        Append an argument to every xcodebuild call (repeatable, Xcode only)
           --testing-framework <fw>       Testing framework: xctest or swift-testing (default: swift-testing)
           --target <test-target>        Test target name
           --timeout <seconds>           Per-mutant test timeout in seconds (default: 120 Xcode, 30 SPM)
