@@ -54,6 +54,22 @@ struct BaselineErrorTests {
         )
     }
 
+    @Test("Given buildFailed with output, when errorDescription accessed, then includes the output and the cause")
+    func buildFailedIncludesOutput() {
+        let error = BaselineError.buildFailed(output: "Validate plug-in “OpenAPIGenerator”")
+
+        #expect(error.errorDescription?.contains("Validate plug-in “OpenAPIGenerator”") == true)
+        #expect(error.errorDescription?.contains("does not build") == true)
+        #expect(error.errorDescription?.contains("--keep-logs <dir>") == true)
+    }
+
+    @Test("Given buildFailed with empty output, when errorDescription accessed, then starts with the explanation")
+    func buildFailedWithEmptyOutput() {
+        let error = BaselineError.buildFailed(output: "")
+
+        #expect(error.errorDescription?.hasPrefix("The unmutated project does not build") == true)
+    }
+
     @Test("Given two testsFailed with different tests, when compared, then they are not equal")
     func testsFailedEqualityComparesTests() {
         #expect(BaselineError.testsFailed(tests: ["a"]) != BaselineError.testsFailed(tests: ["b"]))
