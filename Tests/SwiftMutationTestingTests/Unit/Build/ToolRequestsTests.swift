@@ -31,4 +31,19 @@ struct ToolRequestsTests {
 
         #expect(request.arguments.suffix(2) == ["-workspace", "App.xcworkspace"])
     }
+
+    @Test("Given arguments, when an Xcode build is requested, then they come after the ones the tool sets")
+    func buildForTestingAppendsTheArguments() {
+        let request = ToolRequests.buildForTesting(
+            in: Sandbox(rootURL: URL(fileURLWithPath: "/tmp/sandbox")),
+            scheme: "App",
+            destination: "platform=macOS",
+            arguments: ["-allowProvisioningUpdates"],
+            timeout: 60
+        )
+
+        #expect(request.arguments.first == "build-for-testing")
+        #expect(request.arguments.last == "-allowProvisioningUpdates")
+        #expect(request.arguments.dropLast().suffix(2) == ["-skipPackagePluginValidation", "-skipMacroValidation"])
+    }
 }
