@@ -652,8 +652,8 @@ struct IncompatibleMutantExecutorTests {
         #expect(await launcher.requests.allSatisfy { $0.arguments.first != "test" })
     }
 
-    @Test("Given the Xcode build times out, when run, then the test is never launched")
-    func xcodeBuildTimeoutSkipsTheTestCommand() async throws {
+    @Test("Given the Xcode build times out, when run, then the run stops and the test is never launched")
+    func xcodeBuildTimeoutStopsTheRun() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -678,20 +678,61 @@ struct IncompatibleMutantExecutorTests {
             mutatedSourceContent: "let x = 2"
         )
 
-        let results = try await IncompatibleMutantExecutor(
-            deps: makeExecutionDeps(
-                launcher: launcher,
-                cacheStorePath: dir.appendingPathComponent("cache.json").path
-            ),
-            sandboxFactory: SandboxFactory()
-        ).execute([mutant], configuration: makeRunnerConfiguration(projectPath: dir.path), pool: pool)
+        await #expect(throws: BuildError.timedOut(seconds: 0, output: "")) {
+            _ = try await IncompatibleMutantExecutor(
+                deps: makeExecutionDeps(
+                    launcher: launcher,
+                    cacheStorePath: dir.appendingPathComponent("cache.json").path
+                ),
+                sandboxFactory: SandboxFactory()
+            ).execute([mutant], configuration: makeRunnerConfiguration(projectPath: dir.path), pool: pool)
+        }
 
         #expect(await launcher.recorded(commandStartingWith: "test-without-building") == nil)
-        #expect(results.map(\.status) == [.timeout])
     }
 
-    @Test("Given an SPM build that times out, when execute called, then the mutant is timeout and nothing is cached")
-    func spmBuildTimeoutIsNotRecordedAsUnviable() async throws {
+    @Test("Given the warm Xcode build succeeds but a mutant's build times out, when run, then the run stops")
+    func xcodePerMutantBuildTimeoutStopsTheRun() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = 1".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let launcher = RecordingProcessLauncher(
+            responses: [(0, ""), (SPMResultParser.timedOutExitCode, "")]
+        )
+
+        let mutant = makeMutantDescriptor(
+            id: "m0",
+            filePath: sourceFile.path,
+            originalText: "1",
+            mutatedText: "2",
+            operatorIdentifier: "ArithmeticOperatorReplacement",
+            description: "1 → 2",
+            isSchematizable: false,
+            mutatedSourceContent: "let x = 2"
+        )
+
+        let deps = makeExecutionDeps(
+            launcher: launcher,
+            cacheStorePath: dir.appendingPathComponent("cache.json").path
+        )
+
+        await #expect(throws: BuildError.timedOut(seconds: 0, output: "")) {
+            _ = try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
+                .execute([mutant], configuration: makeRunnerConfiguration(projectPath: dir.path), pool: pool)
+        }
+
+        #expect(await launcher.recorded(commandStartingWith: "test-without-building") == nil)
+        #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
+    }
+
+    @Test("Given an SPM build that times out, when execute called, then the run stops and nothing is cached")
+    func spmBuildTimeoutStopsTheRun() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -717,14 +758,15 @@ struct IncompatibleMutantExecutorTests {
             mutatedSourceContent: "let x = 2"
         )
 
-        let results = try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
-            .execute(
-                [mutant],
-                configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
-                pool: pool
-            )
+        await #expect(throws: BuildError.timedOut(seconds: 0, output: "")) {
+            _ = try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
+                .execute(
+                    [mutant],
+                    configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+                    pool: pool
+                )
+        }
 
-        #expect(results.map(\.status) == [.timeout])
         #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
     }
 
@@ -777,9 +819,9 @@ struct IncompatibleMutantExecutorTests {
     }
 
     @Test(
-        "Given the shared build succeeds but a per-mutant build times out, then that mutant is timeout and is not cached"
+        "Given the shared build succeeds but a per-mutant build times out, then the run stops and nothing is cached"
     )
-    func perMutantBuildTimeoutIsNotRecordedAsUnviable() async throws {
+    func perMutantBuildTimeoutStopsTheRun() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -805,14 +847,15 @@ struct IncompatibleMutantExecutorTests {
             mutatedSourceContent: "let x = 2"
         )
 
-        let results = try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
-            .execute(
-                [mutant],
-                configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
-                pool: pool
-            )
+        await #expect(throws: BuildError.timedOut(seconds: 0, output: "")) {
+            _ = try await IncompatibleMutantExecutor(deps: deps, sandboxFactory: SandboxFactory())
+                .execute(
+                    [mutant],
+                    configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+                    pool: pool
+                )
+        }
 
-        #expect(results.map(\.status) == [.timeout])
         #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
     }
 
