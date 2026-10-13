@@ -82,10 +82,49 @@ struct CacheTestSelectionTests {
         #expect(await store.result(for: key) == .killed(by: "t"))
     }
 
+    @Test("Given xcodebuild arguments, when the selection is made, then it records them")
+    func xcodeSelectionRecordsTheArguments() {
+        let build = makeRunnerConfiguration(xcodebuildArguments: ["-allowProvisioningUpdates"]).build
+
+        #expect(CacheTestSelection(build).xcodebuildArguments == ["-allowProvisioningUpdates"])
+    }
+
+    @Test("Given no xcodebuild argument, when the selection is encoded, then it has no key for them")
+    func noArgumentsLeaveTheKeyOut() throws {
+        let data = try JSONEncoder().encode(CacheTestSelection(makeRunnerConfiguration().build))
+
+        #expect(!String(decoding: data, as: UTF8.self).contains("xcodebuildArguments"))
+    }
+
+    @Test("Given a cache made against other xcodebuild arguments, when checked, then every verdict is forgotten")
+    func otherArgumentsDiscardTheCache() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let (store, key) = try await cache(in: dir, madeWith: xcodeSelection([]))
+
+        let discarded = try await store.discard(unlessMadeWith: xcodeSelection(["OTHER_SWIFT_FLAGS=-DMUTATING"]))
+
+        #expect(discarded)
+        #expect(await store.result(for: key) == nil)
+    }
+
+    @Test("Given a selection written before xcodebuild arguments were recorded, when read, then it matches none")
+    func aSelectionWithoutTheKeyMatchesNoArguments() throws {
+        let json = #"{"destination":"platform=macOS","scheme":"MyScheme","testingFramework":"swift-testing"}"#
+
+        let decoded = try JSONDecoder().decode(CacheTestSelection.self, from: Data(json.utf8))
+
+        #expect(decoded == CacheTestSelection(makeRunnerConfiguration().build))
+    }
+
     // MARK: - Helpers
 
     private func selection(target: String?) -> CacheTestSelection {
         CacheTestSelection(makeRunnerConfiguration(projectType: .spm, testTarget: target).build)
+    }
+
+    private func xcodeSelection(_ arguments: [String]) -> CacheTestSelection {
+        CacheTestSelection(makeRunnerConfiguration(xcodebuildArguments: arguments).build)
     }
 
     private func cache(
