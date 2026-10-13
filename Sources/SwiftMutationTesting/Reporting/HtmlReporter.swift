@@ -15,7 +15,8 @@ struct HtmlReporter: Sendable {
         return htmlTemplate(score: summary.formattedScore, detection: summary.detectionLine, totals: totals, rows: rows)
     }
 
-    private func scoreColorClass(_ score: Double) -> String {
+    private func scoreColorClass(_ score: Double?) -> String {
+        guard let score else { return "score-none" }
         if score == 100 { return "score-green" }
         if score >= 50 { return "score-yellow" }
         return "score-red"

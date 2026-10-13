@@ -6,7 +6,7 @@ struct Baseline: Sendable, Codable, Equatable {
     let formatVersion: Int
     let toolVersion: String
     let createdAt: Date
-    let score: Double
+    let score: Double?
     let scope: BaselineScope
     let undetected: [BaselineEntry]
 
@@ -14,7 +14,7 @@ struct Baseline: Sendable, Codable, Equatable {
         formatVersion: Int = Baseline.formatVersion,
         toolVersion: String,
         createdAt: Date,
-        score: Double,
+        score: Double?,
         scope: BaselineScope,
         undetected: [BaselineEntry]
     ) {

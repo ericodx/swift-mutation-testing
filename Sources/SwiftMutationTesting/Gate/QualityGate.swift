@@ -15,7 +15,8 @@ struct QualityGate: Sendable {
         }
 
         if let maximum = policy.maxScoreDrop, let baseline {
-            checks.append(.scoreDrop(drop: baseline.score - summary.score, maximum: maximum))
+            let drop = summary.score.map { current in (baseline.score ?? current) - current }
+            checks.append(.scoreDrop(drop: drop, maximum: maximum))
         }
 
         if let maximum = policy.maxNewSurvivors, baseline != nil {
