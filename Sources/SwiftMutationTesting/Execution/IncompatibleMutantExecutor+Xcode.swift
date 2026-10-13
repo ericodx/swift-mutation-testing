@@ -111,6 +111,7 @@ extension IncompatibleMutantExecutor {
 
         guard !ready.isEmpty else {
             let failed = workers[0].build
+            try rejectTimedOut(failed, configuration: configuration)
             var results: [(Int, ExecutionResult)] = []
             for warm in mutants {
                 results.append(
@@ -118,7 +119,7 @@ extension IncompatibleMutantExecutor {
                         warm.index,
                         await storeAndReport(
                             mutant: warm.mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
-                            buildOutput: failed.output, status: buildStatus(exitCode: failed.exitCode)
+                            buildOutput: failed.output
                         )
                     )
                 )
@@ -350,6 +351,7 @@ extension IncompatibleMutantExecutor {
         )
 
         guard build.exitCode == 0 else {
+            try rejectTimedOut(build, configuration: configuration)
             let launched = TestLaunchResult(
                 exitCode: build.exitCode,
                 output: build.output,

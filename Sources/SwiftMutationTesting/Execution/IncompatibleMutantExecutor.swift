@@ -65,13 +65,13 @@ struct IncompatibleMutantExecutor: Sendable {
 
         guard !ready.isEmpty else {
             let failed = workers[0].build
+            try rejectTimedOut(failed, configuration: configuration)
             for (mutant, _) in viable {
                 results.append(
                     await storeAndReport(
                         mutant: mutant, sandbox: nil,
                         keepLogsPath: configuration.reporting.keepLogsPath,
-                        buildOutput: failed.output,
-                        status: buildStatus(exitCode: failed.exitCode)
+                        buildOutput: failed.output
                     )
                 )
             }
@@ -188,11 +188,11 @@ struct IncompatibleMutantExecutor: Sendable {
         }
 
         guard build.exitCode == 0 else {
+            try rejectTimedOut(build, configuration: configuration)
             return await storeAndReport(
                 mutant: mutant, sandbox: nil,
                 keepLogsPath: configuration.reporting.keepLogsPath,
-                buildOutput: build.output,
-                status: buildStatus(exitCode: build.exitCode)
+                buildOutput: build.output
             )
         }
 
@@ -310,16 +310,16 @@ struct IncompatibleMutantExecutor: Sendable {
         mutant: MutantDescriptor,
         sandbox: Sandbox?,
         keepLogsPath: String?,
-        buildOutput: String = "",
-        status: ExecutionStatus = .unviable
+        buildOutput: String = ""
     ) async -> ExecutionResult {
         try? sandbox?.cleanup()
         return await ResultRecorder(deps: deps, keepLogsPath: keepLogsPath).record(
-            mutant, status: status, output: buildOutput
+            mutant, status: .unviable, output: buildOutput
         )
     }
 
-    func buildStatus(exitCode: Int32) -> ExecutionStatus {
-        exitCode == SPMResultParser.timedOutExitCode ? .timeout : .unviable
+    func rejectTimedOut(_ build: (exitCode: Int32, output: String), configuration: RunnerConfiguration) throws {
+        guard build.exitCode == SPMResultParser.timedOutExitCode else { return }
+        throw BuildError.timedOut(seconds: configuration.build.buildTimeout, output: build.output)
     }
 }
