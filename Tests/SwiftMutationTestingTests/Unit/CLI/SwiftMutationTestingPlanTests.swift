@@ -167,7 +167,8 @@ struct SwiftMutationTestingPlanTests {
         var result: ExitCode = .error
         let output = await captureOutput {
             result = await SwiftMutationTesting.run(
-                args: ["reproduce", "swift-mutation-testing_0", dir.path], launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
+                args: ["reproduce", "swift-mutation-testing_0", dir.path],
+                launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
             )
         }
         let sandboxes = output.split(separator: "\n").filter { $0.hasPrefix("Sandbox: ") }.map {

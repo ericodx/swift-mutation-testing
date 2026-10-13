@@ -123,7 +123,8 @@ struct SwiftMutationTestingGateTests {
             to: dir.appendingPathComponent("Foo.swift"), atomically: true, encoding: .utf8
         )
 
-        let result = await SwiftMutationTesting.run(args: [dir.path], launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1)))
+        let result = await SwiftMutationTesting.run(
+            args: [dir.path], launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1)))
 
         #expect(result == .success)
     }

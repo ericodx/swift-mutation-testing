@@ -154,7 +154,8 @@ struct SwiftMutationTestingExecutionPathTests {
 
         var result: ExitCode = .error
         let output = await captureOutput {
-            result = await SwiftMutationTesting.run(args: [dir.path], launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1)))
+            result = await SwiftMutationTesting.run(
+                args: [dir.path], launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1)))
         }
 
         #expect(result == .success)
