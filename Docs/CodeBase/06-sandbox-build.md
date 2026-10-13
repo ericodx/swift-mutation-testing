@@ -63,6 +63,8 @@ flowchart TD
     SHARED -- no --> SYMLINK["symlink to original"]
 ```
 
+**Wrapping the replaced files.** Every replaced file is written through `LintSuppression.wrapping`, so a SwiftLint build tool plugin skips it; see [LintSuppression](#sandboxlintsuppressionswift).
+
 **Matching the replaced files.** The schematized or mutated paths are resolved once, and each is keyed by its path relative to the resolved project root; the walk builds each item's relative path as it descends and looks it up, so no file is resolved for that. Only a file that is itself a symlink is resolved, and matched by where it points. When nothing is replaced — `createClean`, or a run with no schematized file — the lookup is skipped altogether. The walk used to resolve every file of the project and search its path for `.xcworkspace/xcshareddata/`, once per sandbox; a flag passed down the recursion now marks that directory.
 
 **Off the cooperative pool.** All three are `async` but the work is synchronous file system calls, which used to occupy a cooperative thread for the whole walk — threads that simulator and process work wait on. `offCooperativePool` runs it on a global dispatch queue and resumes the caller through a continuation.
@@ -90,6 +92,25 @@ A lightweight wrapper around the sandbox root URL.
 | `rootURL` | Absolute URL of the `xmr-<pid>-<UUID>` directory in `$TMPDIR` |
 
 `cleanup()` removes the entire `rootURL` directory tree via `FileManager.default.removeItem(at:)`. The executors release a sandbox through `release(keepingFor:)` (`Plan/Reproduction.swift`): it is kept, and its path recorded, when a `Reproduction` is passed, and removed with `cleanup()` otherwise.
+
+---
+
+## Sandbox/LintSuppression.swift
+
+```swift
+enum LintSuppression {
+    static let opening: String
+    static let closing: String
+    static func wrapping(_ content: String) -> String
+    static func unwrapping(_ content: String) -> String
+}
+```
+
+Hides the code the tool writes into the sandbox from SwiftLint. `wrapping` puts `opening` (`// swiftlint:disable all` and a newline) before the content and `closing` (a newline and `// swiftlint:enable all`) after it; `unwrapping` takes them off again, and leaves content that does not carry both as it is. The round trip is exact, with or without a trailing newline, because `closing` always adds its own.
+
+Patching the pbxproj (`disableSwiftLintBuildPhases`) switches off SwiftLint run-script phases, but a SwiftLint *build tool plugin* is not a build phase: once `-skipPackagePluginValidation` lets it run, it lints the sandbox and fails the build on `__SwiftMutationTesting_<hash>` (`type_name`) and `__swiftMutationTestingID_<hash>` (`identifier_name`), so every mutant of a target using the plugin was reported `unviable`. The pair is used rather than a lone `disable all` because `blanket_disable_command` reports a disable that is never re-enabled; with both, the file lints clean even under `--strict` with `superfluous_disable_command`. A block comment (`/* swiftlint:disable all */`) on the first line would keep line numbers, but SwiftLint does not honour it.
+
+Written by `SandboxFactory` (every replaced file), `SchemaNarrower.excludeProblematicMutants` (the narrowed schema) and `IncompatibleMutantExecutor` (each mutated file, SPM and Xcode). `ApplicationVerifier` compares a copy with its original through `unwrapping`, so a wrapped copy of an unchanged file is still caught. Every line of a wrapped file is one below the original's; `SchemaNarrower` maps compiler errors against the sandbox copy itself, so it is unaffected.
 
 ---
 

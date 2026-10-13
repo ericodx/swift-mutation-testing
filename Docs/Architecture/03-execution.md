@@ -54,13 +54,13 @@ Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<
 **Copy strategy:**
 - Skips `.build`, `DerivedData`, and directories prefixed with `.xmr-`
 - For `.xcodeproj`: creates fresh `xcuserdata`, copies `xcshareddata`, symlinks everything else; a workspace's `xcshareddata` is copied too
-- For source files being replaced (schematized or mutated): writes the new content directly
+- For source files being replaced (schematized or mutated): writes the new content directly, wrapped in `// swiftlint:disable all` and `// swiftlint:enable all` (`LintSuppression`) so a SwiftLint build tool plugin, which no pbxproj patch reaches, does not fail the build on generated identifiers; `SchemaNarrower` and `IncompatibleMutantExecutor` wrap what they write the same way
 - For all other files: creates symlinks to the originals (fast, space-efficient)
 - `create(projectPath:schematizedFiles:)`, and `createClean` when asked, disable SwiftLint `PBXShellScriptBuildPhase` entries by patching the `project.pbxproj` of **every** `.xcodeproj` in the sandbox, at any depth — a workspace's projects included; `.build`, `DerivedData` and `Pods/` are not looked into
 
 The original project is never touched. When execution completes, `Sandbox.release(keepingFor:)` removes the entire `xmr-*` directory — unless the run is a reproduction, which keeps it and prints its path.
 
-Right after the sandbox is created, and before anything is built, `ApplicationVerifier` checks that it holds every mutant: each schematized copy differs from its original and ends with the per-file support declarations, each schematizable mutant has its `case` in the copy, and each incompatible mutant has content that differs from the original. A mutant that did not make it ends the run with `IntegrityError` — a verdict on a mutation that is not in the build says nothing. See [Application Check](05-schematization.md#application-check).
+Right after the sandbox is created, and before anything is built, `ApplicationVerifier` checks that it holds every mutant: each schematized copy, without its SwiftLint wrapper, differs from its original and ends with the per-file support declarations, each schematizable mutant has its `case` in the copy, and each incompatible mutant has content that differs from the original. A mutant that did not make it ends the run with `IntegrityError` — a verdict on a mutation that is not in the build says nothing. See [Application Check](05-schematization.md#application-check).
 
 ## SandboxCleaner
 
@@ -293,7 +293,7 @@ Cache is stored at `<project>/.swift-mutation-testing-cache/results.json`, with 
 
 A kill with no recorded killer file is invalidated by any change. `.unviable` is permanent because it is a property of the mutant: a mutant that does not compile stays uncompilable however the tests change. Everything else is a statement about what happened when the tests ran, and is re-measured — including `.killedByCrash`, which used to be grouped with `.unviable` and so could never be cleared once recorded.
 
-Each entry also remembers whether the mutated code ran, so a cached `noCoverage` stays `noCoverage` and a cached kill without activation is still reported as a warning. The format is versioned (`formatVersion` 3: 2 added activation, 3 measured it for incompatible mutants); a cache in an older format is discarded once, with a warning. Every stored verdict is also appended to `journal.jsonl`, so an interrupted run loses none; see [Resuming](06-plans.md#resuming).
+Each entry also remembers whether the mutated code ran, so a cached `noCoverage` stays `noCoverage` and a cached kill without activation is still reported as a warning. The format is versioned (`formatVersion` 4: 2 added activation, 3 measured it for incompatible mutants, 4 drops the `unviable` verdicts recorded while a SwiftLint build tool plugin failed the build on generated code); a cache in an older format is discarded once, with a warning. Every stored verdict is also appended to `journal.jsonl`, so an interrupted run loses none; see [Resuming](06-plans.md#resuming).
 
 **Test selection:** the metadata also records what the tests ran against — the Xcode scheme, destination, container and extra `xcodebuild` arguments, `--target` and the testing library (`CacheTestSelection`). When a run's selection differs from the cache's, every cached verdict and the journal are discarded first, with a note on stderr: a verdict from one test target says nothing about another. The console and Markdown summaries show `Verdicts from cache: N of M` whenever some verdicts were reused, so a reused verdict is never invisible.
 

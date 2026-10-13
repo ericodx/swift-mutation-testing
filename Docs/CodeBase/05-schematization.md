@@ -90,7 +90,7 @@ What `SchemataGenerator.generate` returns.
 | `content` | The rewritten source with its support block, or the original content when no body was rewritten |
 | `discarded` | The mutations that got no `case`: outside every function body, in a body whose statements could not be read, or whose splice failed |
 
-`SchematizationStage` stores `content` as the file's `schematizedContent`, and `SchemaNarrower.regeneratedSchema` writes it over the sandbox copy; both read only `content`. A discarded mutant still gets its descriptor, so `ApplicationVerifier` finds its `case` missing and stops the run.
+`SchematizationStage` stores `content` as the file's `schematizedContent`, and `SchemaNarrower.regeneratedSchema` writes it over the sandbox copy, both wrapped by `LintSuppression`; both read only `content`. A discarded mutant still gets its descriptor, so `ApplicationVerifier` finds its `case` missing and stops the run.
 
 ---
 

@@ -238,7 +238,7 @@ Persists execution results across runs with granular per-file invalidation. All 
 |---|---|
 | `directoryName` | `".swift-mutation-testing-cache"` |
 | `journalName` | `"journal.jsonl"` |
-| `formatVersion` | `3` — bump whenever the shape of `results.json` or `metadata.json` changes, or the meaning of what it holds. `2` added `activated`, so caches written before the activation marker existed are discarded once; `3` discards caches whose incompatible mutants were stored before their activation was measured, which would otherwise keep reporting them as not measured |
+| `formatVersion` | `4` — bump whenever the shape of `results.json` or `metadata.json` changes, or the meaning of what it holds. `2` added `activated`, so caches written before the activation marker existed are discarded once; `3` discards caches whose incompatible mutants were stored before their activation was measured, which would otherwise keep reporting them as not measured; `4` discards caches holding `unviable` verdicts recorded while a SwiftLint build tool plugin failed the build on generated code — an `unviable` verdict is only retested when its file changes, so it would never have been corrected |
 
 Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of the private `CacheEntry` values (key + status + killerTestFile + activated), with `metadata.json` and the journal in the same directory. A `.timeout` is never cached: `store` records it in the `PlanJournal`, if any, and keeps nothing itself, so the mutant is tested again on the next run.
 
