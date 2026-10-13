@@ -75,7 +75,7 @@ struct SwiftMutationTestingExecutionPathTests {
 
         let result = await SwiftMutationTesting.run(
             args: [dir.path],
-            launcher: IOSSimulatorMock(listJSON: listJSON, cloneUDID: cloneUDID)
+            launcher: UnmutatedBuildPassingLauncher(base: IOSSimulatorMock(listJSON: listJSON, cloneUDID: cloneUDID))
         )
 
         #expect(result == .success)
@@ -114,7 +114,7 @@ struct SwiftMutationTestingExecutionPathTests {
 
         let result = await SwiftMutationTesting.run(
             args: [dir.path],
-            launcher: MockProcessLauncher(exitCode: 1)
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
         )
 
         #expect(result == .success)
@@ -133,7 +133,7 @@ struct SwiftMutationTestingExecutionPathTests {
 
         var result: ExitCode = .error
         let output = await captureOutput {
-            result = await SwiftMutationTesting.run(args: [dir.path], launcher: MockProcessLauncher(exitCode: 1))
+            result = await SwiftMutationTesting.run(args: [dir.path], launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1)))
         }
 
         #expect(result == .success)
@@ -174,7 +174,7 @@ struct SwiftMutationTestingExecutionPathTests {
                 dir.path, "--sources-path", dir.appendingPathComponent("Foo.swift").path, "--output", reportPath,
                 "--quiet",
             ],
-            launcher: MockProcessLauncher(exitCode: 1)
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
         )
 
         #expect(result == .success)

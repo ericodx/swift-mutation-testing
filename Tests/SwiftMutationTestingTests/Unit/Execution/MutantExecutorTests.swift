@@ -32,7 +32,7 @@ struct MutantExecutorTests {
 
         let results = try await MutantExecutor(
             configuration: makeRunnerConfiguration(projectPath: dir.path),
-            launcher: MockProcessLauncher(exitCode: 1),
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1)),
             environment: MutantExecutor.Environment(reporter: reporter)
         ).execute(
             makeRunnerInput(
@@ -63,7 +63,7 @@ struct MutantExecutorTests {
 
         let executor = MutantExecutor(
             configuration: makeRunnerConfiguration(projectPath: dir.path),
-            launcher: MockProcessLauncher(exitCode: 1)
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
         )
         let mutant = makeMutantDescriptor(
             id: "m0",
@@ -344,7 +344,7 @@ struct MutantExecutorTests {
 
         let executor = MutantExecutor(
             configuration: makeRunnerConfiguration(projectPath: dir.path),
-            launcher: MockProcessLauncher(exitCode: 1)
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -409,7 +409,7 @@ struct MutantExecutorTests {
 
         let executor = MutantExecutor(
             configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
-            launcher: MockProcessLauncher(exitCode: 1)
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
         )
         let mutant = makeMutantDescriptor(
             id: "m0",
@@ -879,7 +879,7 @@ struct MutantExecutorTests {
 
         let executor = MutantExecutor(
             configuration: makeRunnerConfiguration(projectPath: dir.path),
-            launcher: MockProcessLauncher(exitCode: 1)
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
         )
         let input = makeRunnerInput(
             projectPath: dir.path,
