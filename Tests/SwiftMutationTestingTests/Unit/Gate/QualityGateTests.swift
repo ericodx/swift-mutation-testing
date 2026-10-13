@@ -176,8 +176,10 @@ struct QualityGateTests {
         arguments: [
             (GateResult.Check.minScore(score: 79.9, minimum: 80), false),
             (.minScore(score: 80, minimum: 80), true),
+            (.minScore(score: nil, minimum: 0), false),
             (.scoreDrop(drop: 2.1, maximum: 2), false),
             (.scoreDrop(drop: -3, maximum: 0), true),
+            (.scoreDrop(drop: nil, maximum: 100), false),
             (.newUndetected(count: 1, maximum: 0), false),
             (.newUndetected(count: 0, maximum: 0), true),
             (.integrityWarnings(count: 1, maximum: 0), false),
