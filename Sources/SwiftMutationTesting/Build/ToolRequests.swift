@@ -2,6 +2,7 @@ import Foundation
 
 enum ToolRequests {
     static let noTestDiagnostics = ["-collect-test-diagnostics", "never"]
+    static let skipPackageValidation = ["-skipPackagePluginValidation", "-skipMacroValidation"]
 
     static func swiftBuildTests(in sandbox: Sandbox, timeout: Double) -> ProcessRequest {
         request("/usr/bin/swift", ["build", "--build-tests"], in: sandbox, timeout: timeout)
@@ -25,7 +26,7 @@ enum ToolRequests {
             "-scheme", scheme,
             "-destination", destination,
             "-derivedDataPath", derivedDataPath(in: sandbox),
-        ]
+        ] + skipPackageValidation
         return xcodebuild(arguments + (container?.arguments ?? []), in: sandbox, timeout: timeout)
     }
 
