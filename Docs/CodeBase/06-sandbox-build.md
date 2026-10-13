@@ -230,7 +230,7 @@ struct BuildStage: Sendable {
 
     func build(
         sandbox: Sandbox,
-        container: XcodeContainer?,
+        arguments: [String],
         scheme: String,
         destination: String,
         timeout: Double
@@ -281,7 +281,7 @@ enum ToolRequests {
         in sandbox: Sandbox, filter: String?, environment: [String: String], timeout: Double
     ) -> ProcessRequest
     static func buildForTesting(
-        in sandbox: Sandbox, scheme: String, destination: String, container: XcodeContainer?, timeout: Double
+        in sandbox: Sandbox, scheme: String, destination: String, arguments extraArguments: [String], timeout: Double
     ) -> ProcessRequest
     static func xcodebuild(
         _ arguments: [String], in sandbox: Sandbox, environment: [String: String] = [:], timeout: Double
@@ -296,7 +296,7 @@ Every `swift` and `xcodebuild` invocation a run builds and tests a sandbox with,
 |---|---|---|
 | `swiftBuildTests` | `swift build --build-tests` | `BuildStage.buildSPM`, `IncompatibleMutantExecutor` (warm and per-mutant SPM builds) |
 | `swiftTest` | `swift test --skip-build [--filter <filter>]` | `TestExecutionStage` (SPM without bundles), `IncompatibleMutantExecutor` (SPM tests), `BaselineProbe` |
-| `buildForTesting` | `xcodebuild build-for-testing -scheme -destination -derivedDataPath -skipPackagePluginValidation -skipMacroValidation` plus the container's arguments, which stay last | `BuildStage.build` (the schematized build, `FallbackExecutor`'s and `UnmutatedBuildCheck`'s), `IncompatibleMutantExecutor` (the Xcode workers' warm builds, each mutant's incremental build, and a reproduction's cold ones) |
+| `buildForTesting` | `xcodebuild build-for-testing -scheme -destination -derivedDataPath -skipPackagePluginValidation -skipMacroValidation`, then the given arguments — `BuildOptions.xcodeArguments`, the container's and the user's `--xcodebuild-arg` ones | `BuildStage.build` (the schematized build, `FallbackExecutor`'s and `UnmutatedBuildCheck`'s), `IncompatibleMutantExecutor` (the Xcode workers' warm builds, each mutant's incremental build, and a reproduction's cold ones) |
 | `xcodebuild` | `xcodebuild` with the given arguments | `TestExecutionStage` (`test-without-building`), `IncompatibleMutantExecutor.testXcode` |
 | `derivedDataPath` | `<sandbox>/.xmr-derived-data` | every Xcode build and test |
 | `skipPackageValidation` | `-skipPackagePluginValidation -skipMacroValidation` | appended to every `build-for-testing`: a package's build tool plugins (SwiftLint's, `swift-openapi-generator`'s) and macros need a trust prompt that a headless build cannot answer, so without them every build of such a project fails at `Validate plug-in` |

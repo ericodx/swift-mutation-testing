@@ -184,11 +184,12 @@ struct CacheTestSelection: Codable, Sendable, Equatable {
     let container: String?
     let testTarget: String?
     let testingFramework: String
+    let xcodebuildArguments: [String]?
     init(_ build: RunnerConfiguration.BuildOptions)
 }
 ```
 
-What a cached verdict was tested against; `scheme` and `destination` are `nil` for a package. Stored in `CacheMetadata.testSelection`. See `discard(unlessMadeWith:)` below.
+What a cached verdict was tested against; `scheme` and `destination` are `nil` for a package. `xcodebuildArguments` is `nil` when there are none, so it is left out of the file and a cache written before the field existed still matches a run without arguments. Stored in `CacheMetadata.testSelection`. See `discard(unlessMadeWith:)` below.
 
 ## Cache/CacheStore.swift
 
@@ -264,7 +265,7 @@ Up to 1.5.0 any decode failure ended the run. 1.4.0 added `filePath` to `MutantC
 | `persistMetadata(_:)` | Writes `CacheMetadata` (format version, test file hashes and test selection) to disk alongside the results cache |
 | `discard(unlessMadeWith:)` | Forgets every verdict, and the journal, when the stored metadata names another `CacheTestSelection`, or none; returns whether it did (`@discardableResult`). Without metadata, or with no verdict loaded, it keeps everything |
 
-**The test selection.** A verdict says what one set of tests did to a mutant, and nothing about another set. `CacheTestSelection`, built from `RunnerConfiguration.BuildOptions`, records what the tests ran against: the Xcode scheme, destination and container, `--target`, and the testing library. `MutantExecutor.prepareCacheStore` calls `discard(unlessMadeWith:)` right after `load()`, printing a note through `StandardError` when it discards, and the metadata written at the start of the run carries the selection, so an interrupted run's journal is tied to it too. Before this, a run with another `--target` replayed nearly every verdict of the previous one (#135). The selection stays out of `MutantCacheKey`: two targets cannot share one cache, but keying verdicts per target would make every lookup depend on the configuration, for a case — alternating targets over one cache — that a CI job avoids by caching per job.
+**The test selection.** A verdict says what one set of tests did to a mutant, and nothing about another set. `CacheTestSelection`, built from `RunnerConfiguration.BuildOptions`, records what the tests ran against: the Xcode scheme, destination, container and `--xcodebuild-arg` arguments, `--target`, and the testing library. `MutantExecutor.prepareCacheStore` calls `discard(unlessMadeWith:)` right after `load()`, printing a note through `StandardError` when it discards, and the metadata written at the start of the run carries the selection, so an interrupted run's journal is tied to it too. Before this, a run with another `--target` replayed nearly every verdict of the previous one (#135). The selection stays out of `MutantCacheKey`: two targets cannot share one cache, but keying verdicts per target would make every lookup depend on the configuration, for a case — alternating targets over one cache — that a CI job avoids by caching per job.
 
 ---
 
