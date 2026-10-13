@@ -196,10 +196,11 @@ flowchart TD
     SF --> AV[ApplicationVerifier]
     AV --> BS[BuildStage]
     BS -- success --> TES["TestExecutionStage\ntest mutants in this file"]
-    BS -- "compilationFailed / timedOut" --> UNVIABLE["Mark all mutants in file\n.unviable / .timeout"]
+    BS -- compilationFailed --> UNVIABLE["Mark all mutants in file\n.unviable"]
+    BS -- timedOut --> STOP["the run stops"]
 ```
 
-For each schematized file, `FallbackExecutor` creates a sandbox containing only that file's schematization, checks it, builds it, and runs the test suite against its mutants, through the same three passes and the shared pool. Files whose builds fail to compile have all their mutants marked as `.unviable` (`.timeout` when the build timed out), each with a mutant log holding the build error; any other error — cancellation included — is rethrown and recorded as no verdict, since the journal would carry it into a resumed run. Verdicts are recorded through `ResultRecorder`.
+For each schematized file, `FallbackExecutor` creates a sandbox containing only that file's schematization, checks it, builds it, and runs the test suite against its mutants, through the same three passes and the shared pool. Files whose builds fail to compile have all their mutants marked as `.unviable`, each with a mutant log holding the build error. A build that times out ends the run with `BuildError.timedOut`: the file holds all its mutants at once, so running out of time says nothing about any of them, and recording them `.timeout` would count them as detected. Any other error — cancellation included — is rethrown and recorded as no verdict, since the journal would carry it into a resumed run. Verdicts are recorded through `ResultRecorder`.
 
 ## IncompatibleMutantExecutor
 
@@ -214,7 +215,7 @@ flowchart TD
     REPRO -- yes --> COLD["one cold sandbox per attempt\nSandboxFactory.create(mutatedFilePath:)"]
     REPRO -- no --> XW["xcodeWidth warm workers\neach: pool slot + createClean + build-for-testing"]
     PT -- .spm --> SW["warm sandboxes\nconcurrency ÷ 4, swift build --build-tests"]
-    XW -- none built --> UNVIABLE[".unviable / .timeout\nwith the warm build's output"]
+    XW -- none built --> UNVIABLE[".unviable\nwith the warm build's output\n(a timed-out build stops the run)"]
     SW -- none built --> UNVIABLE
     XW --> DEAL["mutants dealt round-robin\nover the sandboxes that built"]
     SW --> DEAL
@@ -346,7 +347,7 @@ score      = detected / (detected + undetected) × 100   (none, printed n/a, whe
 | `IncompatibleMutantExecutor` | `withThrowingTaskGroup` — one task per warm sandbox, each working through its share of the mutants in turn |
 | `ProcessRunner` | `withTaskCancellationHandler` + `withCheckedThrowingContinuation` — kills process on cancel |
 | `SPMProcessLauncher` | `RunnerLaunching` (`ProcessLaunching`) conformance backed by `ProcessRunner`; on timeout it kills the process group and the descendants `ProcessTree` snapshotted before the first signal |
-| `XcodeProcessLauncher` | `RunnerLaunching` conformance backed by `ProcessRunner`; on timeout `SIGTERM` to the process group, escalated to `SIGKILL` (`TimeoutEscalation`) |
+| `XcodeProcessLauncher` | `RunnerLaunching` conformance backed by `ProcessRunner`; on timeout it stops and kills the descendants outside the process group (`SWBBuildService` and its compilers), then `SIGTERM` to the group, escalated to `SIGKILL` (`TimeoutEscalation`) |
 | `SandboxFactory` | copies the project on a global dispatch queue, off the cooperative pool |
 | `SandboxCleaner` | one `DispatchSource` signal source per handled signal, on a global queue |
 | `SandboxRegistry` | `Atomic` holding a C string for the signal path; each operation takes the pointer out with one `exchange` |

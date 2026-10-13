@@ -164,7 +164,7 @@ score      = detected / (detected + undetected) × 100
 | No coverage | undetected | yes | no |
 | Unviable | — | **no** | no |
 
-Unviable mutants are excluded entirely — they are a property of the operators, not of the tests. When no mutant is detected or undetected — every one unviable — there is no score: the reports print `n/a`, and the score checks of the quality gate fail. A run that discovers no mutant at all reports no score either: it ends with exit code 1, since nothing was measured. Nor does a run whose unmutated project does not build: rather than mark every mutant unviable, it ends with exit code 1 and the build's output.
+Unviable mutants are excluded entirely — they are a property of the operators, not of the tests. When no mutant is detected or undetected — every one unviable — there is no score: the reports print `n/a`, and the score checks of the quality gate fail. A run that discovers no mutant at all reports no score either: it ends with exit code 1, since nothing was measured. Nor does a run whose unmutated project does not build: rather than mark every mutant unviable, it ends with exit code 1 and the build's output. A build that does not finish within `--build-timeout` ends the run the same way, whichever build it is, rather than record its mutants as timed out — which would count them as detected.
 
 The console and the HTML report print both sides under the score:
 

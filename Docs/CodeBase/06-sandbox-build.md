@@ -362,7 +362,7 @@ Conforms to `LocalizedError` to provide structured error descriptions that propa
 | Case | Condition | Handling |
 |---|---|---|
 | `compilationFailed(output:)` | Build exits with non-zero code | Caught by `MutantExecutor`: on SPM it starts `SchemaNarrower`; on Xcode — or when narrowing blames no mutant — `UnmutatedBuildCheck` builds the unmutated project, which turns a second failure into `BaselineError.buildFailed`, and otherwise `FallbackExecutor` takes over. In `FallbackExecutor` it marks the file's mutants `.unviable` |
-| `timedOut(seconds:output:)` | Build did not finish within `--build-timeout` | Ends the run when the schematized build times out, rather than reporting the mutants unviable — a build that ran out of time says nothing about them. In `FallbackExecutor` it marks the file's mutants `.timeout` |
+| `timedOut(seconds:output:)` | Build did not finish within `--build-timeout` | Ends the run when any build times out, rather than reporting the mutants unviable or timed out — a build that ran out of time says nothing about them. This holds for the schematized build, the per-file builds of `FallbackExecutor` and the warm and per-mutant builds of `IncompatibleMutantExecutor` |
 | `xctestrunNotFound` | No `.xctestrun` in `Build/Products`, or plist parse failure | Propagates; fatal |
 
 ---

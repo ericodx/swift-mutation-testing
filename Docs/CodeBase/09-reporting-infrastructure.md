@@ -837,12 +837,17 @@ The group is frozen **before** the descendants are collected, and the snapshot i
 
 ```swift
 struct XcodeProcessLauncher: Sendable, RunnerLaunching {
-    static func terminate(pid: pid_t, escalation: TimeoutEscalation, kill: SystemCalls.Kill = Darwin.kill)
+    static func terminate(
+        pid: pid_t,
+        escalation: TimeoutEscalation,
+        kill: SystemCalls.Kill = Darwin.kill,
+        detachedDescendants: (pid_t) -> [Int32] = { ProcessTree.detachedDescendants(of: $0) }
+    )
     func makeRunner() -> ProcessRunner
 }
 ```
 
-The default launcher for Xcode projects. Its timeout handler, `terminate(pid:escalation:)`, is simpler than the SPM one: nothing for pid 0, otherwise `SIGTERM` to the group, then a `TimeoutEscalation` armed with no descendants for the `SIGKILL` after its grace period. When the process exits first, `postTerminationCleanup` cancels that kill and, if it was pending, kills what is left of the group at once — the delayed kill used to be a detached task that fired five seconds later whatever happened, on every killed mutant, at a pid that might by then lead someone else's group. There is no descendant snapshot — `xcodebuild` reaps its own children, and its results are read from the `.xcresult` bundle rather than from whatever the processes left on stdout.
+The default launcher for Xcode projects. Its timeout handler, `terminate(pid:escalation:)`, does nothing for pid 0. Otherwise it first deals with the descendants that lead process groups of their own, which no signal to `xcodebuild`'s group reaches: `xcodebuild` builds through `SWBBuildService`, which runs in its own group, and so does every `swift-frontend` it starts. They used to outlive a build that timed out, reparented to `launchd`, and keep writing into the sandbox's derived data after the sandbox was removed, leaving it behind (1.3 GB in #176). Each is stopped with `SIGSTOP`, and the table is read again until it shows none that is not stopped, at most five times, so a compiler started between two reads is caught too; then each is killed with `SIGKILL`. Then comes `SIGTERM` to the group, then a `TimeoutEscalation` armed with no descendants for the `SIGKILL` after its grace period. When the process exits first, `postTerminationCleanup` cancels that kill and, if it was pending, kills what is left of the group at once — the delayed kill used to be a detached task that fired five seconds later whatever happened, on every killed mutant, at a pid that might by then lead someone else's group. The descendants inside the group get the group's `SIGTERM` rather than a kill of their own — `xcodebuild` reaps its own children, and its results are read from the `.xcresult` bundle rather than from whatever the processes left on stdout.
 
 ---
 
@@ -1033,12 +1038,13 @@ Resolves symlinks with `realpath`, returning the input unchanged when it cannot.
 ```swift
 enum ProcessTree {
     static func descendants(of pid: Int32, sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32]
+    static func detachedDescendants(of pid: Int32, sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32]
     static func isAlive(_ pid: pid_t) -> Bool
     static func all(sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32]
 }
 ```
 
-Walks the process table from `sysctl(KERN_PROC_ALL)` and returns every descendant of a pid, at any depth; a pid of 1 or below has none. Sizing the table and reading it are two calls, and processes started in between make the read fail with `ENOMEM`; the buffer therefore gets an eighth more room plus 16 entries, and a read that still fails with `ENOMEM` is retried from the sizing, up to three times, before the snapshot comes back empty. `SPMProcessLauncher.terminate` snapshots them while the group is frozen, so a test process that spawns children cannot leave one behind. `all()` returns every pid above 1, for `OrphanedProcessReaper` to inspect. `isAlive(_:)` is `kill(pid, 0)`, with `EPERM` counted as alive — the process exists, it is just not ours to signal; `SandboxName` and `CloneName` both decide ownership with it.
+Walks the process table from `sysctl(KERN_PROC_ALL)` and returns every descendant of a pid, at any depth; a pid of 1 or below has none. Sizing the table and reading it are two calls, and processes started in between make the read fail with `ENOMEM`; the buffer therefore gets an eighth more room plus 16 entries, and a read that still fails with `ENOMEM` is retried from the sizing, up to three times, before the snapshot comes back empty. `SPMProcessLauncher.terminate` snapshots them while the group is frozen, so a test process that spawns children cannot leave one behind. `detachedDescendants(of:)` keeps only those whose process group is not the pid's, the ones a signal to the group misses, for `XcodeProcessLauncher.terminate`. `all()` returns every pid above 1, for `OrphanedProcessReaper` to inspect. `isAlive(_:)` is `kill(pid, 0)`, with `EPERM` counted as alive — the process exists, it is just not ours to signal; `SandboxName` and `CloneName` both decide ownership with it.
 
 ---
 

@@ -590,11 +590,11 @@ flowchart TD
     BS -- success --> SEL["TestTargetSelection<br>every bundle with both libraries"]
     SEL --> TES["TestExecutionStage<br>test mutants in this file"]
     BS -- compilationFailed --> UNVIABLE["mark all mutants in file .unviable"]
-    BS -- timedOut --> TIMEOUT["mark all mutants in file .timeout"]
+    BS -- timedOut --> STOP["rethrow: the run stops, nothing recorded"]
     BS -- "any other error" --> THROW["rethrow: the run stops, nothing recorded"]
 ```
 
-For each schematized file, creates a sandbox containing only that file's schematization (with a `SandboxFactory()` of its own), verifies it with `ApplicationVerifier`, builds it (Xcode or SPM), and runs the test suite against its mutants. A file whose mutants are all cached is not built: each cached verdict is reported through `ResultRecorder.finish`. The SPM test pass here runs without a baseline probe and without targeted suites: the bundles are those `TestTargetSelection` keeps, each with both libraries. The sandbox is released through `release(keepingFor:)` after each file. Only the two build errors that say something about the mutants become their verdict: `BuildError.compilationFailed` marks every mutant of the file `.unviable` and `BuildError.timedOut` marks them `.timeout`, each with a mutant log carrying the error's description. Every other error — a `CancellationError` from Ctrl-C, a launcher that could not start the build, `BuildError.xctestrunNotFound`, a failed read — is rethrown, so it ends the run instead of being recorded: verdicts reach the cache and the plan journal as soon as they are known, and a run resumed after an interruption would otherwise reuse `unviable` verdicts no build ever gave. Cached verdicts are read through `CacheStore.cachedResult(for:)` and every verdict is recorded through `ResultRecorder`.
+For each schematized file, creates a sandbox containing only that file's schematization (with a `SandboxFactory()` of its own), verifies it with `ApplicationVerifier`, builds it (Xcode or SPM), and runs the test suite against its mutants. A file whose mutants are all cached is not built: each cached verdict is reported through `ResultRecorder.finish`. The SPM test pass here runs without a baseline probe and without targeted suites: the bundles are those `TestTargetSelection` keeps, each with both libraries. The sandbox is released through `release(keepingFor:)` after each file. Only the build error that says something about the mutants becomes their verdict: `BuildError.compilationFailed` marks every mutant of the file `.unviable`, each with a mutant log carrying the error's description. `BuildError.timedOut` used to mark them `.timeout`, which counts as detected: a fallback build compiles every mutant of the file at once, so it runs out of time because of the machine — a cold build, nine of them in parallel, a low `--build-timeout` — and not because of any one mutant, and a project whose fallback builds all timed out reported 100% (#176). It is rethrown now, as is every other error — a `CancellationError` from Ctrl-C, a launcher that could not start the build, `BuildError.xctestrunNotFound`, a failed read — so it ends the run instead of being recorded: verdicts reach the cache and the plan journal as soon as they are known, and a run resumed after an interruption would otherwise reuse `unviable` verdicts no build ever gave. Cached verdicts are read through `CacheStore.cachedResult(for:)` and every verdict is recorded through `ResultRecorder`.
 
 ---
 
@@ -619,10 +619,9 @@ struct IncompatibleMutantExecutor: Sendable {
         mutant: MutantDescriptor,
         sandbox: Sandbox?,
         keepLogsPath: String?,
-        buildOutput: String = "",
-        status: ExecutionStatus = .unviable
+        buildOutput: String = ""
     ) async -> ExecutionResult
-    func buildStatus(exitCode: Int32) -> ExecutionStatus
+    func rejectTimedOut(_ build: (exitCode: Int32, output: String), configuration: RunnerConfiguration) throws
 
     struct Verdict {
         let status: ExecutionStatus
@@ -640,7 +639,7 @@ Handles mutants that cannot be schematized, and the ones `SchemaNarrower` took o
 
 **Activation.** Both paths first build the copy `ActivationInstrumenter(importStyle:)` returns, and test it with an activation marker: the environment variable on the SPM path, the same name behind `TEST_RUNNER_` (`testRunnerPrefix`) on the Xcode path, since `xcodebuild` hands those to the test runner without the prefix. `Verdict` reads the marker and classifies the result like a schematized mutant's (`TestExecutionStage.classify`), and a kill without activation (`isUnactivatedKill`) is tested once more, without a rebuild, and judged by that run. When the instrumented copy fails to build, the plain `mutatedSourceContent` is built and tested instead, unmeasured (`activated == nil`): on the SPM path any failure but a timeout, on the Xcode path any build that fails (`buildFailed`). The same holds when the instrumenter returns `nil`. `MutantExecutor` passes the input's `importStyle`, so the import the instrumenter adds matches the project's. The activation is cached with the verdict.
 
-`buildStatus(exitCode:)` makes a build that timed out `.timeout` and any other failed build `.unviable`; `storeAndReport` records such a verdict with the build output. Cache hits come from `ResultRecorder.cached(_:)`, and every verdict — including a mutation that could not be applied and a failed build — is recorded through `ResultRecorder.record`, by `record(_:mutant:configuration:)` or `storeAndReport`.
+`rejectTimedOut(_:configuration:)` throws `BuildError.timedOut` for a build that ran out of time, which ends the run, on every build of this executor: the warm builds when none of them built, the SPM rebuild of a mutant, and the `build-for-testing` of a mutant on the Xcode path, warm or cold. A build that timed out used to record the mutant `.timeout`, which counts as detected, for the same reason `FallbackExecutor` no longer does. Any other failed build is recorded `.unviable` with the build output by `storeAndReport`, or, on the Xcode path, rebuilt from the plain copy. Cache hits come from `ResultRecorder.cached(_:)`, and every verdict — including a mutation that could not be applied and a failed build — is recorded through `ResultRecorder.record`, by `record(_:mutant:configuration:)` or `storeAndReport`.
 
 ```mermaid
 flowchart TD
@@ -651,7 +650,7 @@ flowchart TD
     CONTENT -- present --> PT{"project type"}
     PT -- ".xcode, reproducing" --> COLD["runXcodeCold<br>a sandbox and a cold build per attempt<br>xcodeWidth at a time"]
     PT -- ".xcode" --> XWARM["xcodeWidth XcodeWorkers<br>pool slot + createClean(disablingSwiftLint: true)<br>one cold build-for-testing each"]
-    XWARM -- "none built" --> XUNVIABLE["every mutant unviable<br>with that build's output"]
+    XWARM -- "none built" --> XUNVIABLE["every mutant unviable<br>with that build's output<br>a timed-out build stops the run"]
     XWARM --> XDEAL["deal WarmMutants round-robin<br>over the workers that built"]
     XDEAL --> XWRITE["write instrumented copy over the link<br>incremental build-for-testing"]
     XWRITE -- built --> LAUNCH["test-without-building<br>-collect-test-diagnostics never"]
@@ -660,7 +659,7 @@ flowchart TD
     XPLAIN --> PARSE
     PARSE --> XRESTORE["SandboxLink.restore<br>remove .xcresult"]
     PT -- ".spm" --> WARM["warmSandboxes<br>concurrency ÷ 4 createClean sandboxes<br>swift build --build-tests in parallel"]
-    WARM -- "none built" --> ALLUNVIABLE["every mutant unviable<br>with that build's output"]
+    WARM -- "none built" --> ALLUNVIABLE["every mutant unviable<br>with that build's output<br>a timed-out build stops the run"]
     WARM --> DEAL["deal mutants round-robin<br>over the sandboxes that built"]
     DEAL --> WRITE["write instrumented copy<br>incremental swift build --build-tests"]
     WRITE -- built --> TESTS["targeted suite, then swift test<br>each stopped at the first failure"]
