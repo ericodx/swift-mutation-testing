@@ -379,4 +379,26 @@ struct ConfigurationFileWriterTests {
         let values = try ConfigurationFileParser().parse(at: dir.path)
         #expect(values["workspace"] == nil)
     }
+
+    @Test("Given an Xcode project, when write called, then xcodebuild-args is offered as a commented list")
+    func xcodebuildArgumentsAreOffered() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(to: dir.path, project: .empty)
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(content.contains("# xcodebuild-args:\n#   - -allowProvisioningUpdates"))
+    }
+
+    @Test("Given an SPM project, when write called, then xcodebuild-args is not offered")
+    func xcodebuildArgumentsAreNotOfferedForSPM() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try writer.write(to: dir.path, project: DetectedProject(kind: .spm(testTargets: ["AppTests"]), testTarget: nil))
+
+        let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
+        #expect(!content.contains("xcodebuild-args"))
+    }
 }
