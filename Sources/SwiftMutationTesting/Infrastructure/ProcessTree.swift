@@ -3,24 +3,11 @@ import Foundation
 enum ProcessTree {
 
     static func descendants(of pid: Int32, sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32] {
-        guard pid > 1 else { return [] }
+        descendantEntries(of: pid, sysctl: sysctl).map(\.pid)
+    }
 
-        var childrenByParent: [Int32: [Int32]] = [:]
-        for entry in snapshot(sysctl: sysctl) where entry.pid > 1 {
-            childrenByParent[entry.parentPID, default: []].append(entry.pid)
-        }
-
-        var found: [Int32] = []
-        var seen: Set<Int32> = [pid]
-        var pending = childrenByParent[pid] ?? []
-
-        while let next = pending.popLast() {
-            guard seen.insert(next).inserted else { continue }
-            found.append(next)
-            pending.append(contentsOf: childrenByParent[next] ?? [])
-        }
-
-        return found
+    static func detachedDescendants(of pid: Int32, sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32] {
+        descendantEntries(of: pid, sysctl: sysctl).filter { $0.groupID != pid }.map(\.pid)
     }
 
     static func isAlive(_ pid: pid_t) -> Bool {
@@ -33,9 +20,32 @@ enum ProcessTree {
 
     // MARK: - Private
 
+    private typealias Entry = (pid: Int32, parentPID: Int32, groupID: Int32)
+
     private static let snapshotAttempts = 3
 
-    private static func snapshot(sysctl: SystemCalls.Sysctl) -> [(pid: Int32, parentPID: Int32)] {
+    private static func descendantEntries(of pid: Int32, sysctl: SystemCalls.Sysctl) -> [Entry] {
+        guard pid > 1 else { return [] }
+
+        var childrenByParent: [Int32: [Entry]] = [:]
+        for entry in snapshot(sysctl: sysctl) where entry.pid > 1 {
+            childrenByParent[entry.parentPID, default: []].append(entry)
+        }
+
+        var found: [Entry] = []
+        var seen: Set<Int32> = [pid]
+        var pending = childrenByParent[pid] ?? []
+
+        while let next = pending.popLast() {
+            guard seen.insert(next.pid).inserted else { continue }
+            found.append(next)
+            pending.append(contentsOf: childrenByParent[next.pid] ?? [])
+        }
+
+        return found
+    }
+
+    private static func snapshot(sysctl: SystemCalls.Sysctl) -> [Entry] {
         var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0]
         let stride = MemoryLayout<kinfo_proc>.stride
 
@@ -49,7 +59,11 @@ enum ProcessTree {
 
             if sysctl(&mib, 4, &procs, &size, nil, 0) == 0 {
                 return (0 ..< size / stride).map {
-                    (pid: procs[$0].kp_proc.p_pid, parentPID: procs[$0].kp_eproc.e_ppid)
+                    (
+                        pid: procs[$0].kp_proc.p_pid,
+                        parentPID: procs[$0].kp_eproc.e_ppid,
+                        groupID: procs[$0].kp_eproc.e_pgid
+                    )
                 }
             }
 
