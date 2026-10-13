@@ -7,6 +7,8 @@ enum BaselineError: Error, Equatable, LocalizedError {
 
     case runFailed(output: String)
 
+    case buildFailed(output: String)
+
     var errorDescription: String? {
         switch self {
         case .testsFailed(let tests):
@@ -27,6 +29,13 @@ enum BaselineError: Error, Equatable, LocalizedError {
         case .runFailed(let output):
             let explanation =
                 "The unmutated test suite could not be run, so no mutant's verdict would mean anything."
+            return output.isEmpty ? explanation : output + "\n" + explanation
+
+        case .buildFailed(let output):
+            let explanation =
+                "The unmutated project does not build, so every mutant would be reported unviable. "
+                + "Make it build with xcodebuild or swift build from the command line first. "
+                + "Pass --keep-logs <dir> to keep the build output as baseline.log."
             return output.isEmpty ? explanation : output + "\n" + explanation
         }
     }
