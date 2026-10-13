@@ -18,7 +18,7 @@ struct ApplicationVerifier: Sendable {
             guard
                 original.hasPrefix(projectRoot + "/"),
                 let content = read(sandbox.rootURL.path + original.dropFirst(projectRoot.count)),
-                content != read(original)
+                LintSuppression.unwrapping(content) != read(original)
             else { throw IntegrityError.schemaNotApplied(path: file.originalPath) }
 
             guard content.contains(SupportDeclarations.perFile(for: file.originalPath)) else {

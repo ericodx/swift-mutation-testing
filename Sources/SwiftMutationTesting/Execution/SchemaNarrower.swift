@@ -132,7 +132,7 @@ struct SchemaNarrower: Sendable {
             return mutantsInFile
         }
 
-        try narrowed.write(toFile: sandboxPath, atomically: true, encoding: .utf8)
+        try LintSuppression.wrapping(narrowed).write(toFile: sandboxPath, atomically: true, encoding: .utf8)
 
         return mutantsInFile.filter { problematicIDs.contains($0.id) }
     }

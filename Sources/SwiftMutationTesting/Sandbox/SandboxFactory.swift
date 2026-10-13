@@ -130,7 +130,7 @@ struct SandboxFactory: Sendable {
             } else if !replacements.isEmpty,
                 let content = replacements.content(for: item, relativePath: itemRelativePath, isSymlink: isSymlink)
             {
-                try content.write(to: dest, atomically: true, encoding: .utf8)
+                try LintSuppression.wrapping(content).write(to: dest, atomically: true, encoding: .utf8)
             } else {
                 try writeFile(source: item, destination: dest, copiesFiles: copiesFiles)
             }

@@ -209,7 +209,7 @@ extension IncompatibleMutantExecutor {
 
     private func write(_ content: String, to path: String) throws {
         try? FileManager.default.removeItem(atPath: path)
-        try content.write(toFile: path, atomically: true, encoding: .utf8)
+        try LintSuppression.wrapping(content).write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     private func removeResultBundles(in sandbox: Sandbox) throws {

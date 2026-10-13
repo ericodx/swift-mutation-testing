@@ -214,7 +214,7 @@ struct IncompatibleMutantExecutor: Sendable {
         sandbox: Sandbox
     ) async throws -> (exitCode: Int32, output: String) {
         try? FileManager.default.removeItem(atPath: path)
-        try content.write(toFile: path, atomically: true, encoding: .utf8)
+        try LintSuppression.wrapping(content).write(toFile: path, atomically: true, encoding: .utf8)
         try? FileManager.default.removeItem(at: sandbox.rootURL.appendingPathComponent(".build/manifests"))
 
         return try await deps.launcher.launchCapturing(
