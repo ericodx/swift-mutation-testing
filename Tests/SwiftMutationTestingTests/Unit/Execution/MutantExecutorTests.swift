@@ -90,6 +90,69 @@ struct MutantExecutorTests {
         #expect(results[0].status == .unviable)
     }
 
+    @Test("Given the unmutated Xcode project does not build, when execute called, then the run stops with its output")
+    func unmutatedXcodeBuildFailureStopsTheRun() async throws {
+        try await expectUnmutatedBuildFailureStopsTheRun(
+            projectType: .xcode(scheme: "App", destination: "platform=macOS"), verb: "build-for-testing"
+        )
+    }
+
+    @Test("Given the unmutated SPM package does not build, when execute called, then the run stops with its output")
+    func unmutatedSPMBuildFailureStopsTheRun() async throws {
+        try await expectUnmutatedBuildFailureStopsTheRun(projectType: .spm, verb: "build")
+    }
+
+    @Test("Given the unmutated project does not build and keep-logs, when execute called, then baseline.log is kept")
+    func unmutatedBuildFailureKeepsTheBuildOutput() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+        let logs = dir.appendingPathComponent("logs")
+
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, keepLogsPath: logs.path),
+            launcher: MockProcessLauncher(exitCode: 1, output: "Validate plug-in")
+        )
+
+        _ = try? await executor.execute(
+            makeRunnerInput(
+                projectPath: dir.path,
+                schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+                mutants: [makeMutantDescriptor(id: "m0", filePath: sourceFile.path, isSchematizable: true)]
+            )
+        )
+
+        let log = try String(contentsOf: logs.appendingPathComponent("baseline.log"), encoding: .utf8)
+        #expect(log == "Validate plug-in")
+    }
+
+    private func expectUnmutatedBuildFailureStopsTheRun(projectType: ProjectType, verb: String) async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+
+        let launcher = RecordingProcessLauncher(responses: [(1, "Validate plug-in")])
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: projectType),
+            launcher: launcher
+        )
+
+        await #expect(throws: BaselineError.buildFailed(output: "Validate plug-in")) {
+            try await executor.execute(
+                makeRunnerInput(
+                    projectPath: dir.path,
+                    schematizedFiles: [
+                        SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")
+                    ],
+                    mutants: [makeMutantDescriptor(id: "m0", filePath: sourceFile.path, isSchematizable: true)]
+                )
+            )
+        }
+        #expect(await launcher.requests.filter { $0.arguments.first == verb }.count == 2)
+    }
+
     @Test("Given incompatible mutant with nil content, when execute called, then the run stops before any build")
     func incompatibleMutantWithNilContentStopsTheRun() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
