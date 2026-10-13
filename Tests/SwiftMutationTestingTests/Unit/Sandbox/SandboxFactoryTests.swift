@@ -27,7 +27,7 @@ struct SandboxFactoryTests {
             encoding: .utf8
         )
 
-        #expect(content == "schematized content")
+        #expect(content == LintSuppression.wrapping("schematized content"))
     }
 
     @Test("Given a project, when sandbox created, then it lives in the sandbox directory, not loose in temp")
@@ -146,7 +146,7 @@ struct SandboxFactoryTests {
             encoding: .utf8
         )
 
-        #expect(content == "mutated content")
+        #expect(content == LintSuppression.wrapping("mutated content"))
     }
 
     @Test("Given xcodeproj with swiftlint build phase, when sandbox created, then shellScript is replaced with exit 0")
