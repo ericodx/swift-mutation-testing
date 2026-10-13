@@ -128,8 +128,8 @@ struct MutantExecutor: Sendable {
         let selection = CacheTestSelection(configuration.build)
         if try await cacheStore.discard(unlessMadeWith: selection) {
             StandardError.write(
-                "Note: the cache was made against other tests (another target, testing library, scheme or "
-                    + "destination); every mutant will be tested again."
+                "Note: the cache was made against other tests (another target, testing library, scheme, destination "
+                    + "or xcodebuild arguments); every mutant will be tested again."
             )
         }
 
