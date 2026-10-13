@@ -48,6 +48,7 @@ struct ConfigurationResolver: Sendable {
             build: .init(
                 projectType: projectType,
                 xcodeContainer: xcodeContainer,
+                xcodebuildArguments: [],
                 testTarget: cliArguments.build.testTarget ?? fileValues["test-target"],
                 timeout: timeout,
                 buildTimeout: buildTimeout,

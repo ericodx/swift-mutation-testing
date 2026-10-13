@@ -19,7 +19,7 @@ enum ToolRequests {
     }
 
     static func buildForTesting(
-        in sandbox: Sandbox, scheme: String, destination: String, container: XcodeContainer?, timeout: Double
+        in sandbox: Sandbox, scheme: String, destination: String, arguments extraArguments: [String], timeout: Double
     ) -> ProcessRequest {
         let arguments =
             [
@@ -28,7 +28,7 @@ enum ToolRequests {
                 "-destination", destination,
                 "-derivedDataPath", derivedDataPath(in: sandbox),
             ] + skipPackageValidation
-        return xcodebuild(arguments + (container?.arguments ?? []), in: sandbox, timeout: timeout)
+        return xcodebuild(arguments + extraArguments, in: sandbox, timeout: timeout)
     }
 
     static func xcodebuild(

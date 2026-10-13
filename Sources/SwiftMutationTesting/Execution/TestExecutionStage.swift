@@ -329,6 +329,7 @@ struct TestExecutionStage: Sendable {
         if let testTarget = context.configuration.build.testTarget {
             arguments += ["-only-testing", testTarget]
         }
+        arguments += context.configuration.build.xcodebuildArguments
 
         let start = Date()
         let captured = try await deps.launcher.launchCapturing(

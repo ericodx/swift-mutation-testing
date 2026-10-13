@@ -253,7 +253,7 @@ struct MutantExecutor: Sendable {
             do {
                 let artifact = try await stage.build(
                     sandbox: sandbox,
-                    container: configuration.build.xcodeContainer,
+                    arguments: configuration.build.xcodeArguments,
                     scheme: scheme,
                     destination: destination,
                     timeout: configuration.build.buildTimeout

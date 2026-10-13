@@ -72,7 +72,7 @@ extension IncompatibleMutantExecutor {
                         let build = try await deps.launcher.launchCapturing(
                             ToolRequests.buildForTesting(
                                 in: sandbox, scheme: scheme, destination: slot.destination,
-                                container: configuration.build.xcodeContainer,
+                                arguments: configuration.build.xcodeArguments,
                                 timeout: configuration.build.buildTimeout
                             )
                         )
@@ -344,7 +344,7 @@ extension IncompatibleMutantExecutor {
                 in: run.sandbox,
                 scheme: run.attempt.scheme,
                 destination: run.slot.destination,
-                container: configuration.build.xcodeContainer,
+                arguments: configuration.build.xcodeArguments,
                 timeout: configuration.build.buildTimeout
             )
         )
@@ -378,7 +378,7 @@ extension IncompatibleMutantExecutor {
                 "-derivedDataPath", ToolRequests.derivedDataPath(in: run.sandbox),
                 "-resultBundlePath", xcresultPath,
                 "-parallel-testing-enabled", "NO",
-            ] + ToolRequests.noTestDiagnostics + (configuration.build.xcodeContainer?.arguments ?? [])
+            ] + ToolRequests.noTestDiagnostics + configuration.build.xcodeArguments
 
         if let testTarget = configuration.build.testTarget {
             testArguments += ["-only-testing", testTarget]

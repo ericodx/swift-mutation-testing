@@ -19,6 +19,7 @@ struct RunnerConfiguration: Sendable {
     struct BuildOptions: Sendable {
         var projectType: ProjectType
         var xcodeContainer: XcodeContainer?
+        var xcodebuildArguments: [String]
         var testTarget: String?
         var timeout: Double
         var buildTimeout: Double
@@ -28,6 +29,10 @@ struct RunnerConfiguration: Sendable {
         var reproduction: Reproduction?
 
         var reproducing: Bool { reproduction != nil }
+
+        var xcodeArguments: [String] {
+            (xcodeContainer?.arguments ?? []) + xcodebuildArguments
+        }
     }
 
     struct ReportingOptions: Sendable {
