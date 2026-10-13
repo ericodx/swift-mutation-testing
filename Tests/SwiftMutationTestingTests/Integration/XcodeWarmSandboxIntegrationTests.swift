@@ -34,7 +34,7 @@ struct XcodeWarmSandboxIntegrationTests {
                 projectPath: fixture.url.path,
                 build: .init(
                     projectType: .xcode(scheme: "CalcApp", destination: "platform=macOS"),
-                    timeout: 60, buildTimeout: 120, concurrency: 1, noCache: true
+                    xcodebuildArguments: [], timeout: 60, buildTimeout: 120, concurrency: 1, noCache: true
                 ),
                 reporting: .init(quiet: true),
                 filter: .init(excludePatterns: [], operators: [])

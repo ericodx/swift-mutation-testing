@@ -4,6 +4,7 @@ func makeRunnerConfiguration(
     projectPath: String = "/tmp",
     projectType: ProjectType = .xcode(scheme: "MyScheme", destination: "platform=macOS"),
     testTarget: String? = nil,
+    xcodebuildArguments: [String] = [],
     timeout: Double = 60,
     buildTimeout: Double = 60,
     concurrency: Int = 1,
@@ -22,6 +23,7 @@ func makeRunnerConfiguration(
         projectPath: projectPath,
         build: .init(
             projectType: projectType,
+            xcodebuildArguments: xcodebuildArguments,
             testTarget: testTarget,
             timeout: timeout,
             buildTimeout: buildTimeout,

@@ -11,7 +11,7 @@ struct ToolRequestsTests {
             in: Sandbox(rootURL: URL(fileURLWithPath: "/tmp/sandbox")),
             scheme: "App",
             destination: "platform=macOS",
-            container: nil,
+            arguments: [],
             timeout: 60
         )
 
@@ -25,7 +25,7 @@ struct ToolRequestsTests {
             in: Sandbox(rootURL: URL(fileURLWithPath: "/tmp/sandbox")),
             scheme: "App",
             destination: "platform=macOS",
-            container: .workspace("App.xcworkspace"),
+            arguments: XcodeContainer.workspace("App.xcworkspace").arguments,
             timeout: 60
         )
 

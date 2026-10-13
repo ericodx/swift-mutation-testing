@@ -61,7 +61,9 @@ struct MutantExecutorSPMIntegrationTests {
 private func makeConfiguration(fixtureURL: URL) -> RunnerConfiguration {
     RunnerConfiguration(
         projectPath: fixtureURL.path,
-        build: .init(projectType: .spm, timeout: 60.0, buildTimeout: 60.0, concurrency: 1, noCache: true),
+        build: .init(
+            projectType: .spm, xcodebuildArguments: [], timeout: 60.0, buildTimeout: 60.0, concurrency: 1, noCache: true
+        ),
         reporting: .init(quiet: true),
         filter: .init(excludePatterns: [], operators: [])
     )
