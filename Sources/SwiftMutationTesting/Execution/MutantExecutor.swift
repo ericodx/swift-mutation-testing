@@ -83,6 +83,12 @@ struct MutantExecutor: Sendable {
         )
 
         let (artifact, schemaBuildExcluded) = try await buildArtifact(sandbox: sandbox, input: input, deps: deps)
+        if artifact == nil, !input.mutants.isEmpty {
+            try await UnmutatedBuildCheck(
+                configuration: configuration, stage: BuildStage(launcher: deps.launcher),
+                sandboxFactory: environment.sandboxFactory
+            ).verify(projectPath: input.projectPath)
+        }
         let pool = try await SimulatorPool.make(for: configuration, launcher: launcher)
         try await pool.setUp()
         await reporter.report(.workersReady(count: pool.size, usesSimulators: pool.usesSimulators))
