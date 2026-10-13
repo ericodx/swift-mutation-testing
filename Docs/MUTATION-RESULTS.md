@@ -88,7 +88,7 @@ To address a survivor, add or strengthen a test that is sensitive to the origina
 - Removing a statement that is the sole expression in a single-expression function body can change the implicit return type
 - Negating a condition that expects a non-optional `Bool` when the expression type is more complex
 
-**What it tells you:** unviable mutants are a limitation of the mutation operators, not a gap in your tests. They do not count toward the mutation score, and their activation is not measured, since they never ran. A high unviable rate for a particular operator in your codebase is a signal that the operator generates many syntactically valid but semantically invalid mutations in your context; this is expected and harmless.
+**What it tells you:** unviable mutants are a limitation of the mutation operators, not a gap in your tests. They do not count toward the mutation score, and their activation is not measured, since they never ran. A high unviable rate for a particular operator in your codebase is a signal that the operator generates many syntactically valid but semantically invalid mutations in your context; this is expected and harmless. A mutant is only called unviable when the unmutated project builds: a project that does not build stops the run instead.
 
 **Effect on performance:** unviable mutants are discovered during the build step, not the test step, so they are cheap to discard.
 
@@ -164,7 +164,7 @@ score      = detected / (detected + undetected) × 100
 | No coverage | undetected | yes | no |
 | Unviable | — | **no** | no |
 
-Unviable mutants are excluded entirely — they are a property of the operators, not of the tests. When no mutant is detected or undetected — every one unviable — the score is 100%. A run that discovers no mutant at all reports no score: it ends with exit code 1, since nothing was measured.
+Unviable mutants are excluded entirely — they are a property of the operators, not of the tests. When no mutant is detected or undetected — every one unviable — there is no score: the reports print `n/a`, and the score checks of the quality gate fail. A run that discovers no mutant at all reports no score either: it ends with exit code 1, since nothing was measured. Nor does a run whose unmutated project does not build: rather than mark every mutant unviable, it ends with exit code 1 and the build's output.
 
 The console and the HTML report print both sides under the score:
 
