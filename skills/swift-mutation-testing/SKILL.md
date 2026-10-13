@@ -79,11 +79,11 @@ Each mutant in the JSON report (`files["/Sources/Foo.swift"].mutants[]`) carries
 | `NoCoverage` | The suite passed and the mutated code never ran — measured, not guessed: every mutant records when its code executes | Write a test that reaches the code first |
 | `CompileError` | The mutant did not compile | None. It is a property of the operator, not of the tests, and it is outside the score |
 
-A 100% score means every mutant that compiled was detected. It does not mean the code is right.
+A 100% score means every mutant that compiled was detected. It does not mean the code is right. When no mutant could be tested — every one `CompileError` — there is no score: the summary prints `n/a`, and `--min-score` and `--max-score-drop` fail.
 
 Two lines can follow the summary. `Integrity warnings (N)` lists mutants that were **killed or timed out without their code running**: the test that failed did not fail because of the mutation, so treat those as flaky or broken tests, not as mutants to fix. A kill without activation was already run a second time, alone, and failed again, so it is not a one-off flake; in the JSON they carry `statusReason: "killed without activation"` (or `crash …`, `timed out …`). `Activation not measured: N mutants` means those mutants could not be instrumented, so for them a passing suite reads `survived` even if the code never ran.
 
-The run stops with exit code `1`, before reporting anything, when a mutant did not reach the build (`… not applied to the sandbox`) or when mutants were killed but no mutant's code was ever seen running. Both mean the verdicts could not be trusted; the message says which. Report the error to the user rather than working around it.
+The run stops with exit code `1`, before reporting anything, when the project does not build without mutations (`The unmutated project does not build`, after the build's output), when a mutant did not reach the build (`… not applied to the sandbox`) or when mutants were killed but no mutant's code was ever seen running. Each means the verdicts could not be trusted; the message says which. For the first, make the project build from the command line before running again. Report the error to the user rather than working around it.
 
 ## 4. Prioritizing
 
