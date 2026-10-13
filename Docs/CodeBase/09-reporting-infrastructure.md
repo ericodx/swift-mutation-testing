@@ -87,7 +87,7 @@ struct RunnerSummary: Sendable {
     let unviable: [ExecutionResult]
     let timeouts: [ExecutionResult]
     let noCoverage: [ExecutionResult]
-    let score: Double
+    let score: Double?
     let resultsByFile: [String: [ExecutionResult]]
     let fromCache: [ExecutionResult]
     let integrityWarnings: [ExecutionResult]
@@ -113,7 +113,7 @@ undetected = survived + noCoverage
 score      = detected / (detected + undetected) × 100
 ```
 
-`unviable` mutants are on neither side. When no mutant is detected or undetected the score is `100.0`. This is the formula the Stryker report schema applies to the statuses `JsonReporter` emits, so the JSON report scores the same in any Stryker-compatible viewer — see [Stryker Compatibility](../STRYKER-COMPATIBILITY.md). It is the only score formula: the per-file scores are `RunnerSummary` values too, from `files`.
+`unviable` mutants are on neither side. When no mutant is detected or undetected the score is `nil`: a run in which nothing could be tested has no score, where it used to read `100.0` — a perfect result for a run that measured nothing, which is what a project whose every build failed reported. The reports print it as `n/a` and the score checks of `QualityGate` fail on it. This is the formula the Stryker report schema applies to the statuses `JsonReporter` emits, so the JSON report scores the same in any Stryker-compatible viewer — see [Stryker Compatibility](../STRYKER-COMPATIBILITY.md). It is the only score formula: the per-file scores are `RunnerSummary` values too, from `files`.
 
 `resultsByFile` groups results by `descriptor.filePath`. `files` turns that into one `RunnerSummary` per file, in path order — the per-file tables of `TextReporter`, `HtmlReporter` and `MarkdownReporter` iterate it. `byLocation(_:)` sorts results by file, line and column; every report that lists mutants — the survived and integrity lists, the Markdown tables, the SARIF results — sorts through it.
 
@@ -141,6 +141,16 @@ extension RunnerSummary {
 
 `Detected: <n> (killed <k>, timeout <t>) / Undetected: <n> (survived <s>, no coverage <c>)` — the two sides of the score, printed under it by `TextReporter`, `HtmlReporter` and `MarkdownReporter` so that a score earned by timeouts is visible as such.
 
+### Reporting/RunnerSummary+FormattedScore.swift
+
+```swift
+extension RunnerSummary {
+    var formattedScore: String
+}
+```
+
+The score as every report prints it, overall and per file: one decimal and a percent sign (`85.3%`), or `n/a` when there is no score. `TextReporter`, `HtmlReporter` and `MarkdownReporter` all go through it.
+
 ### Reporting/RunnerSummary+Cache.swift
 
 ```swift
@@ -167,7 +177,7 @@ struct TextReporter: Sendable {
 Prints a human-readable summary through `StandardOutput`. Always active (not gated by a CLI flag): `RunConclusion.conclude` prints it before the gate and the report files. Paths are relative to `projectRoot`, both sides resolved through symlinks; an empty root leaves them absolute.
 
 Output sections:
-1. `Results by file:` — one line per file (`RunnerSummary.files`): relative path, score %, and the killed, survived, timeout, unviable and no coverage counts
+1. `Results by file:` — one line per file (`RunnerSummary.files`): relative path, score (`formattedScore`), and the killed, survived, timeout, unviable and no coverage counts
 2. Undetected mutants list — survived and no coverage: `<file>:<line>:<col>   <operator>   <survived | no coverage>` sorted by location (`RunnerSummary.byLocation`), when there are any
 3. Integrity warnings — kills and timeouts whose code never ran, the first `integrityWarningsListed` (10) with their reason, then a count — when there are any
 4. Overall score line
@@ -207,7 +217,7 @@ struct HtmlReporter: Sendable {
 }
 ```
 
-Writes a self-contained HTML dashboard to `outputPath`. Shows the overall score, the detection line and the totals, then a per-file score table — killed, survived, timeouts, unviable, no coverage — with `<details>` elements listing each file's survived mutants inline, by line. Score cells are colour-coded: green (100%), yellow (≥ 50%), red (< 50%). Every interpolated value — the file path, the operator, the mutation description and the detection line — goes through `String.htmlEscaped` (`&`, `<`, `>`, `"`, `'`), so a `<` or `&&` mutation keeps the table intact and a string literal cannot inject markup. File paths are relative to `projectRoot`, computed by `ProjectRelativePath`, with no leading `/`.
+Writes a self-contained HTML dashboard to `outputPath`. Shows the overall score, the detection line and the totals, then a per-file score table — killed, survived, timeouts, unviable, no coverage — with `<details>` elements listing each file's survived mutants inline, by line. Score cells are colour-coded: green (100%), yellow (≥ 50%), red (< 50%); a file with no score shows `n/a` with the class `score-none`, which has no colour. Every interpolated value — the file path, the operator, the mutation description and the detection line — goes through `String.htmlEscaped` (`&`, `<`, `>`, `"`, `'`), so a `<` or `&&` mutation keeps the table intact and a string literal cannot inject markup. File paths are relative to `projectRoot`, computed by `ProjectRelativePath`, with no leading `/`.
 
 ---
 
@@ -405,8 +415,8 @@ extension GateResult.Check {
 
 | Check | `summary` |
 |---|---|
-| `.minScore` | `score 90.4% ≥ 85.0%`, or `<` when it fails |
-| `.scoreDrop` | `score drop 0.7 pts ≤ 2.0 pts`, or `>` when it fails; `score did not drop (max drop 2.0 pts)` when the drop is not positive |
+| `.minScore` | `score 90.4% ≥ 85.0%`, or `<` when it fails; `no score, since no mutant could be tested (min 85.0%)` without a score |
+| `.scoreDrop` | `score drop 0.7 pts ≤ 2.0 pts`, or `>` when it fails; `score did not drop (max drop 2.0 pts)` when the drop is not positive; `no score to compare with the baseline's (max drop 2.0 pts)` when the run has no score |
 | `.newUndetected` | `1 new undetected mutant (max 0)` |
 | `.integrityWarnings` | `2 integrity warnings (max 0)` |
 

@@ -43,7 +43,7 @@ Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<
 | Method | Used by | Description |
 |---|---|---|
 | `create(projectPath:schematizedFiles:)` | `MutantExecutor` for the schematizable path, `FallbackExecutor` with one file per sandbox | Embeds the schematized files; disables SwiftLint phases |
-| `createClean(projectPath:disablingSwiftLint:)` | `IncompatibleMutantExecutor` warm sandboxes, SPM and Xcode | Clean sandbox without mutations; mutated files are written directly later. The Xcode workers pass `disablingSwiftLint: true`; the SPM ones keep the default `false` |
+| `createClean(projectPath:disablingSwiftLint:)` | `IncompatibleMutantExecutor` warm sandboxes, SPM and Xcode; `UnmutatedBuildCheck` | Clean sandbox without mutations; mutated files are written directly later. The Xcode workers pass `disablingSwiftLint: true`; the SPM ones keep the default `false` |
 | `create(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor.runXcodeCold`, for an Xcode reproduction | Writes a single mutated file; SwiftLint phases are left as they are |
 
 **Copy strategy:**
@@ -275,6 +275,7 @@ Both requests come from `ToolRequests` (`buildForTesting(in:scheme:destination:c
 ```swift
 enum ToolRequests {
     static let noTestDiagnostics: [String]   // ["-collect-test-diagnostics", "never"]
+    static let skipPackageValidation: [String]   // ["-skipPackagePluginValidation", "-skipMacroValidation"]
     static func swiftBuildTests(in sandbox: Sandbox, timeout: Double) -> ProcessRequest
     static func swiftTest(
         in sandbox: Sandbox, filter: String?, environment: [String: String], timeout: Double
@@ -295,9 +296,10 @@ Every `swift` and `xcodebuild` invocation a run builds and tests a sandbox with,
 |---|---|---|
 | `swiftBuildTests` | `swift build --build-tests` | `BuildStage.buildSPM`, `IncompatibleMutantExecutor` (warm and per-mutant SPM builds) |
 | `swiftTest` | `swift test --skip-build [--filter <filter>]` | `TestExecutionStage` (SPM without bundles), `IncompatibleMutantExecutor` (SPM tests), `BaselineProbe` |
-| `buildForTesting` | `xcodebuild build-for-testing -scheme -destination -derivedDataPath` plus the container's arguments | `BuildStage.build`, `IncompatibleMutantExecutor` (the Xcode workers' warm builds, each mutant's incremental build, and a reproduction's cold ones) |
+| `buildForTesting` | `xcodebuild build-for-testing -scheme -destination -derivedDataPath -skipPackagePluginValidation -skipMacroValidation` plus the container's arguments, which stay last | `BuildStage.build` (the schematized build, `FallbackExecutor`'s and `UnmutatedBuildCheck`'s), `IncompatibleMutantExecutor` (the Xcode workers' warm builds, each mutant's incremental build, and a reproduction's cold ones) |
 | `xcodebuild` | `xcodebuild` with the given arguments | `TestExecutionStage` (`test-without-building`), `IncompatibleMutantExecutor.testXcode` |
 | `derivedDataPath` | `<sandbox>/.xmr-derived-data` | every Xcode build and test |
+| `skipPackageValidation` | `-skipPackagePluginValidation -skipMacroValidation` | appended to every `build-for-testing`: a package's build tool plugins (SwiftLint's, `swift-openapi-generator`'s) and macros need a trust prompt that a headless build cannot answer, so without them every build of such a project fails at `Validate plug-in` |
 | `noTestDiagnostics` | `-collect-test-diagnostics never` | appended to every `test-without-building`, in `TestExecutionStage` and `IncompatibleMutantExecutor.testXcode`; see [Execution](07-execution.md#executionincompatiblemutantexecutorxcodeswift) for why |
 
 Before, each caller built its own `ProcessRequest`, and the incompatible Xcode path put its derived data in `.derived-data` while the schematized build used `.xmr-derived-data`; there is now one directory.
@@ -338,7 +340,7 @@ Conforms to `LocalizedError` to provide structured error descriptions that propa
 
 | Case | Condition | Handling |
 |---|---|---|
-| `compilationFailed(output:)` | Build exits with non-zero code | Caught by `MutantExecutor`: on SPM it starts `SchemaNarrower`, on Xcode — or when narrowing blames no mutant — `FallbackExecutor`. In `FallbackExecutor` it marks the file's mutants `.unviable` |
+| `compilationFailed(output:)` | Build exits with non-zero code | Caught by `MutantExecutor`: on SPM it starts `SchemaNarrower`; on Xcode — or when narrowing blames no mutant — `UnmutatedBuildCheck` builds the unmutated project, which turns a second failure into `BaselineError.buildFailed`, and otherwise `FallbackExecutor` takes over. In `FallbackExecutor` it marks the file's mutants `.unviable` |
 | `timedOut(seconds:output:)` | Build did not finish within `--build-timeout` | Ends the run when the schematized build times out, rather than reporting the mutants unviable — a build that ran out of time says nothing about them. In `FallbackExecutor` it marks the file's mutants `.timeout` |
 | `xctestrunNotFound` | No `.xctestrun` in `Build/Products`, or plist parse failure | Propagates; fatal |
 

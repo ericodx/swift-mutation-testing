@@ -20,8 +20,11 @@ flowchart TD
     VERIFY -- yes --> BS["BuildStage\nbuild-for-testing or swift build --build-tests"]
     BS -- "SPM: compilationFailed" --> NARROW["SchemaNarrower\nnarrow the schema, rebuild"]
     BS -- built --> POOL
-    NARROW -- "rebuilt, or gave up" --> POOL
-    BS -- "Xcode: compilationFailed" --> POOL
+    NARROW -- rebuilt --> POOL
+    NARROW -- "gave up" --> CLEAN{"UnmutatedBuildCheck\nunmutated project builds?"}
+    BS -- "Xcode: compilationFailed" --> CLEAN
+    CLEAN -- yes --> POOL
+    CLEAN -- no --> ABORTU["throw BaselineError.buildFailed"]
     POOL["SimulatorPool.make · setUp\none slot per worker"] --> ART{schema built?}
     ART -- "yes, SPM" --> PROBE["BaselineProbe\neach test bundle and library once"]
     PROBE -- fails --> ABORT[throw BaselineError]
@@ -101,9 +104,9 @@ flowchart TD
 
 The container's relative path is passed as `-workspace` or `-project`, from the sandbox root. The same arguments go to the per-mutant `xcodebuild` calls of `IncompatibleMutantExecutor`, which used to pass none and so built whatever `xcodebuild` found on its own.
 
-**`ToolRequests`** builds every `swift` and `xcodebuild` request of a run — `swift build --build-tests`, `swift test --skip-build [--filter]`, `xcodebuild build-for-testing` and the other `xcodebuild` calls — so the schematized, fallback, incompatible and baseline paths build and test a sandbox the same way, with one derived data directory, `<sandbox>/.xmr-derived-data`. The incompatible Xcode path used `.derived-data` before. Every `xcodebuild test-without-building` also passes `ToolRequests.noTestDiagnostics`, `-collect-test-diagnostics never`, so no run of a mutant pays for diagnostics nobody reads.
+**`ToolRequests`** builds every `swift` and `xcodebuild` request of a run — `swift build --build-tests`, `swift test --skip-build [--filter]`, `xcodebuild build-for-testing` and the other `xcodebuild` calls — so the schematized, fallback, incompatible and baseline paths build and test a sandbox the same way, with one derived data directory, `<sandbox>/.xmr-derived-data`. The incompatible Xcode path used `.derived-data` before. Every `xcodebuild test-without-building` also passes `ToolRequests.noTestDiagnostics`, `-collect-test-diagnostics never`, so no run of a mutant pays for diagnostics nobody reads, and every `build-for-testing` passes `ToolRequests.skipPackageValidation`, `-skipPackagePluginValidation -skipMacroValidation`, so a package's build tool plugins and macros run without the trust prompt a headless build cannot answer.
 
-`BuildError` conforms to `LocalizedError`, providing structured error descriptions. On `BuildError.compilationFailed`, `MutantExecutor` hands an SPM build to `SchemaNarrower`, which takes out the mutants whose `case` the compiler blamed, regenerates their files' schemas and rebuilds until the build compiles. The mutants it took out are rewritten as whole-file mutants (`MutationRewriter`) and run on the incompatible path, or recorded `unviable` when the rewrite changes nothing. When it can blame no `case` it gives up — and on the Xcode path a failed build always does — and `FallbackExecutor` takes over with per-file rebuilds rather than aborting. A build that times out or yields no `.xctestrun`, and any other thrown error, propagate up and end the run.
+`BuildError` conforms to `LocalizedError`, providing structured error descriptions. On `BuildError.compilationFailed`, `MutantExecutor` hands an SPM build to `SchemaNarrower`, which takes out the mutants whose `case` the compiler blamed, regenerates their files' schemas and rebuilds until the build compiles. The mutants it took out are rewritten as whole-file mutants (`MutationRewriter`) and run on the incompatible path, or recorded `unviable` when the rewrite changes nothing. When it can blame no `case` it gives up — and on the Xcode path a failed build always does. `UnmutatedBuildCheck` then builds a clean copy of the project: if that fails too, the project itself does not build, and the run ends with `BaselineError.buildFailed` and the build's output instead of reporting every mutant unviable. Otherwise `FallbackExecutor` takes over with per-file rebuilds rather than aborting. A build that times out or yields no `.xctestrun`, and any other thrown error, propagate up and end the run.
 
 ## SimulatorPool
 
@@ -317,7 +320,7 @@ Every verdict, whichever path reached it, goes through `ResultRecorder.record(..
 ```
 detected   = killed + killedByCrash + timedOut
 undetected = survived + noCoverage
-score      = detected / (detected + undetected) × 100   (100 when nothing is testable)
+score      = detected / (detected + undetected) × 100   (none, printed n/a, when nothing is testable)
 ```
 
 | Reporter | Format | Activated by |
