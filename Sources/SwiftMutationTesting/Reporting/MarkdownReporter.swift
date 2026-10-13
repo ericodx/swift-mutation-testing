@@ -12,7 +12,7 @@ struct MarkdownReporter: Sendable {
 
     func format(_ summary: RunnerSummary, gate: GateResult? = nil) -> String {
         var lines = ["## Mutation testing", ""]
-        lines.append("**Mutation score: \(String(format: "%.1f", summary.score))%**")
+        lines.append("**Mutation score: \(summary.formattedScore)**")
         lines.append("")
         lines.append(summary.detectionLine)
         lines.append("")
@@ -73,7 +73,7 @@ struct MarkdownReporter: Sendable {
         ]
         for (filePath, file) in summary.files {
             lines.append(
-                "| \(cell(relative(filePath))) | \(String(format: "%.1f", file.score))%"
+                "| \(cell(relative(filePath))) | \(file.formattedScore)"
                     + " | \(file.killed.count) | \(file.survived.count) | \(file.timeouts.count)"
                     + " | \(file.unviable.count) | \(file.noCoverage.count) |"
             )
