@@ -25,7 +25,7 @@ struct BuildStageTests {
 
         let artifact = try await stage.build(
             sandbox: sandbox,
-            container: nil,
+            arguments: [],
             scheme: "App",
             destination: "platform=macOS,arch=arm64",
             timeout: 60
@@ -45,7 +45,7 @@ struct BuildStageTests {
         await #expect(throws: BuildError.timedOut(seconds: 5, output: "")) {
             try await stage.build(
                 sandbox: Sandbox(rootURL: projectDir),
-                container: nil,
+                arguments: [],
                 scheme: "App",
                 destination: "platform=macOS",
                 timeout: 5
@@ -78,7 +78,7 @@ struct BuildStageTests {
         await #expect {
             try await stage.build(
                 sandbox: sandbox,
-                container: nil,
+                arguments: [],
                 scheme: "App",
                 destination: "platform=macOS,arch=arm64",
                 timeout: 60
@@ -112,7 +112,7 @@ struct BuildStageTests {
         let stage = BuildStage(launcher: launcher)
 
         let artifact = try await stage.build(
-            sandbox: sandbox, container: .workspace("App/MyApp.xcworkspace"), scheme: "App",
+            sandbox: sandbox, arguments: XcodeContainer.workspace("App/MyApp.xcworkspace").arguments, scheme: "App",
             destination: "platform=macOS",
             timeout: 60
         )
@@ -146,7 +146,8 @@ struct BuildStageTests {
         let stage = BuildStage(launcher: launcher)
 
         let artifact = try await stage.build(
-            sandbox: sandbox, container: .project("App/MyApp.xcodeproj"), scheme: "App", destination: "platform=macOS",
+            sandbox: sandbox, arguments: XcodeContainer.project("App/MyApp.xcodeproj").arguments, scheme: "App",
+            destination: "platform=macOS",
             timeout: 60
         )
 
@@ -170,7 +171,7 @@ struct BuildStageTests {
 
         await #expect(throws: BuildError.xctestrunNotFound) {
             try await stage.build(
-                sandbox: sandbox, container: nil, scheme: "App", destination: "platform=macOS", timeout: 60
+                sandbox: sandbox, arguments: [], scheme: "App", destination: "platform=macOS", timeout: 60
             )
         }
     }
@@ -189,7 +190,7 @@ struct BuildStageTests {
         await #expect(throws: BuildError.xctestrunNotFound) {
             try await stage.build(
                 sandbox: sandbox,
-                container: nil,
+                arguments: [],
                 scheme: "App",
                 destination: "platform=macOS,arch=arm64",
                 timeout: 60

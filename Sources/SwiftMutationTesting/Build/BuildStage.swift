@@ -5,7 +5,7 @@ struct BuildStage: Sendable {
 
     func build(
         sandbox: Sandbox,
-        container: XcodeContainer?,
+        arguments: [String],
         scheme: String,
         destination: String,
         timeout: Double
@@ -14,7 +14,7 @@ struct BuildStage: Sendable {
 
         let (exitCode, buildOutput) = try await launcher.launchCapturing(
             ToolRequests.buildForTesting(
-                in: sandbox, scheme: scheme, destination: destination, container: container, timeout: timeout
+                in: sandbox, scheme: scheme, destination: destination, arguments: arguments, timeout: timeout
             )
         )
 

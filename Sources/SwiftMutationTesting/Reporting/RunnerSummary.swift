@@ -7,7 +7,7 @@ struct RunnerSummary: Sendable {
     let unviable: [ExecutionResult]
     let timeouts: [ExecutionResult]
     let noCoverage: [ExecutionResult]
-    let score: Double
+    let score: Double?
     let resultsByFile: [String: [ExecutionResult]]
     let fromCache: [ExecutionResult]
     let integrityWarnings: [ExecutionResult]
@@ -45,7 +45,7 @@ struct RunnerSummary: Sendable {
 
         let detectedCount = killed.count + timeouts.count
         let validCount = detectedCount + survived.count + noCoverage.count
-        self.score = validCount > 0 ? Double(detectedCount) / Double(validCount) * 100.0 : 100.0
+        self.score = validCount > 0 ? Double(detectedCount) / Double(validCount) * 100.0 : nil
         self.resultsByFile = resultsByFile
         self.fromCache = fromCache
         self.integrityWarnings = integrityWarnings

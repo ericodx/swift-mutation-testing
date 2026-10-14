@@ -175,6 +175,33 @@ struct ProcessTreeTests {
         #expect(reads == 3)
     }
 
+    @Test(
+        "Given descendants in and out of the process group, when detached ones are asked for, then only those outside")
+    func detachedDescendantsAreOutsideTheGroup() {
+        let table: SystemCalls.Sysctl = { _, _, buffer, size, _, _ in
+            let stride = MemoryLayout<kinfo_proc>.stride
+            guard let buffer else {
+                size?.pointee = stride * 3
+                return 0
+            }
+            let procs = buffer.bindMemory(to: kinfo_proc.self, capacity: 3)
+            procs[0].kp_proc.p_pid = 10
+            procs[0].kp_eproc.e_ppid = 2
+            procs[0].kp_eproc.e_pgid = 2
+            procs[1].kp_proc.p_pid = 11
+            procs[1].kp_eproc.e_ppid = 2
+            procs[1].kp_eproc.e_pgid = 11
+            procs[2].kp_proc.p_pid = 12
+            procs[2].kp_eproc.e_ppid = 11
+            procs[2].kp_eproc.e_pgid = 11
+            size?.pointee = stride * 3
+            return 0
+        }
+
+        #expect(Set(ProcessTree.descendants(of: 2, sysctl: table)) == [10, 11, 12])
+        #expect(Set(ProcessTree.detachedDescendants(of: 2, sysctl: table)) == [11, 12])
+    }
+
     @Test("Given this process and one that has exited, when asked whether they are alive, then only this one is")
     func liveAndExitedProcessesAreTold() throws {
         let process = Process()

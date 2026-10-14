@@ -57,12 +57,14 @@ struct QualityGate: Sendable {
 
 | Policy | Check | Fails when |
 |---|---|---|
-| `minScore` | `.minScore(score:minimum:)` | `summary.score < minScore` |
-| `maxScoreDrop` | `.scoreDrop(drop:maximum:)` | `baseline.score − summary.score > maxScoreDrop` |
+| `minScore` | `.minScore(score:minimum:)` | `summary.score < minScore`, or the run has no score |
+| `maxScoreDrop` | `.scoreDrop(drop:maximum:)` | `baseline.score − summary.score > maxScoreDrop`, or the run has no score; a baseline without a score counts as no drop |
 | `maxNewSurvivors` | `.newUndetected(count:maximum:)` | undetected mutants whose fingerprint is not in the baseline number more than `maxNewSurvivors` |
 | `maxIntegrityWarnings` | `.integrityWarnings(count:maximum:)` | `summary.integrityWarnings` — kills and timeouts whose mutated code never ran — number more than `maxIntegrityWarnings` |
 
 "Undetected" is `RunnerSummary.undetected` — survived and no coverage — so a new mutant without coverage counts as a new survivor. Timeouts are detected, as in the score. A check that needs a baseline is skipped when there is none.
+
+`RunnerSummary.score` is `nil` when no mutant could be tested — every one unviable. The two score checks then carry `nil` (`.minScore(score: nil, …)`, `.scoreDrop(drop: nil, …)`) and fail: a run that measured nothing must not pass a gate that asks for a score.
 
 With a baseline, the result also lists the new undetected mutants, sorted by file and line, and counts the baseline's mutants that are no longer undetected (`fixedCount`). Both are informational.
 
@@ -78,8 +80,8 @@ struct GateResult: Sendable {
     var passed: Bool { get }
 
     enum Check: Sendable, Equatable {
-        case minScore(score: Double, minimum: Double)
-        case scoreDrop(drop: Double, maximum: Double)
+        case minScore(score: Double?, minimum: Double)
+        case scoreDrop(drop: Double?, maximum: Double)
         case newUndetected(count: Int, maximum: Int)
         case integrityWarnings(count: Int, maximum: Int)
         var passed: Bool { get }
@@ -99,11 +101,11 @@ struct Baseline: Sendable, Codable, Equatable {
     let formatVersion: Int
     let toolVersion: String
     let createdAt: Date
-    let score: Double
+    let score: Double?
     let scope: BaselineScope
     let undetected: [BaselineEntry]
 
-    init(formatVersion: Int = Baseline.formatVersion, toolVersion: String, createdAt: Date, score: Double,
+    init(formatVersion: Int = Baseline.formatVersion, toolVersion: String, createdAt: Date, score: Double?,
          scope: BaselineScope, undetected: [BaselineEntry])
     init(summary: RunnerSummary, scope: BaselineScope, projectPath: String, toolVersion: String, createdAt: Date)
 }
@@ -131,7 +133,7 @@ struct BaselineEntry: Sendable, Codable, Equatable {
 }
 ```
 
-`Baseline.formatVersion` is `1`. `BaselineEntry.operatorIdentifier` is encoded under the key `operator`, and `status` is `survived` or `noCoverage`.
+`Baseline.formatVersion` is `1`. `score` is `nil`, and left out of the file, when the run had no score; a file written before it could be absent still reads, since its score is a number. `BaselineEntry.operatorIdentifier` is encoded under the key `operator`, and `status` is `survived` or `noCoverage`.
 
 A baseline is the undetected mutants of one run, meant to be committed. `init(summary:scope:projectPath:toolVersion:createdAt:)` builds one from `RunnerSummary.undetected` and its score, each entry's file relative to the project through a `ProjectRelativePath.Resolver`. Entries are sorted by file, line and fingerprint — the memberwise `init` sorts them, whatever builds it — and `BaselineStore` writes sorted keys, so its diff in a pull request is stable and readable. The gate reads only `fingerprint`; `file`, `line`, `operator`, `original` and `replacement` are there for the people reviewing the diff.
 

@@ -8,9 +8,15 @@ struct ConfigurationResolver: Sendable {
             "scheme", "destination", "workspace", "project", "test-target", "timeout", "build-timeout",
             "concurrency", "no-cache", "testing-framework", "keep-logs", "quiet", "sources-path", "exclude",
             "exclude-patterns", "operators", "disabled-mutators", "operator-tier", "min-score", "max-score-drop",
-            "max-new-survivors", "max-integrity-warnings", "baseline",
+            "max-new-survivors", "max-integrity-warnings", "baseline", "xcodebuild-args",
         ] + ReportFormat.allCases.map(\.fileKey)
     )
+
+    static let reservedXcodebuildArguments: Set<String> = [
+        "build", "build-for-testing", "test", "test-without-building", "clean", "archive", "analyze",
+        "-scheme", "-destination", "-derivedDataPath", "-workspace", "-project", "-xctestrun",
+        "-resultBundlePath", "-only-testing", "-parallel-testing-enabled", "-collect-test-diagnostics",
+    ]
 
     var fileSystem = FileSystem()
     var warn: @Sendable (String) -> Void = StandardError.write
@@ -39,7 +45,7 @@ struct ConfigurationResolver: Sendable {
             testingFramework: testingFramework
         )
 
-        let xcodeContainer = try resolveXcodeContainer(
+        let (xcodeContainer, xcodebuildArguments) = try resolveXcodeOptions(
             cli: cliArguments, fileValues: fileValues, projectType: projectType, projectPath: projectPath
         )
 
@@ -48,6 +54,7 @@ struct ConfigurationResolver: Sendable {
             build: .init(
                 projectType: projectType,
                 xcodeContainer: xcodeContainer,
+                xcodebuildArguments: xcodebuildArguments,
                 testTarget: cliArguments.build.testTarget ?? fileValues["test-target"],
                 timeout: timeout,
                 buildTimeout: buildTimeout,
@@ -118,6 +125,17 @@ struct ConfigurationResolver: Sendable {
             return (cli.build.workspace, cli.build.xcodeProject)
         }
         return (fileValues["workspace"], fileValues["project"])
+    }
+
+    private func resolveXcodeOptions(
+        cli: ParsedArguments, fileValues: [String: String], projectType: ProjectType, projectPath: String
+    ) throws -> (container: XcodeContainer?, arguments: [String]) {
+        (
+            try resolveXcodeContainer(
+                cli: cli, fileValues: fileValues, projectType: projectType, projectPath: projectPath
+            ),
+            try resolveXcodebuildArguments(cli: cli, fileValues: fileValues, projectType: projectType)
+        )
     }
 
     private func resolveXcodeContainer(
@@ -297,6 +315,25 @@ struct ConfigurationResolver: Sendable {
     private func projectRelative(_ path: String, in projectPath: String) -> String {
         guard !path.hasPrefix("/") else { return path }
         return URL(fileURLWithPath: projectPath).appendingPathComponent(path).standardizedFileURL.path
+    }
+
+    private func resolveXcodebuildArguments(
+        cli: ParsedArguments, fileValues: [String: String], projectType: ProjectType
+    ) throws -> [String] {
+        let arguments = resolveList(cli: cli.build.xcodebuildArguments, keys: ["xcodebuild-args"], from: fileValues)
+        guard !arguments.isEmpty else { return [] }
+
+        guard case .xcode = projectType else {
+            throw UsageError(message: "--xcodebuild-arg applies to Xcode projects only")
+        }
+
+        if let reserved = arguments.first(where: Self.reservedXcodebuildArguments.contains) {
+            throw UsageError(
+                message: "--xcodebuild-arg cannot pass \(reserved): swift-mutation-testing sets it on every call itself"
+            )
+        }
+
+        return arguments
     }
 
     private func resolveList(cli: [String], keys: [String], from fileValues: [String: String]) -> [String] {

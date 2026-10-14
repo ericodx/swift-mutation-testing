@@ -65,10 +65,33 @@ Name the container with `--workspace` or `--project` (or the `workspace` / `proj
 swift-mutation-testing --workspace Apps/App.xcworkspace --scheme App --destination "platform=macOS"
 ```
 
-Every project of the workspace is schematized in the one build, whichever project or module a mutant is in, and every SwiftLint build phase in every project of the sandbox is switched off, so a linter does not fail the build on generated code. Two limits:
+Every project of the workspace is schematized in the one build, whichever project or module a mutant is in, and every SwiftLint build phase in every project of the sandbox is switched off, so a linter does not fail the build on generated code. Every `build-for-testing` also passes `-skipPackagePluginValidation` and `-skipMacroValidation`: the build tool plugins (SwiftLint's, `swift-openapi-generator`'s) and macros of the project's packages run without the trust prompt that a headless build cannot answer. A SwiftLint build tool plugin runs on the sandbox too, so every source the tool writes there — schematized, narrowed or mutated — is wrapped in `// swiftlint:disable all` and `// swiftlint:enable all`: the generated identifiers (`__SwiftMutationTesting_<hash>`) do not fail the build on `type_name` or `identifier_name`. In a kept build log, an error in such a file is one line below where the original has it. Two limits:
 
 - **Projects outside the root.** A workspace that references a project outside the project root (`../Shared/Shared.xcodeproj`) is refused with the list of such projects: the sandbox holds only the root. Run from a directory that contains every project of the workspace.
 - **CocoaPods.** `Pods/` reaches the sandbox by symlink and is never mutated only if it is out of scope: keep it outside `--sources-path`, or add `--exclude /Pods/`.
+
+### Extra xcodebuild arguments
+
+A project that needs more than the tool passes — signing updates, an `.xcconfig`, a build setting — gets it with `--xcodebuild-arg`, once per argument, or with the `xcodebuild-args` list in the configuration file. The command line replaces the file's list as a whole. Each argument is appended, in order, to every `xcodebuild` call of the run: the shared `build-for-testing`, the per-file and per-mutant builds, and every `test-without-building`.
+
+```bash
+swift-mutation-testing --scheme App --destination "platform=macOS" \
+  --xcodebuild-arg -allowProvisioningUpdates \
+  --xcodebuild-arg OTHER_SWIFT_FLAGS='$(inherited) -DMUTATION_TESTING'
+```
+
+```yaml
+xcodebuild-args:
+  - -allowProvisioningUpdates
+  - -xcconfig
+  - Config/Mutation.xcconfig
+```
+
+- An argument that takes a value is two items: the flag, then its value.
+- In the file, an item cannot contain a comma, since a list may also be written as one comma-separated value; pass such an argument on the command line.
+- The arguments the tool sets itself are refused with exit code `1`: the actions (`build`, `build-for-testing`, `test`, `test-without-building`, `clean`, `archive`, `analyze`), `-scheme`, `-destination`, `-derivedDataPath`, `-workspace`, `-project`, `-xctestrun`, `-resultBundlePath`, `-only-testing`, `-parallel-testing-enabled` and `-collect-test-diagnostics`. Use the matching option of the tool instead.
+- A package is refused too: SwiftPM builds take no `xcodebuild` argument.
+- The arguments are part of what a cached verdict was made against: a run with other arguments tests every mutant again.
 
 ### Run on iOS Simulator
 
@@ -225,6 +248,7 @@ The file is read line by line, not by a full YAML parser:
 | `destination` | String | — | `xcodebuild` destination specifier (required for Xcode projects, omit for SPM) |
 | `workspace` | String | the root's one container | The `.xcworkspace` to build, relative to the project. See [Run an Xcode workspace](#run-an-xcode-workspace) |
 | `project` | String | the root's one container | The `.xcodeproj` to build, relative to the project. Not together with `workspace` |
+| `xcodebuild-args` | List | `[]` | Arguments appended to every `xcodebuild` call, Xcode only. See [Extra xcodebuild arguments](#extra-xcodebuild-arguments) |
 | `test-target` | String | — | Limit test execution to this target: on a package, the test target whose bundle runs — `Tests/<target>/` builds `<target>.xctest`; on an Xcode project, `-only-testing` |
 | `testing-framework` | String | `swift-testing` | `xctest` or `swift-testing` |
 | `timeout` | Number | `120` (Xcode) / `30` (SPM) | Per-mutant test timeout in seconds. The first, parallel pass allows twice this |
@@ -237,7 +261,7 @@ The file is read line by line, not by a full YAML parser:
 | `sonar-output` | String | — | Path for a SonarQube generic issue import report: undetected mutants as issues, read with `sonar.externalIssuesReportPaths` |
 | `sarif-output` | String | — | Path for the SARIF 2.1.0 report of undetected mutants |
 | `markdown-output` | String | — | Path for a Markdown summary, for CI job summaries |
-| `keep-logs` | String | — | Directory for per-mutant test output logs, and for `baseline.log` when the unmutated suite fails |
+| `keep-logs` | String | — | Directory for per-mutant test output logs, and for `baseline.log` when the unmutated project does not build or its suite fails |
 | `sources-path` | String | project root | Directory for Swift source file discovery, or a single `.swift` file to mutate alone |
 | `exclude` | List | `[]` | Files to skip: globs, or fragments of the path. See [Excluding files](#excluding-files). `exclude-patterns` is read as the same key |
 | `disabled-mutators` | List | `[]` | Operator identifiers to skip — deny-list alternative to the `mutators` block |
@@ -332,13 +356,14 @@ swift-mutation-testing [project-path] [options]
 | `--destination <destination>` | `xcodebuild` destination specifier (required for Xcode, omit for SPM) |
 | `--workspace <path>` | The `.xcworkspace` to build, relative to the project; overrides the `workspace` or `project` key |
 | `--project <path>` | The `.xcodeproj` to build, relative to the project; not together with `--workspace` |
+| `--xcodebuild-arg <arg>` | Append an argument to every `xcodebuild` call (repeatable, Xcode only). See [Extra xcodebuild arguments](#extra-xcodebuild-arguments) |
 | `--target <test-target>` | Limit test execution to this test target: its bundle on a package, `-only-testing` on an Xcode project |
 | `--testing-framework <fw>` | `xctest` or `swift-testing` — which library a mutant's tests are run with (default: `swift-testing`). Auto-detected by `init`; on an SPM package the probe drops a library that has no tests anyway |
 | `--timeout <seconds>` | Per-mutant test timeout, a positive number (default: 120 Xcode, 30 SPM) |
 | `--build-timeout <seconds>` | Build timeout, a positive number (default: 120). Sandboxes never inherit `.build`, so every build is cold |
 | `--concurrency <n>` | Parallel workers, at least 1 (default: CPUs − 1). Resolved to 1 for Xcode on `platform=macOS` and for XCTest — see [Parallelism](#parallelism) |
 | `--no-cache` | Disable result caching — no verdict is read from the cache, and none is written back |
-| `--keep-logs <dir>` | Write each mutant's captured test output to `<dir>/<mutant-id>.log`, and a failing baseline's output to `<dir>/baseline.log` |
+| `--keep-logs <dir>` | Write each mutant's captured test output to `<dir>/<mutant-id>.log`, and the output of an unmutated build or suite that fails to `<dir>/baseline.log` |
 | `--output <path>` | Write Stryker-compatible JSON report |
 | `--html-output <path>` | Write the HTML report |
 | `--sonar-output <path>` | Write a SonarQube generic issue import report (import it with `sonar.externalIssuesReportPaths`, not as coverage) |
@@ -611,6 +636,8 @@ The readiness line names simulators on a simulator destination and workers elsew
 
 Those mutants are not lost: each gets a build of its own, like an incompatible mutant, which is slower. Their build errors are in the `--keep-logs` output.
 
+When the schema still does not build, the run first builds an unmutated copy of the project, so that a project that does not build at all is not taken for mutants that do not compile. If that copy fails too, the run stops with exit code `1` and the build's output, and reports no score; `--keep-logs` keeps the output as `baseline.log`. Make the project build from the command line — `xcodebuild build-for-testing` with the same scheme and destination, or `swift build --build-tests` — before running again.
+
 **Progress icons:**
 
 | Icon | Meaning |
@@ -665,7 +692,7 @@ swift-mutation-testing --output mutation-report.json
 
 ### HTML report (`--html-output`)
 
-A single self-contained HTML page: the score, the detection line and the totals, then a table per file with its score coloured (green at 100%, yellow from 50%, red below) and its survived mutants — line, column, operator and change — in a collapsible list. Every path and mutation text is HTML-escaped.
+A single self-contained HTML page: the score, the detection line and the totals, then a table per file with its score coloured (green at 100%, yellow from 50%, red below; `n/a` and uncoloured for a file with no mutant that could be tested) and its survived mutants — line, column, operator and change — in a collapsible list. Every path and mutation text is HTML-escaped.
 
 ```bash
 swift-mutation-testing --html-output mutation-report.html
@@ -710,7 +737,7 @@ Results are cached at `<project>/.swift-mutation-testing-cache/results.json`, ke
 
 The cache format is versioned. A cache written by an older version is discarded once, with a warning, and the run tests every mutant again; the next run writes a cache in the current format.
 
-A cache belongs to the tests it was made with: the scheme, destination and project or workspace for Xcode, `--target` and `--testing-framework`. A run with any of them changed discards the cache, with a note, and tests every mutant again. To keep verdicts for two targets, give each its own CI job and cache. When some verdicts come from the cache, the summary says how many:
+A cache belongs to the tests it was made with: the scheme, destination, project or workspace and `--xcodebuild-arg` arguments for Xcode, `--target` and `--testing-framework`. A run with any of them changed discards the cache, with a note, and tests every mutant again. To keep verdicts for two targets, give each its own CI job and cache. When some verdicts come from the cache, the summary says how many:
 
 ```
 Verdicts from cache: 212 of 278
@@ -814,6 +841,8 @@ Quality gate: FAILED
 ```
 
 The checks come in the order of the table above, and at most 20 new undetected mutants are listed. The Markdown summary lists them too.
+
+A run in which no mutant could be tested — every one unviable — has no score, and the score checks fail on it rather than pass: `--min-score` prints `no score, since no mutant could be tested`, `--max-score-drop` prints `no score to compare with the baseline's`. A baseline written by such a run records no score, and a later run measured against it counts as no drop.
 
 ### Baselines
 
@@ -1024,7 +1053,7 @@ Run only a subset of operators to keep CI fast, and run the deep set locally wit
 
 ## Exit Codes
 
-A run that finds no mutant at all — a `--sources-path` with nothing mutable, everything excluded, no operator that applies — ends with `1` and says so. It reports no score: a 100% over zero mutants would be a perfect result for code that was never measured. A shard of a plan is the exception: splitting by file can leave one empty, and `merge` accounts for every mutant anyway.
+A run that finds no mutant at all — a `--sources-path` with nothing mutable, everything excluded, no operator that applies — ends with `1` and says so. It reports no score: a 100% over zero mutants would be a perfect result for code that was never measured. So does a run whose unmutated project does not build: it ends with `1` and the build's output, before any mutant is tested. A shard of a plan is the exception: splitting by file can leave one empty, and `merge` accounts for every mutant anyway.
 
 | Code | Meaning |
 |---|---|

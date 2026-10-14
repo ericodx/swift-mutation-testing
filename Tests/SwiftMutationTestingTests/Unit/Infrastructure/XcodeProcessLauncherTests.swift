@@ -239,4 +239,46 @@ struct XcodeProcessLauncherTests {
 
         #expect(kill.recorded == [SentSignal(pid: -999_999, signal: SIGTERM)])
     }
+
+    @Test("Given descendants outside the process group, when it times out, then they are stopped and killed first")
+    func aTimeoutKillsDetachedDescendants() {
+        let kill = RecordingKill()
+        let escalation = TimeoutEscalation(gracePeriod: 60, kill: kill.asKill)
+        var snapshots = [[Int32(50), 51]]
+
+        XcodeProcessLauncher.terminate(
+            pid: 999_999, escalation: escalation, kill: kill.asKill,
+            detachedDescendants: { _ in snapshots.isEmpty ? [] : snapshots.removeFirst() }
+        )
+        escalation.processTerminated()
+
+        #expect(
+            kill.recorded == [
+                SentSignal(pid: 50, signal: SIGSTOP), SentSignal(pid: 51, signal: SIGSTOP),
+                SentSignal(pid: 50, signal: SIGKILL), SentSignal(pid: 51, signal: SIGKILL),
+                SentSignal(pid: -999_999, signal: SIGTERM),
+            ]
+        )
+    }
+
+    @Test("Given a detached descendant spawned while others are stopped, when it times out, then it is killed too")
+    func aTimeoutKillsDescendantsSpawnedDuringTheStop() {
+        let kill = RecordingKill()
+        let escalation = TimeoutEscalation(gracePeriod: 60, kill: kill.asKill)
+        var snapshots = [[Int32(50)], [50, 60], [50, 60]]
+
+        XcodeProcessLauncher.terminate(
+            pid: 999_999, escalation: escalation, kill: kill.asKill,
+            detachedDescendants: { _ in snapshots.isEmpty ? [] : snapshots.removeFirst() }
+        )
+        escalation.processTerminated()
+
+        #expect(
+            kill.recorded == [
+                SentSignal(pid: 50, signal: SIGSTOP), SentSignal(pid: 60, signal: SIGSTOP),
+                SentSignal(pid: 50, signal: SIGKILL), SentSignal(pid: 60, signal: SIGKILL),
+                SentSignal(pid: -999_999, signal: SIGTERM),
+            ]
+        )
+    }
 }

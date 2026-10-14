@@ -3,7 +3,7 @@ import Foundation
 @testable import SwiftMutationTesting
 
 func makeBaseline(
-    score: Double = 80,
+    score: Double? = 80,
     scope: BaselineScope = BaselineScope(
         operators: OperatorRegistry.allOperatorNames, sourcesPath: ".", excludePatterns: []
     ),

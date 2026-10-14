@@ -20,7 +20,6 @@ struct TextReporter: Sendable {
         lines.append("")
         lines.append("Results by file:")
         for (filePath, file) in summary.files {
-            let score = String(format: "%.1f", file.score)
             let stats = [
                 "killed: \(file.killed.count)",
                 "survived: \(file.survived.count)",
@@ -28,7 +27,7 @@ struct TextReporter: Sendable {
                 "unviable: \(file.unviable.count)",
                 "no coverage: \(file.noCoverage.count)",
             ].joined(separator: "   ")
-            lines.append("  \(relative(filePath))    score: \(score)%   \(stats)")
+            lines.append("  \(relative(filePath))    score: \(file.formattedScore)   \(stats)")
         }
 
         if !summary.undetected.isEmpty {
@@ -47,7 +46,7 @@ struct TextReporter: Sendable {
         lines.append(contentsOf: integritySection(summary))
 
         lines.append("")
-        lines.append("Overall mutation score: \(String(format: "%.1f", summary.score))%")
+        lines.append("Overall mutation score: \(summary.formattedScore)")
         lines.append(summary.detectionLine)
         lines.append(
             "Killed: \(summary.killed.count)"

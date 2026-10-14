@@ -97,6 +97,7 @@ struct ParsedArguments: Sendable {
 | `build.noCache` | `false` | `--no-cache` |
 | `build.workspace` | `nil` | `--workspace <path>` |
 | `build.xcodeProject` | `nil` | `--project <path>` |
+| `build.xcodebuildArguments` | `[]` | `--xcodebuild-arg <arg>` (repeatable; a value starting with `-` is taken as is) |
 | `reporting.outputs[format]` | none | each `ReportFormat`'s flag: `--output`, `--html-output`, `--sonar-output`, `--sarif-output`, `--markdown-output` `<path>` — read off `ReportFormat.named(flag:)`, so a new format needs no parser case |
 | `reporting.keepLogsPath` | `nil` | `--keep-logs <directory>` |
 | `reporting.quiet` | `false` | `--quiet` |
@@ -135,6 +136,7 @@ struct RunnerConfiguration: Sendable {
     struct BuildOptions: Sendable {
         var projectType: ProjectType
         var xcodeContainer: XcodeContainer?
+        var xcodebuildArguments: [String]
         var testTarget: String?
         var timeout: Double
         var buildTimeout: Double
@@ -143,6 +145,7 @@ struct RunnerConfiguration: Sendable {
         var testingFramework: TestingFramework  // default: .swiftTesting
         var reproduction: Reproduction?
         var reproducing: Bool { get }
+        var xcodeArguments: [String] { get }   // container arguments, then xcodebuildArguments
     }
 
     struct ReportingOptions: Sendable {
@@ -237,6 +240,7 @@ Detected by `ProjectDetector` for an Xcode project from the test sources' import
 struct ConfigurationResolver: Sendable {
     static let fileName: String            // ".swift-mutation-testing.yml"
     static let fileKeys: Set<String>
+    static let reservedXcodebuildArguments: Set<String>
     var fileSystem = FileSystem()
     var warn: @Sendable (String) -> Void = StandardError.write
 
@@ -251,11 +255,13 @@ The project is SPM when neither `scheme` nor `destination` is given, no containe
 
 `timeout` defaults to `defaultXcodeTimeout` or `defaultSPMTimeout` by project type, `build-timeout` to `defaultBuildTimeout`, `concurrency` to `defaultConcurrency`; `--concurrency` below 1 is a `UsageError` too, and `--testing-framework` must be `xctest` or `swift-testing`. `effectiveConcurrency` then decides the workers: SPM keeps the requested count, and Xcode keeps it only for a destination that needs a simulator pool (`SimulatorManager.requiresSimulatorPool`) and a framework other than `.xctest` — one worker otherwise. Exclusions come from `--exclude`, else `exclude`, else `exclude-patterns`.
 
-**File values are checked, not dropped.** A value the file gets wrong used to fall back to the default without a word: `timeout: 0` was accepted, `timeout: soon` became the default, `quiet: yes` was false, and a misspelled key did nothing. Now `timeout` and `build-timeout` must be positive numbers and `concurrency` an integer of at least 1 — the same rules as their flags, in an error that names the file rather than the flag — and `quiet` and `no-cache` accept `true`/`yes`/`on` and `false`/`no`/`off` in any case and reject anything else. Every key outside `fileKeys` is reported through `warn` as `Warning: unknown key '<key>' in .swift-mutation-testing.yml is ignored`; it is a warning rather than an error so that a file written for a newer version still runs. 
+**File values are checked, not dropped.** A value the file gets wrong used to fall back to the default without a word: `timeout: 0` was accepted, `timeout: soon` became the default, `quiet: yes` was false, and a misspelled key did nothing. Now `timeout` and `build-timeout` must be positive numbers and `concurrency` an integer of at least 1 — the same rules as their flags, in an error that names the file rather than the flag — and `quiet` and `no-cache` accept `true`/`yes`/`on` and `false`/`no`/`off` in any case and reject anything else. Every key outside `fileKeys` is reported through `warn` as `Warning: unknown key '<key>' in .swift-mutation-testing.yml is ignored`; it is a warning rather than an error so that a file written for a newer version still runs.
 **Operator resolution** (`resolveOperators`), which always yields the full list of identifiers to run:
 
 1. An explicit list — `--operator` (CLI) or `operators` (file), CLI first — is used as is, whatever the operators' tiers
 2. Otherwise the tier is resolved — `--operator-tier`, else `operator-tier`, else `.standard` (`default`); a name that is no tier is a `UsageError` — and `OperatorRegistry.operatorNames(upTo:)` gives its set, minus the identifiers disabled by `--disable-mutator` (CLI), `disabled-mutators` or the `mutators` block with `active: false` (file), both removed together. When they leave nothing of the tier, it is a `UsageError` naming the tier: an empty list would mean every operator to `OperatorRegistry.operators(named:)` and `Planner`, so disabling the whole tier used to run every operator
+
+**xcodebuild arguments** (`resolveXcodebuildArguments`, called with the container from `resolveXcodeOptions`): `--xcodebuild-arg`, else the `xcodebuild-args` list. Any argument on a package is a `UsageError` (`--xcodebuild-arg applies to Xcode projects only`), and so is any argument in `reservedXcodebuildArguments` — the actions (`build`, `build-for-testing`, `test`, `test-without-building`, `clean`, `archive`, `analyze`) and the flags the tool sets on its own calls (`-scheme`, `-destination`, `-derivedDataPath`, `-workspace`, `-project`, `-xctestrun`, `-resultBundlePath`, `-only-testing`, `-parallel-testing-enabled`, `-collect-test-diagnostics`), which a second copy would contradict. `BuildOptions.xcodeArguments` puts them after the container's arguments; every `build-for-testing` and `test-without-building` of a run ends with them.
 
 **Gate resolution** (`resolveGate`): each policy comes from its flag or, failing that, from `min-score`, `max-score-drop`, `max-new-survivors` and `max-integrity-warnings` in the file. `baseline` and `--write-baseline` are resolved against the project path unless absolute. Throws `UsageError` when `min-score` is outside 0–100, a maximum is negative, a file value is not a number, `max-score-drop` or `max-new-survivors` is set without a baseline, or the baseline file does not exist.
 
@@ -290,6 +296,7 @@ Writes `.swift-mutation-testing.yml` at `<projectPath>/.swift-mutation-testing.y
 
 Generates YAML content using `DetectedProject` values where available, falling back to placeholder comments. For an Xcode project the detected container comes first, as `workspace:` or `project:`; when none was chosen, the reason and every candidate, commented out. Then `scheme` (commented when none was found, with every scheme listed when there are several), `destination`, `testing-framework` and `test-target` (commented when none was found); an SPM file lists its test targets and has `test-target` alone. Fixed values in the generated file:
 
+- `xcodebuild-args` — Xcode only, commented, with `-allowProvisioningUpdates` as the example item
 - `timeout: 120` for Xcode, `timeout: 30` for SPM — the `defaultXcodeTimeout` and `defaultSPMTimeout` of `RunnerConfiguration`; `build-timeout` commented
 - `concurrency` — Xcode only: `concurrency: 1` for XCTest, `concurrency: 4` otherwise; the code default (`max(1, CPU count - 1)`) applies when absent
 - `no-cache` commented; one line per `ReportFormat`, `fileKey: exampleFile`, only `output` active

@@ -112,8 +112,8 @@ struct SwiftMutationTestingGateTests {
         #expect(await launcher.requests.isEmpty)
     }
 
-    @Test("Given a minimum score a project with every mutant killed meets, when run, then it succeeds")
-    func runPassesTheGate() async throws {
+    @Test("Given a minimum score and no mutant that could be tested, when run, then the gate fails")
+    func runFailsTheGateWithoutAScore() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
         try "scheme: App\ndestination: platform=macOS\nmin-score: 100\n".write(
@@ -123,9 +123,10 @@ struct SwiftMutationTestingGateTests {
             to: dir.appendingPathComponent("Foo.swift"), atomically: true, encoding: .utf8
         )
 
-        let result = await SwiftMutationTesting.run(args: [dir.path], launcher: MockProcessLauncher(exitCode: 1))
+        let result = await SwiftMutationTesting.run(
+            args: [dir.path], launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1)))
 
-        #expect(result == .success)
+        #expect(result == .gateFailed)
     }
 
     private func apply(_ configuration: RunnerConfiguration, now: Date = Date()) throws -> ExitCode {

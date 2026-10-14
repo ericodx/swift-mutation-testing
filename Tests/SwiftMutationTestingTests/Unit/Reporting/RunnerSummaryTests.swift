@@ -39,11 +39,12 @@ struct RunnerSummaryTests {
         #expect(summary.score == 75.0)
     }
 
-    @Test("Given no scoreable mutants, when score computed, then score is 100")
-    func scoreIsHundredWhenDenominatorIsZero() {
+    @Test("Given no scoreable mutants, when score computed, then there is no score")
+    func noScoreWhenDenominatorIsZero() {
         let summary = RunnerSummary(results: [makeExecutionResult(status: .unviable)], totalDuration: 0)
 
-        #expect(summary.score == 100.0)
+        #expect(summary.score == nil)
+        #expect(summary.formattedScore == "n/a")
     }
 
     @Test("Given results from two files, when resultsByFile accessed, then results are grouped by file path")
@@ -95,17 +96,17 @@ struct RunnerSummaryTests {
     }
 
     @Test(
-        "Given a single mutant of each status, when score computed, then detection scores 100 and the rest 0",
+        "Given one mutant of each status, when score computed, then detection scores 100, unviable none, the rest 0",
         arguments: [
             (ExecutionStatus.killed(by: "t"), 100.0),
             (.killedByCrash, 100.0),
             (.timeout, 100.0),
             (.survived, 0.0),
             (.noCoverage, 0.0),
-            (.unviable, 100.0),
-        ]
+            (.unviable, nil),
+        ] as [(ExecutionStatus, Double?)]
     )
-    func scoreOfEachStatusAlone(status: ExecutionStatus, expected: Double) {
+    func scoreOfEachStatusAlone(status: ExecutionStatus, expected: Double?) {
         let summary = RunnerSummary(results: [makeExecutionResult(status: status)], totalDuration: 0)
 
         #expect(summary.score == expected)

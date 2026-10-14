@@ -88,7 +88,7 @@ To address a survivor, add or strengthen a test that is sensitive to the origina
 - Removing a statement that is the sole expression in a single-expression function body can change the implicit return type
 - Negating a condition that expects a non-optional `Bool` when the expression type is more complex
 
-**What it tells you:** unviable mutants are a limitation of the mutation operators, not a gap in your tests. They do not count toward the mutation score, and their activation is not measured, since they never ran. A high unviable rate for a particular operator in your codebase is a signal that the operator generates many syntactically valid but semantically invalid mutations in your context; this is expected and harmless.
+**What it tells you:** unviable mutants are a limitation of the mutation operators, not a gap in your tests. They do not count toward the mutation score, and their activation is not measured, since they never ran. A high unviable rate for a particular operator in your codebase is a signal that the operator generates many syntactically valid but semantically invalid mutations in your context; this is expected and harmless. A mutant is only called unviable when the unmutated project builds: a project that does not build stops the run instead.
 
 **Effect on performance:** unviable mutants are discovered during the build step, not the test step, so they are cheap to discard.
 
@@ -164,7 +164,7 @@ score      = detected / (detected + undetected) × 100
 | No coverage | undetected | yes | no |
 | Unviable | — | **no** | no |
 
-Unviable mutants are excluded entirely — they are a property of the operators, not of the tests. When no mutant is detected or undetected — every one unviable — the score is 100%. A run that discovers no mutant at all reports no score: it ends with exit code 1, since nothing was measured.
+Unviable mutants are excluded entirely — they are a property of the operators, not of the tests. When no mutant is detected or undetected — every one unviable — there is no score: the reports print `n/a`, and the score checks of the quality gate fail. A run that discovers no mutant at all reports no score either: it ends with exit code 1, since nothing was measured. Nor does a run whose unmutated project does not build: rather than mark every mutant unviable, it ends with exit code 1 and the build's output. A build that does not finish within `--build-timeout` ends the run the same way, whichever build it is, rather than record its mutants as timed out — which would count them as detected.
 
 The console and the HTML report print both sides under the score:
 
@@ -179,7 +179,7 @@ A score of 100% means every mutant that could be executed was detected by at lea
 
 ### The number on the README badge
 
-The badge is this repository's own score on the `default` tier, taken from the self-run of the operator campaign — the entry `"."` of `.github/scripts/operator-campaign/corpus.json`, with its arguments: `Fixtures/` (test data) and the two sandbox files whose mutants would delete the run's own sandboxes are left out, and the timeout is 300 s so that a surviving mutant's full suite fits. The campaign runs every operator, so the badge's number is the score recomputed over the mutants of the `default` tier's operators in that report; `Docs/OPERATORS.md` has the full result and the date. It is a record run, not a push-time number: it moves when the campaign is rerun. The last self-run, on 2026-10-08, gives 99.8% on the `default` tier (99.2% over every operator).
+The badge is this repository's own score on the `default` tier, taken from the self-run of the operator campaign — the entry `"."` of `.github/scripts/operator-campaign/corpus.json`, with its arguments: `Fixtures/` (test data) and the two sandbox files whose mutants would delete the run's own sandboxes are left out, and the timeout is 300 s so that a surviving mutant's full suite fits. The campaign runs every operator, so the badge's number is the score recomputed over the mutants of the `default` tier's operators in that report; `Docs/OPERATORS.md` has the full result and the date. It is a record run, not a push-time number: it moves when the campaign is rerun. The last self-run, on 2026-10-13, gives 99.8% on the `default` tier (98.8% over every operator).
 
 ---
 

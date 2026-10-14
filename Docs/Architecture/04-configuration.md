@@ -18,6 +18,10 @@ workspace: MyApp.xcworkspace
 scheme: MyApp
 destination: platform=iOS Simulator,OS=latest,name=iPhone 16 Pro
 
+# Arguments appended to every xcodebuild call (build-for-testing and test-without-building)
+# xcodebuild-args:
+#   - -allowProvisioningUpdates
+
 # Testing framework: xctest or swift-testing (default: swift-testing)
 testing-framework: swift-testing
 
@@ -79,7 +83,7 @@ mutators:
 
 For a package the file has no container, scheme, destination, testing framework or concurrency, and its timeout is `30`. When detection could not choose a container, the file says why and lists every candidate commented out.
 
-The keys the tool knows are `ConfigurationResolver.fileKeys`, all kebab-case: `scheme`, `destination`, `workspace`, `project`, `test-target`, `timeout`, `build-timeout`, `concurrency`, `no-cache`, `testing-framework`, `keep-logs`, `quiet`, `sources-path`, `exclude` (or `exclude-patterns`), `operators`, `disabled-mutators`, `operator-tier`, `min-score`, `max-score-drop`, `max-new-survivors`, `max-integrity-warnings`, `baseline`, and one per report format (`ReportFormat.fileKey`: `output`, `html-output`, `sonar-output`, `sarif-output`, `markdown-output`). `--write-baseline` is a command-line option only.
+The keys the tool knows are `ConfigurationResolver.fileKeys`, all kebab-case: `scheme`, `destination`, `workspace`, `project`, `xcodebuild-args`, `test-target`, `timeout`, `build-timeout`, `concurrency`, `no-cache`, `testing-framework`, `keep-logs`, `quiet`, `sources-path`, `exclude` (or `exclude-patterns`), `operators`, `disabled-mutators`, `operator-tier`, `min-score`, `max-score-drop`, `max-new-survivors`, `max-integrity-warnings`, `baseline`, and one per report format (`ReportFormat.fileKey`: `output`, `html-output`, `sonar-output`, `sarif-output`, `markdown-output`). `--write-baseline` is a command-line option only.
 
 **Parsing and validation.** A `#` that starts a line or follows whitespace, outside quotes, starts a comment, so `timeout: 60 # seconds` reads `60`; surrounding quotes are stripped from values and list items. Every value is then checked as the matching flag would be, and a value that does not parse is a `UsageError` naming the key and the file:
 
@@ -92,6 +96,7 @@ The keys the tool knows are `ConfigurationResolver.fileKeys`, all kebab-case: `s
 | `operator-tier` | `conservative`, `default` or `experimental` |
 | `min-score` | a number from 0 to 100 |
 | `max-score-drop`, `max-new-survivors`, `max-integrity-warnings` | a number, at least 0; the first two need a `baseline`, which must exist |
+| `xcodebuild-args` | an Xcode project, and no argument the tool sets itself (`ConfigurationResolver.reservedXcodebuildArguments`) |
 
 A key the tool does not know is reported on stderr as a warning — `unknown key '…' in .swift-mutation-testing.yml is ignored` — and ignored, so a misspelt key no longer passes silently.
 
@@ -113,6 +118,7 @@ RunnerConfiguration
 ├── build: BuildOptions
 │   ├── projectType       — ProjectType (.xcode(scheme:destination:) or .spm)
 │   ├── xcodeContainer    — XcodeContainer (nil for a package)
+│   ├── xcodebuildArguments — extra arguments for every xcodebuild call (empty for a package)
 │   ├── testTarget        — optional test target filter
 │   ├── timeout           — per-mutant test timeout (Xcode default: 120s, SPM default: 30s)
 │   ├── buildTimeout      — build timeout (default: 120s)
@@ -201,6 +207,7 @@ OPTIONS:
   --workspace <path>            The .xcworkspace to build, relative to the project (Xcode only)
   --project <path>              The .xcodeproj to build, relative to the project (Xcode only).
                                 Without either, the one container at the root; two are an error
+  --xcodebuild-arg <arg>        Append an argument to every xcodebuild call (repeatable, Xcode only)
   --testing-framework <fw>      Testing framework: xctest or swift-testing (default: swift-testing)
   --target <test-target>        Test target name
   --timeout <seconds>           Per-mutant test timeout in seconds (default: 120 Xcode, 30 SPM)

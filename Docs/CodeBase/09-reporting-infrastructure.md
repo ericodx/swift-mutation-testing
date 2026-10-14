@@ -87,7 +87,7 @@ struct RunnerSummary: Sendable {
     let unviable: [ExecutionResult]
     let timeouts: [ExecutionResult]
     let noCoverage: [ExecutionResult]
-    let score: Double
+    let score: Double?
     let resultsByFile: [String: [ExecutionResult]]
     let fromCache: [ExecutionResult]
     let integrityWarnings: [ExecutionResult]
@@ -113,7 +113,7 @@ undetected = survived + noCoverage
 score      = detected / (detected + undetected) × 100
 ```
 
-`unviable` mutants are on neither side. When no mutant is detected or undetected the score is `100.0`. This is the formula the Stryker report schema applies to the statuses `JsonReporter` emits, so the JSON report scores the same in any Stryker-compatible viewer — see [Stryker Compatibility](../STRYKER-COMPATIBILITY.md). It is the only score formula: the per-file scores are `RunnerSummary` values too, from `files`.
+`unviable` mutants are on neither side. When no mutant is detected or undetected the score is `nil`: a run in which nothing could be tested has no score, where it used to read `100.0` — a perfect result for a run that measured nothing, which is what a project whose every build failed reported. The reports print it as `n/a` and the score checks of `QualityGate` fail on it. This is the formula the Stryker report schema applies to the statuses `JsonReporter` emits, so the JSON report scores the same in any Stryker-compatible viewer — see [Stryker Compatibility](../STRYKER-COMPATIBILITY.md). It is the only score formula: the per-file scores are `RunnerSummary` values too, from `files`.
 
 `resultsByFile` groups results by `descriptor.filePath`. `files` turns that into one `RunnerSummary` per file, in path order — the per-file tables of `TextReporter`, `HtmlReporter` and `MarkdownReporter` iterate it. `byLocation(_:)` sorts results by file, line and column; every report that lists mutants — the survived and integrity lists, the Markdown tables, the SARIF results — sorts through it.
 
@@ -141,6 +141,16 @@ extension RunnerSummary {
 
 `Detected: <n> (killed <k>, timeout <t>) / Undetected: <n> (survived <s>, no coverage <c>)` — the two sides of the score, printed under it by `TextReporter`, `HtmlReporter` and `MarkdownReporter` so that a score earned by timeouts is visible as such.
 
+### Reporting/RunnerSummary+FormattedScore.swift
+
+```swift
+extension RunnerSummary {
+    var formattedScore: String
+}
+```
+
+The score as every report prints it, overall and per file: one decimal and a percent sign (`85.3%`), or `n/a` when there is no score. `TextReporter`, `HtmlReporter` and `MarkdownReporter` all go through it.
+
 ### Reporting/RunnerSummary+Cache.swift
 
 ```swift
@@ -167,7 +177,7 @@ struct TextReporter: Sendable {
 Prints a human-readable summary through `StandardOutput`. Always active (not gated by a CLI flag): `RunConclusion.conclude` prints it before the gate and the report files. Paths are relative to `projectRoot`, both sides resolved through symlinks; an empty root leaves them absolute.
 
 Output sections:
-1. `Results by file:` — one line per file (`RunnerSummary.files`): relative path, score %, and the killed, survived, timeout, unviable and no coverage counts
+1. `Results by file:` — one line per file (`RunnerSummary.files`): relative path, score (`formattedScore`), and the killed, survived, timeout, unviable and no coverage counts
 2. Undetected mutants list — survived and no coverage: `<file>:<line>:<col>   <operator>   <survived | no coverage>` sorted by location (`RunnerSummary.byLocation`), when there are any
 3. Integrity warnings — kills and timeouts whose code never ran, the first `integrityWarningsListed` (10) with their reason, then a count — when there are any
 4. Overall score line
@@ -207,7 +217,7 @@ struct HtmlReporter: Sendable {
 }
 ```
 
-Writes a self-contained HTML dashboard to `outputPath`. Shows the overall score, the detection line and the totals, then a per-file score table — killed, survived, timeouts, unviable, no coverage — with `<details>` elements listing each file's survived mutants inline, by line. Score cells are colour-coded: green (100%), yellow (≥ 50%), red (< 50%). Every interpolated value — the file path, the operator, the mutation description and the detection line — goes through `String.htmlEscaped` (`&`, `<`, `>`, `"`, `'`), so a `<` or `&&` mutation keeps the table intact and a string literal cannot inject markup. File paths are relative to `projectRoot`, computed by `ProjectRelativePath`, with no leading `/`.
+Writes a self-contained HTML dashboard to `outputPath`. Shows the overall score, the detection line and the totals, then a per-file score table — killed, survived, timeouts, unviable, no coverage — with `<details>` elements listing each file's survived mutants inline, by line. Score cells are colour-coded: green (100%), yellow (≥ 50%), red (< 50%); a file with no score shows `n/a` with the class `score-none`, which has no colour. Every interpolated value — the file path, the operator, the mutation description and the detection line — goes through `String.htmlEscaped` (`&`, `<`, `>`, `"`, `'`), so a `<` or `&&` mutation keeps the table intact and a string literal cannot inject markup. File paths are relative to `projectRoot`, computed by `ProjectRelativePath`, with no leading `/`.
 
 ---
 
@@ -405,8 +415,8 @@ extension GateResult.Check {
 
 | Check | `summary` |
 |---|---|
-| `.minScore` | `score 90.4% ≥ 85.0%`, or `<` when it fails |
-| `.scoreDrop` | `score drop 0.7 pts ≤ 2.0 pts`, or `>` when it fails; `score did not drop (max drop 2.0 pts)` when the drop is not positive |
+| `.minScore` | `score 90.4% ≥ 85.0%`, or `<` when it fails; `no score, since no mutant could be tested (min 85.0%)` without a score |
+| `.scoreDrop` | `score drop 0.7 pts ≤ 2.0 pts`, or `>` when it fails; `score did not drop (max drop 2.0 pts)` when the drop is not positive; `no score to compare with the baseline's (max drop 2.0 pts)` when the run has no score |
 | `.newUndetected` | `1 new undetected mutant (max 0)` |
 | `.integrityWarnings` | `2 integrity warnings (max 0)` |
 
@@ -827,12 +837,17 @@ The group is frozen **before** the descendants are collected, and the snapshot i
 
 ```swift
 struct XcodeProcessLauncher: Sendable, RunnerLaunching {
-    static func terminate(pid: pid_t, escalation: TimeoutEscalation, kill: SystemCalls.Kill = Darwin.kill)
+    static func terminate(
+        pid: pid_t,
+        escalation: TimeoutEscalation,
+        kill: SystemCalls.Kill = Darwin.kill,
+        detachedDescendants: (pid_t) -> [Int32] = { ProcessTree.detachedDescendants(of: $0) }
+    )
     func makeRunner() -> ProcessRunner
 }
 ```
 
-The default launcher for Xcode projects. Its timeout handler, `terminate(pid:escalation:)`, is simpler than the SPM one: nothing for pid 0, otherwise `SIGTERM` to the group, then a `TimeoutEscalation` armed with no descendants for the `SIGKILL` after its grace period. When the process exits first, `postTerminationCleanup` cancels that kill and, if it was pending, kills what is left of the group at once — the delayed kill used to be a detached task that fired five seconds later whatever happened, on every killed mutant, at a pid that might by then lead someone else's group. There is no descendant snapshot — `xcodebuild` reaps its own children, and its results are read from the `.xcresult` bundle rather than from whatever the processes left on stdout.
+The default launcher for Xcode projects. Its timeout handler, `terminate(pid:escalation:)`, does nothing for pid 0. Otherwise it first deals with the descendants that lead process groups of their own, which no signal to `xcodebuild`'s group reaches: `xcodebuild` builds through `SWBBuildService`, which runs in its own group, and so does every `swift-frontend` it starts. They used to outlive a build that timed out, reparented to `launchd`, and keep writing into the sandbox's derived data after the sandbox was removed, leaving it behind (1.3 GB in #176). Each is stopped with `SIGSTOP`, and the table is read again until it shows none that is not stopped, at most five times, so a compiler started between two reads is caught too; then each is killed with `SIGKILL`. Then comes `SIGTERM` to the group, then a `TimeoutEscalation` armed with no descendants for the `SIGKILL` after its grace period. When the process exits first, `postTerminationCleanup` cancels that kill and, if it was pending, kills what is left of the group at once — the delayed kill used to be a detached task that fired five seconds later whatever happened, on every killed mutant, at a pid that might by then lead someone else's group. The descendants inside the group get the group's `SIGTERM` rather than a kill of their own — `xcodebuild` reaps its own children, and its results are read from the `.xcresult` bundle rather than from whatever the processes left on stdout.
 
 ---
 
@@ -1023,12 +1038,13 @@ Resolves symlinks with `realpath`, returning the input unchanged when it cannot.
 ```swift
 enum ProcessTree {
     static func descendants(of pid: Int32, sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32]
+    static func detachedDescendants(of pid: Int32, sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32]
     static func isAlive(_ pid: pid_t) -> Bool
     static func all(sysctl: SystemCalls.Sysctl = Darwin.sysctl) -> [Int32]
 }
 ```
 
-Walks the process table from `sysctl(KERN_PROC_ALL)` and returns every descendant of a pid, at any depth; a pid of 1 or below has none. Sizing the table and reading it are two calls, and processes started in between make the read fail with `ENOMEM`; the buffer therefore gets an eighth more room plus 16 entries, and a read that still fails with `ENOMEM` is retried from the sizing, up to three times, before the snapshot comes back empty. `SPMProcessLauncher.terminate` snapshots them while the group is frozen, so a test process that spawns children cannot leave one behind. `all()` returns every pid above 1, for `OrphanedProcessReaper` to inspect. `isAlive(_:)` is `kill(pid, 0)`, with `EPERM` counted as alive — the process exists, it is just not ours to signal; `SandboxName` and `CloneName` both decide ownership with it.
+Walks the process table from `sysctl(KERN_PROC_ALL)` and returns every descendant of a pid, at any depth; a pid of 1 or below has none. Sizing the table and reading it are two calls, and processes started in between make the read fail with `ENOMEM`; the buffer therefore gets an eighth more room plus 16 entries, and a read that still fails with `ENOMEM` is retried from the sizing, up to three times, before the snapshot comes back empty. `SPMProcessLauncher.terminate` snapshots them while the group is frozen, so a test process that spawns children cannot leave one behind. `detachedDescendants(of:)` keeps only those whose process group is not the pid's, the ones a signal to the group misses, for `XcodeProcessLauncher.terminate`. `all()` returns every pid above 1, for `OrphanedProcessReaper` to inspect. `isAlive(_:)` is `kill(pid, 0)`, with `EPERM` counted as alive — the process exists, it is just not ours to signal; `SandboxName` and `CloneName` both decide ownership with it.
 
 ---
 

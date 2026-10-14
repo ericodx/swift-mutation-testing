@@ -83,6 +83,12 @@ struct MutantExecutor: Sendable {
         )
 
         let (artifact, schemaBuildExcluded) = try await buildArtifact(sandbox: sandbox, input: input, deps: deps)
+        if artifact == nil, !input.mutants.isEmpty {
+            try await UnmutatedBuildCheck(
+                configuration: configuration, stage: BuildStage(launcher: deps.launcher),
+                sandboxFactory: environment.sandboxFactory
+            ).verify(projectPath: input.projectPath)
+        }
         let pool = try await SimulatorPool.make(for: configuration, launcher: launcher)
         try await pool.setUp()
         await reporter.report(.workersReady(count: pool.size, usesSimulators: pool.usesSimulators))
@@ -122,8 +128,8 @@ struct MutantExecutor: Sendable {
         let selection = CacheTestSelection(configuration.build)
         if try await cacheStore.discard(unlessMadeWith: selection) {
             StandardError.write(
-                "Note: the cache was made against other tests (another target, testing library, scheme or "
-                    + "destination); every mutant will be tested again."
+                "Note: the cache was made against other tests (another target, testing library, scheme, destination "
+                    + "or xcodebuild arguments); every mutant will be tested again."
             )
         }
 
@@ -247,7 +253,7 @@ struct MutantExecutor: Sendable {
             do {
                 let artifact = try await stage.build(
                     sandbox: sandbox,
-                    container: configuration.build.xcodeContainer,
+                    arguments: configuration.build.xcodeArguments,
                     scheme: scheme,
                     destination: destination,
                     timeout: configuration.build.buildTimeout

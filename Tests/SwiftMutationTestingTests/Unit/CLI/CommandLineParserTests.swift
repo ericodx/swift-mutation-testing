@@ -342,4 +342,18 @@ struct CommandLineParserTests {
         #expect(try parser.parse(["--project", "App.xcodeproj"]).build.xcodeProject == "App.xcodeproj")
         #expect(try parser.parse(["plan", "--project", "App.xcodeproj"]).build.xcodeProject == "App.xcodeproj")
     }
+
+    @Test("Given --xcodebuild-arg twice, when parsed, then both values are kept in order, dashes and all")
+    func xcodebuildArgumentFlags() throws {
+        let parsed = try parser.parse(["--xcodebuild-arg", "-allowProvisioningUpdates", "--xcodebuild-arg", "A=B"])
+
+        #expect(parsed.build.xcodebuildArguments == ["-allowProvisioningUpdates", "A=B"])
+    }
+
+    @Test("Given --xcodebuild-arg without a value, when parsed, then it is a usage error")
+    func xcodebuildArgumentNeedsAValue() {
+        #expect(throws: UsageError(message: "--xcodebuild-arg requires a value")) {
+            try parser.parse(["--xcodebuild-arg"])
+        }
+    }
 }

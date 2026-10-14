@@ -70,6 +70,8 @@ struct SchemaNarrowerExclusionTests {
 
         #expect(excluded.map(\.id) == [blamed])
         let narrowed = try String(contentsOf: fixture.sandboxCopy, encoding: .utf8)
+        #expect(narrowed.hasPrefix(LintSuppression.opening))
+        #expect(narrowed.hasSuffix(LintSuppression.closing))
         #expect(!narrowed.contains(blamed))
         #expect(narrowed.contains(fixture.indexed[0].mutantID))
         #expect(narrowed.contains(fixture.indexed[2].mutantID))
@@ -128,8 +130,8 @@ struct SchemaNarrowerExclusionTests {
             let generated = try #require(
                 SchemaNarrower.regeneratedSchema(originalPath: originalFile.path, keeping: all)
             )
-            try generated.write(to: sandboxCopy, atomically: true, encoding: .utf8)
-            schema = generated
+            schema = LintSuppression.wrapping(generated)
+            try schema.write(to: sandboxCopy, atomically: true, encoding: .utf8)
         }
 
         var descriptors: [MutantDescriptor] {

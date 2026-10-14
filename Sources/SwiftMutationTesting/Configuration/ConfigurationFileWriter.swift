@@ -51,6 +51,10 @@ struct ConfigurationFileWriter: Sendable {
 
         lines.append("destination: \(destination)")
         lines.append("")
+        lines.append("# Arguments appended to every xcodebuild call (build-for-testing and test-without-building)")
+        lines.append("# xcodebuild-args:")
+        lines.append("#   - -allowProvisioningUpdates")
+        lines.append("")
         lines.append("# Testing framework: xctest or swift-testing (default: swift-testing)")
         lines.append("# When xctest is selected, concurrency is forced to 1 for deterministic results")
         lines.append("testing-framework: \(testingFramework.rawValue)")

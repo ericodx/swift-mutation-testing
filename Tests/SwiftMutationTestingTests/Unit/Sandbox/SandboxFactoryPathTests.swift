@@ -31,7 +31,9 @@ struct SandboxFactoryPathTests {
         defer { try? sandbox.cleanup() }
 
         let copy = sandbox.rootURL.appendingPathComponent("Sources/App")
-        #expect(try String(contentsOf: copy.appendingPathComponent("A.swift"), encoding: .utf8) == "let a = 2")
+        #expect(
+            try String(contentsOf: copy.appendingPathComponent("A.swift"), encoding: .utf8)
+                == LintSuppression.wrapping("let a = 2"))
         #expect(
             try FileManager.default.destinationOfSymbolicLink(atPath: copy.appendingPathComponent("B.swift").path)
                 .hasSuffix("/Sources/App/B.swift")
@@ -58,7 +60,7 @@ struct SandboxFactoryPathTests {
         defer { try? sandbox.cleanup() }
 
         let copy = sandbox.rootURL.appendingPathComponent("Shared.swift")
-        #expect(try String(contentsOf: copy, encoding: .utf8) == "let s = 2")
+        #expect(try String(contentsOf: copy, encoding: .utf8) == LintSuppression.wrapping("let s = 2"))
     }
 
     @Test("Given the file system root, when replaced files are keyed, then their paths are relative to it")

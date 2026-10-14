@@ -75,7 +75,7 @@ struct SwiftMutationTestingExecutionPathTests {
 
         let result = await SwiftMutationTesting.run(
             args: [dir.path],
-            launcher: IOSSimulatorMock(listJSON: listJSON, cloneUDID: cloneUDID)
+            launcher: UnmutatedBuildPassingLauncher(base: IOSSimulatorMock(listJSON: listJSON, cloneUDID: cloneUDID))
         )
 
         #expect(result == .success)
@@ -114,10 +114,31 @@ struct SwiftMutationTestingExecutionPathTests {
 
         let result = await SwiftMutationTesting.run(
             args: [dir.path],
-            launcher: MockProcessLauncher(exitCode: 1)
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
         )
 
         #expect(result == .success)
+    }
+
+    @Test("Given a project that does not build, when run called, then it fails without a score")
+    func unbuildableProjectFailsWithoutAScore() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        try "scheme: App\ndestination: platform=macOS\n".write(
+            to: dir.appendingPathComponent(".swift-mutation-testing.yml"), atomically: true, encoding: .utf8
+        )
+        try "func f(_ a: Bool, _ b: Bool) -> Bool { a && b }\n".write(
+            to: dir.appendingPathComponent("Foo.swift"), atomically: true, encoding: .utf8
+        )
+
+        var result: ExitCode = .success
+        let output = await captureOutput {
+            result = await SwiftMutationTesting.run(args: [dir.path], launcher: MockProcessLauncher(exitCode: 1))
+        }
+
+        #expect(result == .error)
+        #expect(!output.contains("mutation score"))
     }
 
     @Test("Given quiet is off and the project has mutants, when run called, then discovery is reported")
@@ -133,7 +154,8 @@ struct SwiftMutationTestingExecutionPathTests {
 
         var result: ExitCode = .error
         let output = await captureOutput {
-            result = await SwiftMutationTesting.run(args: [dir.path], launcher: MockProcessLauncher(exitCode: 1))
+            result = await SwiftMutationTesting.run(
+                args: [dir.path], launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1)))
         }
 
         #expect(result == .success)
@@ -174,7 +196,7 @@ struct SwiftMutationTestingExecutionPathTests {
                 dir.path, "--sources-path", dir.appendingPathComponent("Foo.swift").path, "--output", reportPath,
                 "--quiet",
             ],
-            launcher: MockProcessLauncher(exitCode: 1)
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
         )
 
         #expect(result == .success)

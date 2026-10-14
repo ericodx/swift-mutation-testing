@@ -58,6 +58,21 @@ struct GateReporterTests {
         #expect(reporter.format(result).contains("  ✓ score did not drop (max drop 0.0 pts)"))
     }
 
+    @Test("Given score checks without a score, when formatted, then they fail and say there is no score")
+    func formatsScoreChecksWithoutAScore() {
+        let result = GateResult(
+            checks: [.minScore(score: nil, minimum: 80), .scoreDrop(drop: nil, maximum: 2)],
+            newUndetected: [],
+            fixedCount: nil
+        )
+
+        let output = reporter.format(result)
+
+        #expect(output.contains("Quality gate: FAILED"))
+        #expect(output.contains("  ✗ no score, since no mutant could be tested (min 80.0%)"))
+        #expect(output.contains("  ✗ no score to compare with the baseline's (max drop 2.0 pts)"))
+    }
+
     @Test("Given more new mutants than the limit, when formatted, then the rest are summarized")
     func truncatesTheList() {
         let results = (1 ... GateReporter.listedLimit + 5).map {

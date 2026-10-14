@@ -83,7 +83,7 @@ struct FallbackExecutor: Sendable {
         case .xcode(let scheme, let destination):
             return try await stage.build(
                 sandbox: sandbox,
-                container: configuration.build.xcodeContainer,
+                arguments: configuration.build.xcodeArguments,
                 scheme: scheme,
                 destination: destination,
                 timeout: configuration.build.buildTimeout
@@ -96,8 +96,8 @@ struct FallbackExecutor: Sendable {
 
     private static func isVerdict(_ error: BuildError) -> Bool {
         switch error {
-        case .compilationFailed, .timedOut: true
-        case .xctestrunNotFound: false
+        case .compilationFailed: true
+        case .timedOut, .xctestrunNotFound: false
         }
     }
 
@@ -105,11 +105,9 @@ struct FallbackExecutor: Sendable {
         _ error: BuildError,
         mutants: [MutantDescriptor]
     ) async -> [ExecutionResult] {
-        let status: ExecutionStatus = if case .timedOut = error { .timeout } else { .unviable }
-
         var results: [ExecutionResult] = []
         for mutant in mutants {
-            results.append(await recorder.record(mutant, status: status, output: error.localizedDescription))
+            results.append(await recorder.record(mutant, status: .unviable, output: error.localizedDescription))
         }
         return results
     }

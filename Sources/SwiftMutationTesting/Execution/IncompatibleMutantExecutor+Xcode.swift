@@ -72,7 +72,7 @@ extension IncompatibleMutantExecutor {
                         let build = try await deps.launcher.launchCapturing(
                             ToolRequests.buildForTesting(
                                 in: sandbox, scheme: scheme, destination: slot.destination,
-                                container: configuration.build.xcodeContainer,
+                                arguments: configuration.build.xcodeArguments,
                                 timeout: configuration.build.buildTimeout
                             )
                         )
@@ -111,6 +111,7 @@ extension IncompatibleMutantExecutor {
 
         guard !ready.isEmpty else {
             let failed = workers[0].build
+            try rejectTimedOut(failed, configuration: configuration)
             var results: [(Int, ExecutionResult)] = []
             for warm in mutants {
                 results.append(
@@ -118,7 +119,7 @@ extension IncompatibleMutantExecutor {
                         warm.index,
                         await storeAndReport(
                             mutant: warm.mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
-                            buildOutput: failed.output, status: buildStatus(exitCode: failed.exitCode)
+                            buildOutput: failed.output
                         )
                     )
                 )
@@ -209,7 +210,7 @@ extension IncompatibleMutantExecutor {
 
     private func write(_ content: String, to path: String) throws {
         try? FileManager.default.removeItem(atPath: path)
-        try content.write(toFile: path, atomically: true, encoding: .utf8)
+        try LintSuppression.wrapping(content).write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     private func removeResultBundles(in sandbox: Sandbox) throws {
@@ -344,12 +345,13 @@ extension IncompatibleMutantExecutor {
                 in: run.sandbox,
                 scheme: run.attempt.scheme,
                 destination: run.slot.destination,
-                container: configuration.build.xcodeContainer,
+                arguments: configuration.build.xcodeArguments,
                 timeout: configuration.build.buildTimeout
             )
         )
 
         guard build.exitCode == 0 else {
+            try rejectTimedOut(build, configuration: configuration)
             let launched = TestLaunchResult(
                 exitCode: build.exitCode,
                 output: build.output,
@@ -378,7 +380,7 @@ extension IncompatibleMutantExecutor {
                 "-derivedDataPath", ToolRequests.derivedDataPath(in: run.sandbox),
                 "-resultBundlePath", xcresultPath,
                 "-parallel-testing-enabled", "NO",
-            ] + ToolRequests.noTestDiagnostics + (configuration.build.xcodeContainer?.arguments ?? [])
+            ] + ToolRequests.noTestDiagnostics + configuration.build.xcodeArguments
 
         if let testTarget = configuration.build.testTarget {
             testArguments += ["-only-testing", testTarget]

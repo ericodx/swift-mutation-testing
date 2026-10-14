@@ -93,7 +93,7 @@ struct SwiftMutationTestingPlanTests {
 
         let result = await SwiftMutationTesting.run(
             args: ["run", dir.path, "--quiet", "--output", reportPath, "--no-cache"],
-            launcher: MockProcessLauncher(exitCode: 1)
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
         )
 
         #expect(result == .success)
@@ -119,7 +119,7 @@ struct SwiftMutationTestingPlanTests {
         for (arguments, path) in [([], paths[0]), (["--shard", "1/2"], paths[1]), (["--shard", "2/2"], paths[2])] {
             let result = await SwiftMutationTesting.run(
                 args: ["run", dir.path, "--plan", planPath, "--quiet", "--no-cache", "--output", path] + arguments,
-                launcher: MockProcessLauncher(exitCode: 1)
+                launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
             )
             #expect(result == .success)
         }
@@ -167,7 +167,8 @@ struct SwiftMutationTestingPlanTests {
         var result: ExitCode = .error
         let output = await captureOutput {
             result = await SwiftMutationTesting.run(
-                args: ["reproduce", "swift-mutation-testing_0", dir.path], launcher: MockProcessLauncher(exitCode: 1)
+                args: ["reproduce", "swift-mutation-testing_0", dir.path],
+                launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
             )
         }
         let sandboxes = output.split(separator: "\n").filter { $0.hasPrefix("Sandbox: ") }.map {
@@ -192,7 +193,7 @@ struct SwiftMutationTestingPlanTests {
         let output = await captureOutput {
             result = await SwiftMutationTesting.run(
                 args: ["reproduce", "swift-mutation-testing_0", dir.path, "--plan", planPath],
-                launcher: MockProcessLauncher(exitCode: 1)
+                launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1))
             )
         }
         let sandboxes = output.split(separator: "\n").filter { $0.hasPrefix("Sandbox: ") }.map {

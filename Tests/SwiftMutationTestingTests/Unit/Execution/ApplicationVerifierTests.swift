@@ -35,6 +35,18 @@ struct ApplicationVerifierTests {
         }
     }
 
+    @Test("Given a copy that is the original wrapped for SwiftLint, when verified, then the schema was not applied")
+    func wrappedCopyOfTheOriginalIsNotApplied() throws {
+        let project = try Project { _ in LintSuppression.wrapping(Project.original) }
+        defer { project.cleanup() }
+
+        #expect(throws: IntegrityError.schemaNotApplied(path: project.file.originalPath)) {
+            try verifier.verify(
+                schematizedFiles: [project.file], mutants: [], sandbox: project.sandbox, projectPath: project.root.path
+            )
+        }
+    }
+
     @Test("Given no sandbox copy of a schematized file, when verified, then the schema was not applied")
     func missingCopyIsNotApplied() throws {
         let project = try Project(schematized: nil)

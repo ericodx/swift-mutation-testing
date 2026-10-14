@@ -10,13 +10,13 @@ struct HtmlReporter: Sendable {
     }
 
     private func buildHtml(_ summary: RunnerSummary) -> String {
-        let score = String(format: "%.1f", summary.score)
         let rows = buildRows(summary)
         let totals = buildTotals(summary)
-        return htmlTemplate(score: score, detection: summary.detectionLine, totals: totals, rows: rows)
+        return htmlTemplate(score: summary.formattedScore, detection: summary.detectionLine, totals: totals, rows: rows)
     }
 
-    private func scoreColorClass(_ score: Double) -> String {
+    private func scoreColorClass(_ score: Double?) -> String {
+        guard let score else { return "score-none" }
         if score == 100 { return "score-green" }
         if score >= 50 { return "score-yellow" }
         return "score-red"
@@ -26,13 +26,13 @@ struct HtmlReporter: Sendable {
         var rows = ""
         let paths = ProjectRelativePath.Resolver(projectPath: projectRoot)
         for (filePath, file) in summary.files {
-            let fileScore = String(format: "%.1f", file.score)
             let colorClass = scoreColorClass(file.score)
             let relativePath = paths.make(for: filePath)
             let details = buildSurvivedDetails(file.survived)
             rows +=
                 "<tr>"
-                + "<td>\(relativePath.htmlEscaped)\(details)</td><td class=\"\(colorClass)\">\(fileScore)%</td>"
+                + "<td>\(relativePath.htmlEscaped)\(details)</td>"
+                + "<td class=\"\(colorClass)\">\(file.formattedScore)</td>"
                 + "<td>\(file.killed.count)</td><td>\(file.survived.count)</td>"
                 + "<td>\(file.timeouts.count)</td><td>\(file.unviable.count)</td>"
                 + "<td>\(file.noCoverage.count)</td>"
@@ -93,7 +93,7 @@ struct HtmlReporter: Sendable {
         </head>
         <body>
             <h1>Mutation Testing Report</h1>
-            <p class="score">Score: \(score)%</p>
+            <p class="score">Score: \(score)</p>
             <p>\(detection.htmlEscaped)</p>
             <p>\(totals)</p>
             <table>

@@ -104,6 +104,19 @@ struct TextReporterTests {
         #expect(output.contains("Overall mutation score:"))
     }
 
+    @Test("Given only unviable mutants, when format called, then the overall and file scores are n/a")
+    func formatShowsNoScoreWithoutTestedMutants() {
+        let summary = RunnerSummary(
+            results: [makeExecutionResult(filePath: "/tmp/Foo.swift", status: .unviable)],
+            totalDuration: 1.0
+        )
+
+        let output = TextReporter().format(summary)
+
+        #expect(output.contains("Overall mutation score: n/a"))
+        #expect(output.contains("score: n/a"))
+    }
+
     @Test("Given timeout mutant, when format called, then timeout count appears in results by file")
     func formatShowsTimeoutInResultsByFile() {
         let summary = RunnerSummary(

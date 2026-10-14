@@ -80,8 +80,8 @@ struct FallbackExecutorTests {
         #expect(!(await launcher.runs.isEmpty))
     }
 
-    @Test("Given the fallback build times out, when execute called, then mutants are timeout and nothing is cached")
-    func fallbackBuildTimeoutIsNotRecordedAsUnviable() async throws {
+    @Test("Given the fallback build times out, when execute called, then the run stops and nothing is cached")
+    func fallbackBuildTimeoutStopsTheRun() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -118,10 +118,11 @@ struct FallbackExecutorTests {
             mutants: [mutant]
         )
 
-        let results = try await FallbackExecutor(deps: deps, configuration: config)
-            .execute(input: input, pool: pool)
+        await #expect(throws: BuildError.timedOut(seconds: 0, output: "")) {
+            _ = try await FallbackExecutor(deps: deps, configuration: config)
+                .execute(input: input, pool: pool)
+        }
 
-        #expect(results.map(\.status) == [.timeout])
         #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
     }
 
