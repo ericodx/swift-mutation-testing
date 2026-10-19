@@ -33,6 +33,20 @@ struct IncompatibleMutantSPMTestRunTests {
         #expect(await testRequests(of: launcher).map(filter(of:)) == ["FooTests"])
     }
 
+    @Test("Given a mutant whose own suite times out, when tested, then it times out without the whole suite")
+    func aTimeoutInTheOwnSuiteSkipsTheFullRun() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let launcher = CountingLauncher(
+            wrapping: SPMBuildSuccessTestFailureMock(failureOutput: "", exitCode: SPMResultParser.timedOutExitCode)
+        )
+
+        let results = try await run(in: dir, launcher: launcher, testTarget: "AppTests")
+
+        #expect(results.first?.status == .timeout)
+        #expect(await testRequests(of: launcher).map(filter(of:)) == ["FooTests"])
+    }
+
     @Test("Given a reproduction, when tested, then only the whole suite runs, to its end")
     func aReproductionRunsTheWholeSuiteToItsEnd() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

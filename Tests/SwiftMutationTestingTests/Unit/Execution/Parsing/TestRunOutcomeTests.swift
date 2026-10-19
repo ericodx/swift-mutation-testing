@@ -17,13 +17,13 @@ struct TestRunOutcomeTests {
         #expect(TestRunOutcome.unviable.asExecutionStatus == .unviable)
     }
 
-    @Test("Given an outcome, when asked whether it is a kill, then only a failure or a crash is")
-    func onlyAFailureOrACrashIsAKill() {
-        #expect(TestRunOutcome.testsFailed(failingTest: "t").isKill)
-        #expect(TestRunOutcome.crashed.isKill)
-        #expect(!TestRunOutcome.testsSucceeded.isKill)
-        #expect(!TestRunOutcome.timedOut.isKill)
-        #expect(!TestRunOutcome.buildFailed.isKill)
-        #expect(!TestRunOutcome.unviable.isKill)
+    @Test("Given an outcome, when asked whether the tests detected the mutant, then a failure, a crash or a timeout did")
+    func aFailureACrashOrATimeoutIsADetection() {
+        #expect(TestRunOutcome.testsFailed(failingTest: "t").isDetected)
+        #expect(TestRunOutcome.crashed.isDetected)
+        #expect(TestRunOutcome.timedOut.isDetected)
+        #expect(!TestRunOutcome.testsSucceeded.isDetected)
+        #expect(!TestRunOutcome.buildFailed.isDetected)
+        #expect(!TestRunOutcome.unviable.isDetected)
     }
 }

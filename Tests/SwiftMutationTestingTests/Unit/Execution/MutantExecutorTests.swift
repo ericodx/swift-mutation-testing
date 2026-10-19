@@ -1450,6 +1450,22 @@ struct MutantExecutorTests {
         #expect(await launcher.filters == ["FooTests", nil])
     }
 
+    @Test("Given the file's own suite times out, when executed, then the mutant times out without the full suite")
+    func aTimeoutInTheTargetedSuiteEndsTheRun() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let sourceFile = try targetedProject(in: dir, withSuite: true)
+
+        let launcher = TargetedRunLauncher(targetedOutcome: (SPMResultParser.timedOutExitCode, "◇ Test run started."))
+        let results = try await MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm),
+            launcher: launcher
+        ).execute(targetedInput(projectDir: dir, sourceFile: sourceFile))
+
+        #expect(results.map(\.status) == [.timeout])
+        #expect(await launcher.filters == ["FooTests", "FooTests"])
+    }
+
     @Test("Given no suite named after the file, when executed, then only the full suite runs")
     func aFileWithoutItsOwnSuiteRunsTheFullSuiteOnly() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
