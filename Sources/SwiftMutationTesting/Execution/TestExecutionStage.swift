@@ -112,6 +112,23 @@ struct TestExecutionStage: Sendable {
         return await recordResult(mutant: mutant, outcome: outcome, launched: launched, in: context)
     }
 
+    func requireXcodeBaselineToPass(in context: TestExecutionContext) async throws {
+        guard let plist = context.artifact.plist else { return }
+
+        let timeout = context.configuration.build.timeout
+        let launched = try await launchOnAnySlot(plistData: plist.activating(""), in: context, timeout: timeout)
+        defer { try? FileManager.default.removeItem(atPath: launched.xcresultPath) }
+
+        let outcome = try await ResultParser(launcher: deps.launcher).parse(
+            exitCode: launched.exitCode,
+            output: launched.output,
+            xcresultPath: launched.xcresultPath,
+            timeout: timeout
+        )
+        try BaselineProbe(configuration: context.configuration, launcher: deps.launcher)
+            .requirePassing(outcome, output: launched.output)
+    }
+
     private func measure(
         _ mutant: MutantDescriptor,
         in context: TestExecutionContext,
@@ -122,17 +139,9 @@ struct TestExecutionStage: Sendable {
         }
 
         let marker = ActivationMarker(for: mutant.id, in: context.sandbox)
-        let plistData = plist.activating(mutant.id, activationFile: marker.path)
-        let slot = try await context.pool.acquire()
-        var launched: TestLaunchResult
-        do {
-            launched = try await launch(plistData: plistData, slot: slot, in: context, timeout: timeout)
-        } catch {
-            await context.pool.release(slot)
-            throw error
-        }
-
-        await context.pool.release(slot)
+        var launched = try await launchOnAnySlot(
+            plistData: plist.activating(mutant.id, activationFile: marker.path), in: context, timeout: timeout
+        )
         launched.activated = marker.wasWritten()
 
         let outcome = try await ResultParser(launcher: deps.launcher).parse(
@@ -298,6 +307,22 @@ struct TestExecutionStage: Sendable {
             timeout: timeout
         )
         return [configuration.build.reproducing ? request : request.stopping(at: .firstTestFailure)]
+    }
+
+    private func launchOnAnySlot(
+        plistData: Data,
+        in context: TestExecutionContext,
+        timeout: Double
+    ) async throws -> TestLaunchResult {
+        let slot = try await context.pool.acquire()
+        do {
+            let launched = try await launch(plistData: plistData, slot: slot, in: context, timeout: timeout)
+            await context.pool.release(slot)
+            return launched
+        } catch {
+            await context.pool.release(slot)
+            throw error
+        }
     }
 
     private func launch(
