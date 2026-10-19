@@ -70,7 +70,7 @@ enum TestRunOutcome: Sendable {
     case buildFailed
     case unviable
 
-    var isKill: Bool { get }
+    var isDetected: Bool { get }
     var asExecutionStatus: ExecutionStatus { get }
 }
 ```
@@ -86,7 +86,7 @@ Intermediate result from `TestResultResolver`/`ResultParser`/`SPMResultParser`, 
 | `buildFailed` | `.unviable` |
 | `unviable` | `.unviable` |
 
-`isKill` answers the narrower question "did the tests detect the mutant" — true for `testsFailed` and `crashed` only. `TestExecutionStage` uses it to decide whether the targeted run already settled the verdict or the whole suite still has to run.
+`isDetected` answers "did the tests detect the mutant" — true for `testsFailed`, `crashed` and `timedOut`, the outcomes the score counts as detected. `TestExecutionStage` and `IncompatibleMutantExecutor` use it to decide whether the targeted run already settled the verdict or the whole suite still has to run. It replaced `isKill`, which left out `timedOut`, so a mutant that hung in its own suite used to wait out a second `--timeout` in the whole suite (#183).
 
 ---
 
