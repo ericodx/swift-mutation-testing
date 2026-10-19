@@ -125,7 +125,9 @@ struct SandboxFactory: Sendable {
                     destination: dest,
                     replacements: replacements,
                     relativePath: itemRelativePath,
-                    copiesFiles: copiesFiles || (name == "xcshareddata" && source.pathExtension == "xcworkspace")
+                    copiesFiles: copiesFiles
+                        || item.pathExtension == "icon"
+                        || (name == "xcshareddata" && source.pathExtension == "xcworkspace")
                 )
             } else if !replacements.isEmpty,
                 let content = replacements.content(for: item, relativePath: itemRelativePath, isSymlink: isSymlink)
