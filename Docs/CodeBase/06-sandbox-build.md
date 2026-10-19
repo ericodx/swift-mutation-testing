@@ -55,7 +55,7 @@ flowchart TD
     SKIP -- ".build, DerivedData, .xmr-*" --> DROP["skip"]
     SKIP -- no --> XCODEPROJ{".xcodeproj?"}
     XCODEPROJ -- yes --> PROJ["xcuserdata: empty directory<br>xcshareddata: copy<br>everything else: symlink"]
-    XCODEPROJ -- no --> RECURSE["mkdir and recurse<br>copy flag set under .xcworkspace/xcshareddata"]
+    XCODEPROJ -- no --> RECURSE["mkdir and recurse<br>copy flag set under .xcworkspace/xcshareddata<br>and under an .icon bundle"]
     KIND -- no --> REPLACED{"Replacements.content: by relative path,<br>or by resolved path for a symlink"}
     REPLACED -- found --> WRITE["write its content"]
     REPLACED -- "none, or nothing replaced" --> SHARED{"copy flag set?"}
@@ -66,6 +66,8 @@ flowchart TD
 **Wrapping the replaced files.** Every replaced file is written through `LintSuppression.wrapping`, so a SwiftLint build tool plugin skips it; see [LintSuppression](#sandboxlintsuppressionswift).
 
 **Matching the replaced files.** The schematized or mutated paths are resolved once, and each is keyed by its path relative to the resolved project root; the walk builds each item's relative path as it descends and looks it up, so no file is resolved for that. Only a file that is itself a symlink is resolved, and matched by where it points. When nothing is replaced — `createClean`, or a run with no schematized file — the lookup is skipped altogether. The walk used to resolve every file of the project and search its path for `.xcworkspace/xcshareddata/`, once per sandbox; a flag passed down the recursion now marks that directory.
+
+**Icon Composer bundles.** The same flag is set on entering a `.icon` directory, so its `icon.json` and every layer image below it are copied. `actool` rejects a symlinked manifest ("The “icon.json” entry must be a regular file.") and does not find a symlinked layer image, so with links the unmutated project failed the baseline build.
 
 **Off the cooperative pool.** All three are `async` but the work is synchronous file system calls, which used to occupy a cooperative thread for the whole walk — threads that simulator and process work wait on. `offCooperativePool` runs it on a global dispatch queue and resumes the caller through a continuation.
 
