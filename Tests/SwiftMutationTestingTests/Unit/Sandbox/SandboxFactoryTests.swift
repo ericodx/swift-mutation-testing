@@ -126,6 +126,36 @@ struct SandboxFactoryTests {
         #expect(content == "original content")
     }
 
+    @Test("Given an Icon Composer bundle, when sandbox created, then its manifest and nested assets are copied")
+    func iconComposerBundleCopiesFiles() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let iconDir = projectDir.appendingPathComponent("AppIcon.icon")
+        let assetsDir = iconDir.appendingPathComponent("Assets")
+        try FileManager.default.createDirectory(at: assetsDir, withIntermediateDirectories: true)
+        try FileHelpers.write("{}", named: "icon.json", in: iconDir)
+        try FileHelpers.write("<svg/>", named: "dot.svg", in: assetsDir)
+        try FileHelpers.write("let x = 1", named: "Main.swift", in: projectDir)
+
+        let sandbox = try await factory.createClean(projectPath: projectDir.path)
+        defer { try? sandbox.cleanup() }
+
+        func isSymlink(_ relative: String) -> Bool {
+            let url = sandbox.rootURL.appendingPathComponent(relative)
+            return (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink ?? false
+        }
+        func content(_ relative: String) throws -> String {
+            try String(contentsOf: sandbox.rootURL.appendingPathComponent(relative), encoding: .utf8)
+        }
+
+        #expect(!isSymlink("AppIcon.icon/icon.json"))
+        #expect(!isSymlink("AppIcon.icon/Assets/dot.svg"))
+        #expect(try content("AppIcon.icon/icon.json") == "{}")
+        #expect(try content("AppIcon.icon/Assets/dot.svg") == "<svg/>")
+        #expect(isSymlink("Main.swift"))
+    }
+
     @Test("Given mutated file path and content, when single-file sandbox created, then mutated content is written")
     func writesMutatedContentInSingleFileSandbox() async throws {
         let projectDir = try FileHelpers.makeTemporaryDirectory()
