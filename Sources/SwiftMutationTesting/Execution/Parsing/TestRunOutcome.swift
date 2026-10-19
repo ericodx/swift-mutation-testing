@@ -6,10 +6,10 @@ enum TestRunOutcome: Sendable {
     case buildFailed
     case unviable
 
-    var isKill: Bool {
+    var isDetected: Bool {
         switch self {
-        case .testsFailed, .crashed: return true
-        case .testsSucceeded, .timedOut, .buildFailed, .unviable: return false
+        case .testsFailed, .crashed, .timedOut: return true
+        case .testsSucceeded, .buildFailed, .unviable: return false
         }
     }
 
