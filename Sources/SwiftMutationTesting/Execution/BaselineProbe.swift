@@ -74,8 +74,8 @@ struct BaselineProbe: Sendable {
         try requireBaselineToPass(exitCode: captured.exitCode, output: captured.output)
     }
 
-    private func requireBaselineToPass(exitCode: Int32, output: String) throws {
-        switch SPMResultParser().parse(exitCode: exitCode, output: output) {
+    func requirePassing(_ outcome: TestRunOutcome, output: String) throws {
+        switch outcome {
         case .testsSucceeded:
             return
 
@@ -84,10 +84,17 @@ struct BaselineProbe: Sendable {
 
         case .testsFailed, .crashed, .unviable, .buildFailed:
             MutantLogWriter(directory: configuration.reporting.keepLogsPath)?.write(baselineOutput: output)
-            let failing = TestOutputParser().failingTests(in: output)
+            var failing = TestOutputParser().failingTests(in: output)
+            if failing.isEmpty, case .testsFailed(let name) = outcome {
+                failing = [name]
+            }
             throw failing.isEmpty
                 ? BaselineError.runFailed(output: output)
                 : BaselineError.testsFailed(tests: failing)
         }
+    }
+
+    private func requireBaselineToPass(exitCode: Int32, output: String) throws {
+        try requirePassing(SPMResultParser().parse(exitCode: exitCode, output: output), output: output)
     }
 }

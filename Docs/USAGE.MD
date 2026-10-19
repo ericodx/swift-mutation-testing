@@ -1053,7 +1053,7 @@ Run only a subset of operators to keep CI fast, and run the deep set locally wit
 
 ## Exit Codes
 
-A run that finds no mutant at all — a `--sources-path` with nothing mutable, everything excluded, no operator that applies — ends with `1` and says so. It reports no score: a 100% over zero mutants would be a perfect result for code that was never measured. So does a run whose unmutated project does not build: it ends with `1` and the build's output, before any mutant is tested. A shard of a plan is the exception: splitting by file can leave one empty, and `merge` accounts for every mutant anyway.
+A run that finds no mutant at all — a `--sources-path` with nothing mutable, everything excluded, no operator that applies — ends with `1` and says so. It reports no score: a 100% over zero mutants would be a perfect result for code that was never measured. So does a run whose unmutated project does not build: it ends with `1` and the build's output, before any mutant is tested. And so does one whose unmutated suite fails, crashes or does not finish within `--timeout`, on an Xcode project as on a package: every mutant would be reported killed by a failure that is already there, so the run names the failing tests instead, and `--keep-logs` keeps the suite's output as `baseline.log`. A shard of a plan is the exception: splitting by file can leave one empty, and `merge` accounts for every mutant anyway.
 
 | Code | Meaning |
 |---|---|

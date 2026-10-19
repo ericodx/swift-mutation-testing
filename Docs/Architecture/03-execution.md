@@ -29,7 +29,9 @@ flowchart TD
     ART -- "yes, SPM" --> PROBE["BaselineProbe\neach test bundle and library once"]
     PROBE -- fails --> ABORT[throw BaselineError]
     PROBE -- passes --> TES["TestExecutionStage\nthree passes, see below"]
-    ART -- "yes, Xcode" --> TES
+    ART -- "yes, Xcode" --> XBASE["TestExecutionStage\nunmutated test-without-building once"]
+    XBASE -- fails --> ABORT
+    XBASE -- passes --> TES
     ART -- no --> FBP["FallbackExecutor\none build per schematized file"]
     NARROW -- "excluded mutants, rewritten whole-file" --> IME
     POOL -- incompatible mutants --> IME["IncompatibleMutantExecutor\nwarm sandboxes, incremental rebuild per mutant"]
@@ -126,7 +128,7 @@ The container's relative path is passed as `-workspace` or `-project`, from the 
 
 `SimulatorError` conforms to `LocalizedError` and covers three failure modes: `deviceNotFound(destination:)`, `bootTimeout(udid:)`, and `cloneFailed(udid:)`. Each provides a structured `errorDescription` for diagnostics.
 
-## Baseline Validation (SPM)
+## Baseline Validation
 
 Before the first mutant runs, the suite is run once with no mutant selected. `__swiftMutationTestingID_<hash>` is empty, so every schema falls through to its `default` branch and the original code executes.
 
@@ -134,7 +136,7 @@ The run continues only if that suite passes. A suite that already fails without 
 
 **The baseline and the library probe are the same run.** A package builds one test bundle per test target. Each bundle is invoked once with each testing library against the unmutated sandbox, and that single invocation answers both questions: a bundle and library reporting no tests — exit 69 from SwiftPM's helper, `Executed 0 tests` from `xctest` — is dropped from every mutant's run, and one that does have tests must pass them. A bundle with tests in neither library is dropped altogether, unless no bundle has any, in which case every bundle keeps both libraries. Only when no bundle was produced does the baseline fall back to a separate `swift test --skip-build`. `--target` naming a bundle narrows the run to that bundle (`TestTargetSelection`); otherwise it is passed on as a filter. The probe runs the suite to the end; mutants stop at their first failing test.
 
-The Xcode path does not validate a baseline yet and has the same exposure.
+**On Xcode the baseline is one `test-without-building`.** `TestExecutionStage.requireXcodeBaselineToPass` runs the built `.xctestrun` once, with no mutant selected, on a slot of the pool, so it uses the destination, `--target` (`-only-testing`) and `--xcodebuild-arg` arguments every mutant's run uses, under `--timeout`. Its outcome is read as a mutant's is, from the `.xcresult` bundle or the output, and `BaselineProbe.requirePassing` applies the same rule as on SPM: the failing tests named from the output, or from the `.xcresult` when the output names none, the timeout, or the output. There is no library probe here: `xcodebuild` runs both libraries itself. The baseline costs one run of the suite, which an Xcode run used to skip, leaving a failing suite to kill every mutant.
 
 ## TestExecutionStage
 

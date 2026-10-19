@@ -203,6 +203,9 @@ struct MutantExecutor: Sendable {
                 testFilter: testFilter,
                 targetedSuites: deps.targetedSuites
             )
+            if case .xcode = configuration.build.projectType {
+                try await TestExecutionStage(deps: deps).requireXcodeBaselineToPass(in: context)
+            }
             results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
         } else if !testableSchematizable.isEmpty {
             results += try await runFallback(deps: deps, input: input.excluding(excludedIDs), pool: pool)
