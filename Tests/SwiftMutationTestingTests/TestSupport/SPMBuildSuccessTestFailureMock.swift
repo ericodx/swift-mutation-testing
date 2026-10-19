@@ -4,9 +4,11 @@ import Foundation
 
 actor SPMBuildSuccessTestFailureMock: ProcessLaunching {
     private let failureOutput: String
+    private let exitCode: Int32
 
-    init(failureOutput: String) {
+    init(failureOutput: String, exitCode: Int32 = 1) {
         self.failureOutput = failureOutput
+        self.exitCode = exitCode
     }
 
     func launch(
@@ -20,7 +22,7 @@ actor SPMBuildSuccessTestFailureMock: ProcessLaunching {
         _ request: ProcessRequest
     ) async throws -> (exitCode: Int32, output: String) {
         request.recordActivation()
-        if request.arguments.first == "test" { return (1, failureOutput) }
+        if request.arguments.first == "test" { return (exitCode, failureOutput) }
         return (0, "")
     }
 }

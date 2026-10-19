@@ -256,11 +256,11 @@ struct IncompatibleMutantExecutor: Sendable {
         {
             let targeted = try await swiftTest(
                 filter: suite.name, marker: marker, configuration: configuration, sandbox: sandbox)
-            let status = SPMResultParser().parse(exitCode: targeted.exitCode, output: targeted.output)
-                .asExecutionStatus
-            if status.isKill {
+            let outcome = SPMResultParser().parse(exitCode: targeted.exitCode, output: targeted.output)
+            if outcome.isDetected {
                 return Verdict(
-                    raw: status, output: targeted.output, duration: Date().timeIntervalSince(start), marker: marker
+                    raw: outcome.asExecutionStatus, output: targeted.output,
+                    duration: Date().timeIntervalSince(start), marker: marker
                 )
             }
         }

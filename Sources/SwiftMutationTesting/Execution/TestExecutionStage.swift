@@ -191,7 +191,7 @@ struct TestExecutionStage: Sendable {
             activated = marker.wasWritten()
             targeted.activated = activated
 
-            if outcome.isKill { return (outcome, targeted) }
+            if outcome.isDetected { return (outcome, targeted) }
         }
 
         let marker = ActivationMarker(for: mutant.id, in: context.sandbox)
