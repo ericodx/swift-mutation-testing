@@ -52,9 +52,12 @@ flowchart TD
     CLEAN -- no --> ABORTU["throw BaselineError.buildFailed<br>run ends"]
     POOL --> ART{"build artifact?"}
     ART -- "none, schematizable mutants left" --> FALLBACK["FallbackExecutor<br>one build per schematized file"]
-    ART -- yes --> PROBE{"SPM: BaselineProbe runs each<br>testing library once on the<br>unmutated sandbox"}
+    ART -- "yes, SPM" --> PROBE{"SPM: BaselineProbe runs each<br>testing library once on the<br>unmutated sandbox"}
     PROBE -- "a library fails, crashes or hangs" --> ABORTB["throw BaselineError<br>run ends"]
-    PROBE -- "passes, or Xcode" --> NORMAL["TestExecutionStage<br>schematizable mutants"]
+    ART -- "yes, Xcode" --> XBASE{"TestExecutionStage runs the<br>unmutated .xctestrun once"}
+    XBASE -- "fails, crashes or hangs" --> ABORTB
+    XBASE -- passes --> NORMAL
+    PROBE -- passes --> NORMAL["TestExecutionStage<br>schematizable mutants"]
     NORMAL --> INCOMPAT["IncompatibleMutantExecutor<br>incompatible and rerouted mutants"]
     FALLBACK --> INCOMPAT
     ART -- "none, nothing left" --> INCOMPAT
@@ -64,7 +67,7 @@ flowchart TD
     TEARDOWN --> RESULTS[["[ExecutionResult]"]]
 ```
 
-**Baseline validation (SPM only):** before any mutant runs, `BaselineProbe` runs the suite once with no mutant selected — the schema falls through to its `default` branch, so this is the original code. A kill verdict only means something if the same tests pass unmutated: a suite that already fails kills every mutant it reaches and produces a flattering score with nothing in the report to show it. Anything other than a passing suite throws `BaselineError` and ends the run. The Xcode path has no equivalent yet.
+**Baseline validation:** before any mutant runs, the suite runs once with no mutant selected — the schema falls through to its `default` branch, so this is the original code. A kill verdict only means something if the same tests pass unmutated: a suite that already fails kills every mutant it reaches and produces a flattering score with nothing in the report to show it. Anything other than a passing suite throws `BaselineError` and ends the run. On SPM the run is `BaselineProbe`'s; on Xcode it is `TestExecutionStage.requireXcodeBaselineToPass`, which used to be missing: a failing suite killed every mutant there. Both decide through `BaselineProbe.requirePassing`.
 
 **Normal path:** builds once, runs `TestExecutionStage` for all schematizable mutants in parallel, then re-runs any mutant that timed out on its own before reporting it.
 
@@ -143,10 +146,14 @@ struct BaselineProbe: Sendable {
     let launcher: any ProcessLaunching
 
     func probeTestBundles(in sandbox: Sandbox) async throws -> (bundles: [TestBundle], filter: String?)
+
+    func requirePassing(_ outcome: TestRunOutcome, output: String) throws
 }
 ```
 
 Runs the unmutated suite on the SPM path before any mutant: each test bundle with each testing library, or `swift test --skip-build` (`ToolRequests.swiftTest`) when the build left no bundle. A library that reports no tests is dropped from the bundle; one that has tests must pass them, or the run ends with a `BaselineError` (the output goes to the logs directory when `--keep-logs` is set). Returns the probed bundles and the filter `TestTargetSelection` settled on; when no bundle reported any test, every bundle is kept with both libraries. See the probe under `TestExecutionStage` below for why it exists.
+
+`requirePassing` is the rule both paths apply to the unmutated run: a passing outcome returns; a timeout throws `didNotFinish`; anything else writes the output as `baseline.log` under `--keep-logs` and throws `testsFailed` with the tests the output names — or, when it names none, the test a `testsFailed` outcome carries, which on Xcode comes from the `.xcresult` bundle — and `runFailed` with the output when there is no name at all.
 
 ---
 
@@ -302,6 +309,8 @@ struct TestExecutionStage: Sendable {
         in context: TestExecutionContext
     ) async throws -> [ExecutionResult]
 
+    func requireXcodeBaselineToPass(in context: TestExecutionContext) async throws
+
     static func classify(_ status: ExecutionStatus, activated: Bool) -> ExecutionStatus
 }
 ```
@@ -316,7 +325,9 @@ Measured on `swift-cpd` (944 tests), the suite takes 14s alone, 15s with 8 worke
 
 Before that pass, when the package was built to test bundles — one per test target — each bundle is run once with each testing library against the unmutated sandbox. That single run answers two questions at once. A library that reports no tests — exit 69 from SwiftPM's helper, or `Executed 0 tests` from `xctest` — is left out of every mutant's run: on a Swift Testing-only package that links swift-syntax, the `xctest` pass costs 13.8s just to load the bundle and find nothing, against 1.7s for the Swift Testing pass, and it used to run for every surviving mutant. And a library that does have tests must pass them: a failure, a crash or a timeout on the unmutated code ends the run with a `BaselineError` naming the tests, since nothing a mutant does afterwards could be attributed to the mutant. Before this the baseline was a separate `swift test --skip-build` of the whole suite followed by the probe — three runs of the suite to answer two questions. A bundle that reports no tests in either library is dropped from every mutant's run as well; the list that survives the probe, `[TestBundle]`, is fixed before the pass. When the package produced no bundle at all, `swift test --skip-build` is still the baseline, and both libraries are assumed present.
 
-`--target` on this path names a test target: when a bundle carries that name, `TestTargetSelection` keeps only that bundle and passes no filter; when none does, every bundle runs with the name as the libraries' filter, as before. The probe runs the suite to the end; every mutant's run stops at its first failing test. See `ProcessRunner` in [09 — Reporting & Infrastructure](09-reporting-infrastructure.md) for how, and why it is safe.
+On the Xcode path the baseline is `requireXcodeBaselineToPass`, which `MutantExecutor` calls before `execute`: the artifact's `.xctestrun` activated with no mutant, run once through the same private `launch` as a mutant — so the same destination, `-only-testing` and extra arguments — on a slot it acquires and releases like any mutant (`launchOnAnySlot`, which `measure` shares), under `--timeout`. `ResultParser` reads the outcome, and `BaselineProbe.requirePassing` decides; the `.xcresult` bundle is removed after. It returns at once when the artifact has no plist, which is the SPM case.
+
+`--target` on the SPM path names a test target: when a bundle carries that name, `TestTargetSelection` keeps only that bundle and passes no filter; when none does, every bundle runs with the name as the libraries' filter, as before. The probe runs the suite to the end; every mutant's run stops at its first failing test. See `ProcessRunner` in [09 — Reporting & Infrastructure](09-reporting-infrastructure.md) for how, and why it is safe.
 
 **Targeted tests first.** On the SPM path a mutant in `Foo.swift` is first run against `FooTests` alone — `--filter FooTests` for Swift Testing, `-XCTest FooTests` for XCTest — and only if that does not kill it does the whole suite run. A kill in the targeted run is a kill in the full run, since the same test would fail there too, so the verdict is the full suite's by construction; everything else — survived, no tests matched, a timeout — falls through to the full run, which decides. `TargetedSuites.declared(in:read:)` reads the test files once, before the pass — the paths and contents of the run's `TestFilesHasher.Snapshot`, not a second listing or a second read — and keeps only the names whose file declares a type of that name (`struct FooTests`, `final class FooTests: XCTestCase`, …), so a file named after a convention the project does not follow costs nothing: without that check every mutant would pay the helper's start-up — 1.7s on `swift-cpd` — to run zero tests. Measured on `swift-cpd` from the `killedBy` of a full run, 62% of kills (479 of 772) come from the file's own suite.
 
