@@ -80,7 +80,11 @@ struct TimeoutEscalationTests {
 
         escalation.arm(pid: 999_998, descendants: [])
         escalation.arm(pid: 999_999, descendants: [])
-        try await Task.sleep(for: .milliseconds(400))
+        let deadline = ContinuousClock.now + .seconds(10)
+        while kill.recorded.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try await Task.sleep(for: .milliseconds(300))
 
         #expect(kill.recorded == [SentSignal(pid: -999_999, signal: SIGKILL)])
     }

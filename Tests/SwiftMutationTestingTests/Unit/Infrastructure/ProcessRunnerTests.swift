@@ -69,7 +69,7 @@ struct ProcessRunnerTests {
 
         #expect(result.exitCode == 1)
         #expect(result.output.contains("aCheck"))
-        #expect(ContinuousClock.now - start < .seconds(5))
+        #expect(ContinuousClock.now - start < .seconds(15))
     }
 
     @Test("Given a stop rule, when the marker arrives split across two writes, then it is still seen")

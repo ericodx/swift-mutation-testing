@@ -55,6 +55,7 @@ Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<
 - Skips `.build`, `DerivedData`, and directories prefixed with `.xmr-`
 - For `.xcodeproj`: creates fresh `xcuserdata`, copies `xcshareddata`, symlinks everything else; a workspace's `xcshareddata` is copied too
 - For source files being replaced (schematized or mutated): writes the new content directly, wrapped in `// swiftlint:disable all` and `// swiftlint:enable all` (`LintSuppression`) so a SwiftLint build tool plugin, which no pbxproj patch reaches, does not fail the build on generated identifiers; `SchemaNarrower` and `IncompatibleMutantExecutor` wrap what they write the same way
+- For an Icon Composer `.icon` bundle: copies its files, since `actool` rejects a symlinked manifest or layer image
 - For all other files: creates symlinks to the originals (fast, space-efficient)
 - `create(projectPath:schematizedFiles:)`, and `createClean` when asked, disable SwiftLint `PBXShellScriptBuildPhase` entries by patching the `project.pbxproj` of **every** `.xcodeproj` in the sandbox, at any depth — a workspace's projects included; `.build`, `DerivedData` and `Pods/` are not looked into
 
