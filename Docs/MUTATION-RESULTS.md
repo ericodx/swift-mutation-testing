@@ -35,6 +35,8 @@ This document explains every possible outcome for a mutant, what causes it, and 
 
 **How it is measured:** for a Swift package, the tests named after the mutated file — `FooTests` for `Foo.swift`, when such a suite exists — run first, and the whole suite runs only if they let the mutant live. Either way the run is stopped as soon as one test fails, and that test is the one reported. Running the rest of the suite would change nothing about the verdict — killed is killed — so it is not run. Which test is reported first can differ between runs when the library runs tests in parallel; the verdict cannot.
 
+**A kill that depends on the worker count.** The workers of a Swift package run the same test bundles from one sandbox, at the same time. A test that writes a file at a fixed path — a fixture found through `#filePath`, a fixed name under `NSTemporaryDirectory()` — can fail because a copy of itself in another worker removed or rewrote that file. When the mutated code ran in that process, that failure is reported as a kill, with no integrity warning: the run cannot tell it from a real one. If a kill surprises you, or the test reported as the killer has nothing to do with the mutated code, run that mutant again with `--concurrency 1` and after deleting `.swift-mutation-testing-cache`; see [Parallelism](USAGE.MD#parallelism).
+
 **In the report:**
 
 ```

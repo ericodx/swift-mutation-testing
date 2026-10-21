@@ -8,7 +8,7 @@
 
 `swift-mutation-testing` is a mutation testing CLI for Swift projects (Xcode and SPM). It introduces controlled faults (mutants) into source code, runs the test suite for each one, and reports whether the tests detected the fault. The mutation score — the ratio of detected mutants to all testable mutants — measures the effectiveness of the test suite.
 
-The tool never modifies the original project. All mutations happen inside isolated sandbox copies in `$TMPDIR`.
+The tool never modifies the original project. All mutations happen inside sandbox copies in `$TMPDIR`, isolated from the project. The workers of an SPM run share one sandbox, so they are not isolated from each other — see [Execution](03-execution.md).
 
 ## Module Map
 
