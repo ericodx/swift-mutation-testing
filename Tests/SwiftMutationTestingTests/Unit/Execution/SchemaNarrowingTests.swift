@@ -113,6 +113,23 @@ struct SchemaNarrowingTests {
         )
     }
 
+    @Test("Given a kept mutant the regenerated schema discards, when narrowed, then narrowing reports failure")
+    func narrowingFailsWhenAKeptMutantIsDiscarded() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let file = dir.appendingPathComponent("Foo.swift")
+        try codeWithSwitch.write(to: file, atomically: true, encoding: .utf8)
+
+        let descriptor = makeMutantDescriptor(
+            id: MutantID.make(index: 0), filePath: file.path, utf8Offset: 0, isSchematizable: true
+        )
+
+        #expect(
+            SchemaNarrower.regeneratedSchema(originalPath: file.path, keeping: [descriptor]) == nil
+        )
+    }
+
     @Test("Given a source that cannot be read, when the schema is narrowed, then narrowing reports failure")
     func narrowingFailsWhenTheSourceIsMissing() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

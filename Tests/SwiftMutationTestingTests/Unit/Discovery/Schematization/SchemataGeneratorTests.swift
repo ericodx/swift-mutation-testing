@@ -101,6 +101,56 @@ struct SchemataGeneratorTests {
         #expect(!result.content.contains("return true || false"))
     }
 
+    @Test("Given three nested functions with mutations in every body, when generated, then each body keeps its cases")
+    func threeNestedFunctionsKeepEveryCase() {
+        let source = makeParsedSource(
+            """
+            func f() -> Bool {
+                func g() -> Bool {
+                    func h() -> Bool { return true }
+                    return h() && true
+                }
+                return g() && true
+            }
+            """
+        )
+        let mutations = mutationsWithIndices(source)
+        let result = generator.generate(source: source, mutations: mutations)
+
+        #expect(mutations.count == 3)
+        #expect(result.discarded.isEmpty)
+        for entry in mutations {
+            #expect(result.content.contains("case \"swift-mutation-testing_\(entry.index)\":"))
+        }
+        #expect(!Parser.parse(source: result.content).hasError)
+    }
+
+    @Test("Given three nested functions and a function after them, when generated, then the file still parses")
+    func threeNestedFunctionsLeaveTheNextFunctionOutside() {
+        let source = makeParsedSource(
+            """
+            func f() -> Bool {
+                func g() -> Bool {
+                    func h() -> Bool { return true }
+                    return h() && true
+                }
+                return g() && true
+            }
+
+            func after() -> Bool { let a = true; let b = true; return a && b }
+            """
+        )
+        let mutations = mutationsWithIndices(source)
+        let result = generator.generate(source: source, mutations: mutations)
+
+        #expect(mutations.count == 5)
+        #expect(result.discarded.isEmpty)
+        for entry in mutations {
+            #expect(result.content.contains("case \"swift-mutation-testing_\(entry.index)\":"))
+        }
+        #expect(!Parser.parse(source: result.content).hasError)
+    }
+
     @Test("Given generated content, when checked, then it ends with its own ID variable, named after the file")
     func schematizedContentDeclaresItsOwnIDVariable() {
         let source = makeParsedSource("func f() { let x = true }")
