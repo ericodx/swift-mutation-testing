@@ -25,7 +25,7 @@ struct SchemataGenerator: Sendable {
             bytes.replaceSubrange(start ..< end, with: switchBody.utf8)
             edits.record(
                 start: scope.bodyStartOffset,
-                delta: switchBody.utf8.count - (scope.bodyEndOffset - scope.bodyStartOffset)
+                delta: switchBody.utf8.count - (end - start)
             )
         }
 
