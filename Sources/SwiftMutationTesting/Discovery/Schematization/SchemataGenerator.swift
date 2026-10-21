@@ -20,7 +20,10 @@ struct SchemataGenerator: Sendable {
             let scope = group.scope
             let start = edits.current(scope.bodyStartOffset)
             let end = edits.current(scope.bodyEndOffset)
-            guard UTF8Splice.isRange(from: start, to: end, in: bytes) else { continue }
+            guard UTF8Splice.isRange(from: start, to: end, in: bytes) else {
+                discarded += group.mutations.map(\.point)
+                continue
+            }
 
             bytes.replaceSubrange(start ..< end, with: switchBody.utf8)
             edits.record(

@@ -154,7 +154,8 @@ struct SchemaNarrower: Sendable {
             entries.append((index: index, point: MutationPoint(descriptor)))
         }
 
-        return SchemataGenerator().generate(source: source, mutations: entries, importStyle: importStyle).content
+        let generation = SchemataGenerator().generate(source: source, mutations: entries, importStyle: importStyle)
+        return generation.discarded.isEmpty ? generation.content : nil
     }
 
     private static func mutantCaseID(from trimmedLine: String) -> String? {
