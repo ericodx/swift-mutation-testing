@@ -1091,7 +1091,7 @@ final class ProcessGroupRegistry: @unchecked Sendable {
 
 The process groups of the test runs currently in flight. `killAll` sends `SIGKILL` to each group and empties the registry; `SandboxCleaner.terminate` calls it from the signal handler, so the registry holds no lock and allocates nothing after `init`. Each slot is an `Atomic<pid_t>` claimed with one compare-exchange and released with another, which leaves a signal that lands mid-update seeing either the pid or an empty slot. `killAll` does not walk `ProcessTree` for descendants the way a timeout does: `sysctl` allocates, and the group kill already reaches every process the test run did not move into a group of its own.
 
-The capacity bounds how many runs can be tracked at once — 256, well above the one SPM worker or the simulator pool's `CPUs - 1`. A run registered past it is simply not tracked, which is the behaviour every run had before this.
+The capacity bounds how many runs can be tracked at once — 256, well above the `CPUs - 1` workers of an SPM run or of the simulator pool. A run registered past it is simply not tracked, which is the behaviour every run had before this.
 
 ---
 

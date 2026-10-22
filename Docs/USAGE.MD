@@ -565,7 +565,7 @@ swift-mutation-testing reproduce swift-mutation-testing_12      # by the id in a
 
 ## Parallelism
 
-`--concurrency` is the number of mutants tested at once, where the run can isolate them:
+`--concurrency` is the number of mutants tested at once:
 
 | Run | Workers |
 |---|---|
@@ -577,6 +577,8 @@ swift-mutation-testing reproduce swift-mutation-testing_12      # by the id in a
 A package's mutants run the compiled test bundles directly, not through `swift test`, so the workers do not queue on the lock SwiftPM takes on `.build`. An Xcode run on a simulator destination gives each worker a simulator of its own: the destination's simulator is cloned once per worker (`✓ 3 simulators ready`) and the clones are deleted when the run ends. A destination with no `platform=`, or with a `Simulator` platform, counts as a simulator; `platform=macOS` has nothing to clone.
 
 `--concurrency` is resolved down to 1 for the last two rows rather than accepted and quietly ignored, so the number the configuration reports is the number of mutants actually tested at once.
+
+**The workers of a package share one sandbox.** Every worker runs the same compiled test bundles from the same sandbox, with the same working directory, the same temporary directory and the same `#filePath` paths, so a test runs at the same time as copies of itself in other processes. That asks more of a suite than `swift test --parallel`, which runs each test once. A test that writes a file at a fixed path — a fixture next to its source found through `#filePath`, a fixed name under `NSTemporaryDirectory()`, a file relative to the working directory — can then fail because another worker deleted or overwrote it. When the mutated code ran in that process, the failure is recorded as a kill like any other: no integrity warning and no reason in the report. On macOS, setting `TMPDIR` would not separate them: `NSTemporaryDirectory()` and `FileManager.default.temporaryDirectory` ignore it and return the user's temporary directory. Give each test's files a unique name or a directory of its own (a `UUID` in the path), or run with `--concurrency 1` (or `concurrency: 1` in `.swift-mutation-testing.yml`); a kill that disappears with one worker came from this. See [Mutation Results](MUTATION-RESULTS.md#killed-).
 
 Two passes use fewer workers: mutants that timed out in the parallel pass are run again with a quarter of them, and incompatible mutants are built and tested on a quarter of them, each worker with a sandbox of its own that it builds once and then rebuilds incrementally — see [Mutation Results](MUTATION-RESULTS.md#performance-implications).
 
@@ -736,6 +738,8 @@ cat mutation-summary.md >> "$GITHUB_STEP_SUMMARY"
 Results are cached at `<project>/.swift-mutation-testing-cache/results.json`, keyed by SHA256 of the source and test file contents, together with whether the mutated code ran. On subsequent runs, cached mutants skip the build and test cycle entirely.
 
 The cache format is versioned. A cache written by an older version is discarded once, with a warning, and the run tests every mutant again; the next run writes a cache in the current format.
+
+The cache does not record how many workers ran. A kill from a test that tripped over a copy of itself in another worker (see [Parallelism](#parallelism)) is cached like any other and replayed by a later run with `--concurrency 1`. `--no-cache` neither reads nor writes the cache, so it does not clear it either: delete `.swift-mutation-testing-cache` to have those mutants tested again.
 
 A cache belongs to the tests it was made with: the scheme, destination, project or workspace and `--xcodebuild-arg` arguments for Xcode, `--target` and `--testing-framework`. A run with any of them changed discards the cache, with a note, and tests every mutant again. To keep verdicts for two targets, give each its own CI job and cache. When some verdicts come from the cache, the summary says how many:
 
