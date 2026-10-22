@@ -163,7 +163,7 @@ struct SchemataGenerator: Sendable {
 
         switch shape {
         case .expression where !isBlank:
-            return "(\(activation), \(statements)).1"
+            return "(\(activation), \(statements)\n).1"
         case .conditional(returnsValue: true):
             return "let _ = \(activation)\nreturn \(statements)"
         case .expression, .conditional, .statements:
