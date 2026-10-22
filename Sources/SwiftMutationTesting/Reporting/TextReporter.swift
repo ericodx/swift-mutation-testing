@@ -44,6 +44,7 @@ struct TextReporter: Sendable {
         }
 
         lines.append(contentsOf: integritySection(summary))
+        lines.append(contentsOf: unconfirmedKillsSection(summary))
 
         lines.append("")
         lines.append("Overall mutation score: \(summary.formattedScore)")
@@ -83,6 +84,25 @@ struct TextReporter: Sendable {
         }
         if warnings.count > Self.integrityWarningsListed {
             lines.append("  and \(warnings.count - Self.integrityWarningsListed) more — see the JSON report")
+        }
+        return lines
+    }
+
+    private func unconfirmedKillsSection(_ summary: RunnerSummary) -> [String] {
+        let kills = RunnerSummary.byLocation(summary.unconfirmedKills)
+        guard !kills.isEmpty else { return [] }
+
+        var lines = [""]
+        lines.append("Kills not repeated alone (\(kills.count)): a test failed only while other workers ran")
+        for result in kills.prefix(Self.integrityWarningsListed) {
+            let desc = result.descriptor
+            lines.append(
+                "  \(relative(desc.filePath)):\(desc.line):\(desc.column)   "
+                    + [desc.operatorIdentifier, result.unconfirmedKiller].compactMap { $0 }.joined(separator: "   ")
+            )
+        }
+        if kills.count > Self.integrityWarningsListed {
+            lines.append("  and \(kills.count - Self.integrityWarningsListed) more — see the JSON report")
         }
         return lines
     }

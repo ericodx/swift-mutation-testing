@@ -17,6 +17,7 @@ actor CacheStore {
         self.entries = [:]
         self.killerTestFiles = [:]
         self.activations = [:]
+        self.unconfirmedKillers = [:]
     }
 
     static let directoryName = ".swift-mutation-testing-cache"
@@ -31,6 +32,7 @@ actor CacheStore {
     private var entries: [MutantCacheKey: ExecutionStatus]
     private var killerTestFiles: [MutantCacheKey: String]
     private var activations: [MutantCacheKey: Bool]
+    private var unconfirmedKillers: [MutantCacheKey: String]
 
     private var metadataPath: String {
         let url = URL(fileURLWithPath: storePath)
@@ -47,6 +49,7 @@ actor CacheStore {
         let status: ExecutionStatus
         let killerTestFile: String?
         let activated: Bool?
+        var unconfirmedKiller: String?
     }
 
     struct CacheMetadata: Codable, Sendable {
@@ -83,7 +86,7 @@ actor CacheStore {
         guard let status = result(for: key) else { return nil }
         return ExecutionResult(
             descriptor: mutant, status: status, testDuration: 0, killerTestFile: killerTestFiles[key],
-            activated: activations[key], fromCache: true
+            activated: activations[key], unconfirmedKiller: unconfirmedKillers[key], fromCache: true
         )
     }
 
@@ -92,6 +95,7 @@ actor CacheStore {
         for key: MutantCacheKey,
         killerTestFile: String? = nil,
         activated: Bool? = nil,
+        unconfirmedKiller: String? = nil,
         duration: Double = 0
     ) {
         planJournal?.record(
@@ -108,8 +112,14 @@ actor CacheStore {
         if let activated {
             activations[key] = activated
         }
+        unconfirmedKillers[key] = unconfirmedKiller
 
-        journal(CacheEntry(key: key, status: status, killerTestFile: killerTestFile, activated: activated))
+        journal(
+            CacheEntry(
+                key: key, status: status, killerTestFile: killerTestFile, activated: activated,
+                unconfirmedKiller: unconfirmedKiller
+            )
+        )
     }
 
     func load() throws {
@@ -132,6 +142,7 @@ actor CacheStore {
         entries = [:]
         killerTestFiles = [:]
         activations = [:]
+        unconfirmedKillers = [:]
         apply(loaded + journaledEntries())
     }
 
@@ -144,6 +155,7 @@ actor CacheStore {
             if let activated = entry.activated {
                 activations[entry.key] = activated
             }
+            unconfirmedKillers[entry.key] = entry.unconfirmedKiller
         }
     }
 
@@ -164,7 +176,8 @@ actor CacheStore {
 
         let cacheEntries = entries.map {
             CacheEntry(
-                key: $0.key, status: $0.value, killerTestFile: killerTestFiles[$0.key], activated: activations[$0.key]
+                key: $0.key, status: $0.value, killerTestFile: killerTestFiles[$0.key], activated: activations[$0.key],
+                unconfirmedKiller: unconfirmedKillers[$0.key]
             )
         }
         let data = try JSONEncoder().encode(cacheEntries)
@@ -226,6 +239,7 @@ actor CacheStore {
         entries.removeValue(forKey: key)
         killerTestFiles.removeValue(forKey: key)
         activations.removeValue(forKey: key)
+        unconfirmedKillers.removeValue(forKey: key)
     }
 
     @discardableResult
@@ -237,6 +251,7 @@ actor CacheStore {
         entries = [:]
         killerTestFiles = [:]
         activations = [:]
+        unconfirmedKillers = [:]
         fileSystem.removeItem(journalPath)
         return true
     }
@@ -270,6 +285,7 @@ actor CacheStore {
         entries = [:]
         killerTestFiles = [:]
         activations = [:]
+        unconfirmedKillers = [:]
         let directory = URL(fileURLWithPath: storePath).deletingLastPathComponent().path
         StandardError.write(
             "Warning: ignoring the cache at '\(directory)', which this version cannot read; "

@@ -30,6 +30,14 @@ struct MarkdownReporter: Sendable {
                     + " killed or timed out without the mutated code running"
             )
         }
+        if !summary.unconfirmedKills.isEmpty {
+            let count = summary.unconfirmedKills.count
+            lines.append("")
+            lines.append(
+                "Kills not repeated alone: \(count) mutant\(count == 1 ? "" : "s")"
+                    + " killed only while other workers ran, judged by a run on their own"
+            )
+        }
         if !summary.activationNotMeasured.isEmpty {
             lines.append("")
             lines.append("Activation not measured: \(GateResult.count(summary.activationNotMeasured.count, "mutant"))")

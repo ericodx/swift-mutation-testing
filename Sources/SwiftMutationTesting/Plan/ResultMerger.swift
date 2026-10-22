@@ -51,7 +51,8 @@ struct ResultMerger: Sendable {
                     of: mutant, at: index, fileHashes: fileHashes, projectPath: projectPath),
                 status: try Self.status(of: verdict.mutant, in: verdict.path),
                 testDuration: Double(verdict.mutant.duration ?? 0) / 1000,
-                activated: verdict.mutant.activated
+                activated: verdict.mutant.activated,
+                unconfirmedKiller: ExecutionResult.unconfirmedKiller(in: verdict.mutant.statusReason)
             )
         }
 

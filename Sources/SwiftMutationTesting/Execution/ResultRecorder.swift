@@ -13,7 +13,8 @@ struct ResultRecorder: Sendable {
         status: ExecutionStatus,
         duration: Double = 0,
         output: String = "",
-        activated: Bool? = nil
+        activated: Bool? = nil,
+        unconfirmedKiller: String? = nil
     ) async -> ExecutionResult {
         MutantLogWriter(directory: keepLogsPath)?
             .write(mutant: mutant, status: status, duration: duration, output: output, activated: activated)
@@ -21,12 +22,12 @@ struct ResultRecorder: Sendable {
         let killerTestFile = killerTestFile(for: status)
         await deps.cacheStore.store(
             status: status, for: MutantCacheKey.make(for: mutant), killerTestFile: killerTestFile,
-            activated: activated, duration: duration
+            activated: activated, unconfirmedKiller: unconfirmedKiller, duration: duration
         )
 
         let result = ExecutionResult(
             descriptor: mutant, status: status, testDuration: duration, killerTestFile: killerTestFile,
-            activated: activated
+            activated: activated, unconfirmedKiller: unconfirmedKiller
         )
         await finish(result)
         return result

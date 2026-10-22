@@ -144,16 +144,20 @@ struct TestExecutionStage: Sendable {
             }
         }
 
-        return try await runAgain(mutant, in: context, timeout: timeout)
+        return try await runAgain(mutant, in: context, timeout: timeout, unconfirmedKiller: killer)
     }
 
     private func runAgain(
         _ mutant: MutantDescriptor,
         in context: TestExecutionContext,
-        timeout: Double
+        timeout: Double,
+        unconfirmedKiller: String? = nil
     ) async throws -> ExecutionResult {
         let (outcome, launched) = try await measure(mutant, in: context, timeout: timeout)
-        return await recordResult(mutant: mutant, outcome: outcome, launched: launched, in: context)
+        return await recordResult(
+            mutant: mutant, outcome: outcome, launched: launched, in: context,
+            unconfirmedKiller: outcome.isDetected ? nil : unconfirmedKiller
+        )
     }
 
     func requireXcodeBaselineToPass(in context: TestExecutionContext) async throws {
@@ -255,11 +259,13 @@ struct TestExecutionStage: Sendable {
         mutant: MutantDescriptor,
         outcome: TestRunOutcome,
         launched: TestLaunchResult,
-        in context: TestExecutionContext
+        in context: TestExecutionContext,
+        unconfirmedKiller: String? = nil
     ) async -> ExecutionResult {
         await recorder(in: context).record(
             mutant, status: Self.classify(outcome.asExecutionStatus, activated: launched.activated),
-            duration: launched.duration, output: launched.output, activated: launched.activated
+            duration: launched.duration, output: launched.output, activated: launched.activated,
+            unconfirmedKiller: unconfirmedKiller
         )
     }
 

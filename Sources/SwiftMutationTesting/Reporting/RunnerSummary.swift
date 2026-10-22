@@ -12,6 +12,7 @@ struct RunnerSummary: Sendable {
     let fromCache: [ExecutionResult]
     let integrityWarnings: [ExecutionResult]
     let activationNotMeasured: [ExecutionResult]
+    let unconfirmedKills: [ExecutionResult]
 
     init(results: [ExecutionResult], totalDuration: Double) {
         self.results = results
@@ -26,6 +27,7 @@ struct RunnerSummary: Sendable {
         var fromCache: [ExecutionResult] = []
         var integrityWarnings: [ExecutionResult] = []
         var activationNotMeasured: [ExecutionResult] = []
+        var unconfirmedKills: [ExecutionResult] = []
 
         for result in results {
             switch result.status {
@@ -41,6 +43,7 @@ struct RunnerSummary: Sendable {
                 integrityWarnings.append(result)
             }
             if result.activated == nil, result.status != .unviable { activationNotMeasured.append(result) }
+            if result.unconfirmedKiller != nil { unconfirmedKills.append(result) }
         }
 
         let detectedCount = killed.count + timeouts.count
@@ -50,6 +53,7 @@ struct RunnerSummary: Sendable {
         self.fromCache = fromCache
         self.integrityWarnings = integrityWarnings
         self.activationNotMeasured = activationNotMeasured
+        self.unconfirmedKills = unconfirmedKills
 
         self.killed = killed
         self.survived = survived
