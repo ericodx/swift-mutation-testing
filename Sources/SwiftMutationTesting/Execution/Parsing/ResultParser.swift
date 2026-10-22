@@ -23,7 +23,7 @@ struct ResultParser: Sendable {
                 additionalEnvironment: [:],
                 workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
                 timeout: timeout
-            )
+            ).discardingStandardError()
         )
 
         if xcresultRaw.exitCode == 0 {

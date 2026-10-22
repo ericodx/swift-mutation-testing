@@ -165,7 +165,7 @@ actor SimulatorPool {
                     additionalEnvironment: [:],
                     workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
                     timeout: 30
-                )
+                ).discardingStandardError()
             ),
             listed.exitCode == 0
         else { return }

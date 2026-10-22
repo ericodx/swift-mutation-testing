@@ -36,7 +36,7 @@ struct SimulatorManager: Sendable {
                     additionalEnvironment: [:],
                     workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
                     timeout: 10
-                )
+                ).discardingStandardError()
             )
 
             if isBooted(udid: udid, in: result.output) { return }
@@ -64,7 +64,7 @@ struct SimulatorManager: Sendable {
                 additionalEnvironment: [:],
                 workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
                 timeout: 10
-            )
+            ).discardingStandardError()
         )
 
         guard
