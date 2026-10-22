@@ -104,7 +104,7 @@ All operators implement the `MutationOperator` protocol and are registered in `O
 | Operator | Tier | What it mutates | Example |
 |---|---|---|---|
 | `RelationalOperatorReplacement` | experimental | Comparison operators, each to a boundary and an opposite variant | `>` → `>=` and `<`, `<=` → `<` and `>=`, `==` → `!=` |
-| `BooleanLiteralReplacement` | experimental | Boolean literals | `true` → `false`, `false` → `true` |
+| `BooleanLiteralReplacement` | experimental | Boolean literals, except in the patterns of an exhaustive `switch` over booleans | `true` → `false`, `false` → `true` |
 | `LogicalOperatorReplacement` | conservative | Logical connectives | `&&` → `\|\|`, `\|\|` → `&&` |
 | `ArithmeticOperatorReplacement` | experimental | Arithmetic operators | `+` → `-`, `-` → `+`, `*` → `/`, `/` → `*` |
 | `NegateConditional` | conservative | Conditional expressions | `condition` → `!(condition)` |

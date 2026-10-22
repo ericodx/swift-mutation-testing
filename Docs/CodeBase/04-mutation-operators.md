@@ -148,6 +148,8 @@ Flips `true` ↔ `false`.
 
 Visitor: `BooleanLiteralVisitor` — visits `BooleanLiteralExprSyntax`, reported at its literal token. Summary `Boolean literal replacement`; `ReplacementKind.booleanLiteral`; description `true → false`.
 
+A literal in the pattern of a `case` is skipped when the enclosing `switch` has no `default` (nor `@unknown default`) and every pattern of every case is a boolean literal, or a tuple of boolean literals and `_` with at least one literal. That is an exhaustive switch over booleans: flipping one literal repeats another pattern and leaves a combination uncovered, so the mutant could only fail to compile, and it would break the shared schema build first. The check is syntactic, so a `switch` with a `default`, a case of only wildcards, a non-boolean pattern such as `nil`, an `if case`, or a literal in a `where` clause is still mutated.
+
 ---
 
 ## LogicalOperatorReplacement
