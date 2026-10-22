@@ -44,6 +44,66 @@ struct IntegrityReportingTests {
         #expect(makeExecutionResult(status: status, activated: activated).reportStatusReason == reason)
     }
 
+    @Test(
+        "Given a parallel kill not repeated alone, when its reason is asked, then it names the test only if undetected",
+        arguments: [
+            (ExecutionStatus.survived, "shares() failed only while other workers ran"),
+            (.noCoverage, "shares() failed only while other workers ran"),
+            (.killed(by: "other()"), nil),
+        ] as [(ExecutionStatus, String?)]
+    )
+    func unconfirmedKillReason(status: ExecutionStatus, reason: String?) {
+        let result = makeExecutionResult(status: status, activated: true, unconfirmedKiller: "shares()")
+
+        #expect(result.reportStatusReason == reason)
+    }
+
+    @Test("Given parallel kills not repeated alone, when the text summary is formatted, then they are listed")
+    func textSummaryListsUnconfirmedKills() {
+        let summary = RunnerSummary(
+            results: [
+                makeExecutionResult(
+                    filePath: "/p/Sources/B.swift", line: 9, column: 3, status: .survived, activated: true,
+                    unconfirmedKiller: "MyTests.FixtureTests.testRoundTrip"
+                ),
+                makeExecutionResult(
+                    filePath: "/p/Sources/A.swift", line: 4, column: 7, status: .noCoverage, activated: false,
+                    unconfirmedKiller: "shares()"
+                ),
+                makeExecutionResult(filePath: "/p/Sources/A.swift", line: 1, status: .survived, activated: true),
+            ],
+            totalDuration: 0
+        )
+
+        let output = TextReporter(projectRoot: "/p").format(summary)
+
+        #expect(summary.unconfirmedKills.count == 2)
+        #expect(
+            output.contains(
+                """
+
+                Kills not repeated alone (2): a test failed only while other workers ran
+                  Sources/A.swift:4:7   ArithmeticOperatorReplacement   shares()
+                  Sources/B.swift:9:3   ArithmeticOperatorReplacement   MyTests.FixtureTests.testRoundTrip
+
+                Overall mutation score:
+                """
+            )
+        )
+    }
+
+    @Test("Given parallel kills not repeated alone, when the Markdown is formatted, then they are counted")
+    func markdownCountsUnconfirmedKills() {
+        let summary = RunnerSummary(
+            results: [makeExecutionResult(status: .survived, activated: true, unconfirmedKiller: "shares()")],
+            totalDuration: 0
+        )
+
+        let markdown = MarkdownReporter(outputPath: "/unused", projectRoot: "/p").format(summary)
+
+        #expect(markdown.contains("Kills not repeated alone: 1 mutant killed only while other workers ran"))
+    }
+
     @Test("Given unactivated kills, when the text summary is formatted, then they are listed with their reason")
     func textSummaryListsIntegrityWarnings() {
         let summary = RunnerSummary(

@@ -17,6 +17,7 @@ struct MutantExecutorKillConfirmationTests {
         let results = try await execute(launcher: launcher, concurrency: 2)
 
         #expect(results.map(\.status) == [.survived])
+        #expect(results.map(\.unconfirmedKiller) == ["roundTripsAFixtureFile()"])
         #expect(await launcher.filters == ["FooTests", nil, Self.otherFilter, "FooTests", nil])
     }
 
@@ -28,6 +29,7 @@ struct MutantExecutorKillConfirmationTests {
 
         #expect(results.map(\.status) == [.killed(by: "roundTripsAFixtureFile()")])
         #expect(results.map(\.activated) == [true])
+        #expect(results.map(\.unconfirmedKiller) == [nil])
         #expect(await launcher.filters == ["FooTests", nil, Self.otherFilter])
     }
 

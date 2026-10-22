@@ -125,6 +125,21 @@ struct ResultMergerTests {
         #expect(merged.results.map(\.status) == Array(repeating: .timeout, count: Self.mutants.count))
     }
 
+    @Test("Given a survivor whose parallel kill was not repeated alone, when merged, then the killer is kept")
+    func anUnconfirmedKillerIsMerged() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let path = try Self.writeResult(
+            in: dir, name: "a.json", plan: Self.plan,
+            verdicts: Self.mutants.map { ($0, ExecutionStatus.survived, true) },
+            unconfirmedKiller: "shares()"
+        )
+
+        let merged = try ResultMerger().merge(resultPaths: [path], plan: Self.plan, projectPath: dir.path)
+
+        #expect(merged.results.map(\.unconfirmedKiller) == Array(repeating: "shares()", count: Self.mutants.count))
+    }
+
     @Test("Given a result with a status no version writes, when merged, then the merge is refused naming it")
     func anUnknownStatusIsRefused() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
@@ -151,7 +166,8 @@ struct ResultMergerTests {
     )
 
     static func writeResult(
-        in dir: URL, name: String, plan: Plan, verdicts: [(Plan.Mutant, ExecutionStatus, Bool?)]
+        in dir: URL, name: String, plan: Plan, verdicts: [(Plan.Mutant, ExecutionStatus, Bool?)],
+        unconfirmedKiller: String? = nil
     ) throws -> String {
         let results = verdicts.map { mutant, status, activated in
             ExecutionResult(
@@ -161,7 +177,7 @@ struct ResultMergerTests {
                     utf8Offset: mutant.utf8Start, originalText: mutant.original, mutatedText: mutant.replacement,
                     operatorIdentifier: mutant.operatorIdentifier, fingerprint: mutant.fingerprint
                 ),
-                status: status, testDuration: 0.1, activated: activated
+                status: status, testDuration: 0.1, activated: activated, unconfirmedKiller: unconfirmedKiller
             )
         }
         let path = dir.appendingPathComponent(name).path

@@ -758,8 +758,46 @@ struct CacheStoreTests {
         #expect(await store.activated(for: key) == nil)
     }
 
-    @Test("Given verdicts made while SwiftLint plugins linted generated code, when checked, then the version is 4")
-    func formatVersionIsFour() {
-        #expect(CacheStore.formatVersion == 4)
+    @Test("Given kills made in parallel before they were confirmed alone, when checked, then the version is 5")
+    func formatVersionIsFive() {
+        #expect(CacheStore.formatVersion == 5)
+    }
+
+    @Test("Given a survivor whose parallel kill was not repeated alone, when reloaded, then the killer is kept")
+    func unconfirmedKillerRoundTrips() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let path = dir.appendingPathComponent("results.json").path
+        let overturned = makeMutantDescriptor(utf8Offset: 1)
+        let plain = makeMutantDescriptor(utf8Offset: 2)
+
+        let first = CacheStore(storePath: path)
+        await first.store(
+            status: .survived, for: MutantCacheKey.make(for: overturned), activated: true, unconfirmedKiller: "shares()"
+        )
+        await first.store(status: .survived, for: MutantCacheKey.make(for: plain), activated: true)
+        try await first.persist()
+
+        let second = CacheStore(storePath: path)
+        try await second.load()
+
+        #expect(await second.cachedResult(for: overturned)?.unconfirmedKiller == "shares()")
+        #expect(await second.cachedResult(for: plain)?.unconfirmedKiller == nil)
+    }
+
+    @Test("Given a survivor whose parallel kill was not repeated alone, when journaled, then the killer is replayed")
+    func unconfirmedKillerIsJournaled() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let path = dir.appendingPathComponent("results.json").path
+        let mutant = makeMutantDescriptor(utf8Offset: 1)
+
+        let first = CacheStore(storePath: path)
+        await first.store(status: .survived, for: MutantCacheKey.make(for: mutant), unconfirmedKiller: "shares()")
+
+        let second = CacheStore(storePath: path)
+        try await second.load()
+
+        #expect(await second.cachedResult(for: mutant)?.unconfirmedKiller == "shares()")
     }
 }

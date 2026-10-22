@@ -12,6 +12,7 @@ func makeExecutionResult(
     operatorIdentifier: String = "ArithmeticOperatorReplacement",
     fingerprint: String = "fingerprint",
     activated: Bool? = nil,
+    unconfirmedKiller: String? = nil,
     fromCache: Bool = false
 ) -> ExecutionResult {
     ExecutionResult(
@@ -28,6 +29,7 @@ func makeExecutionResult(
         testDuration: testDuration,
         killerTestFile: killerTestFile,
         activated: activated,
+        unconfirmedKiller: unconfirmedKiller,
         fromCache: fromCache
     )
 }
