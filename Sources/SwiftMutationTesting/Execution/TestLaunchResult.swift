@@ -4,4 +4,5 @@ struct TestLaunchResult: Sendable {
     let xcresultPath: String
     let duration: Double
     var activated: Bool = false
+    var settledByTargetedSuite: Bool = false
 }

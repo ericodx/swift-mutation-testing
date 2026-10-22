@@ -15,6 +15,7 @@ struct TestExecutionStage: Sendable {
         var results: [ExecutionResult] = []
         var timedOut: [MutantDescriptor] = []
         var killedUnactivated: [MutantDescriptor] = []
+        var killedInParallel: [(mutant: MutantDescriptor, killer: String)] = []
 
         try await forEach(
             mutants, concurrency: concurrency,
@@ -29,6 +30,8 @@ struct TestExecutionStage: Sendable {
                     timedOut.append(mutant)
                 case .killedUnactivated(let mutant):
                     killedUnactivated.append(mutant)
+                case .killedInParallel(let mutant, let killer):
+                    killedInParallel.append((mutant: mutant, killer: killer))
                 }
             }
         )
@@ -42,6 +45,12 @@ struct TestExecutionStage: Sendable {
         try await forEach(
             killedUnactivated, concurrency: 1,
             run: { mutant in try await self.runAgain(mutant, in: context, timeout: timeout) },
+            collect: { result in results.append(result) }
+        )
+
+        try await forEach(
+            killedInParallel, concurrency: 1,
+            run: { kill in try await self.confirm(kill.mutant, killedBy: kill.killer, in: context, timeout: timeout) },
             collect: { result in results.append(result) }
         )
 
@@ -77,6 +86,7 @@ struct TestExecutionStage: Sendable {
         case settled(ExecutionResult)
         case timedOut(MutantDescriptor)
         case killedUnactivated(MutantDescriptor)
+        case killedInParallel(MutantDescriptor, killer: String)
     }
 
     private func attempt(
@@ -98,9 +108,43 @@ struct TestExecutionStage: Sendable {
             return .killedUnactivated(mutant)
         }
 
+        if case .testsFailed(let killer) = outcome, needsConfirmation(launched, in: context) {
+            return .killedInParallel(mutant, killer: killer)
+        }
+
         return .settled(
             await recordResult(mutant: mutant, outcome: outcome, launched: launched, in: context)
         )
+    }
+
+    private func needsConfirmation(_ launched: TestLaunchResult, in context: TestExecutionContext) -> Bool {
+        context.artifact.plist == nil
+            && context.configuration.build.concurrency > 1
+            && !context.configuration.build.reproducing
+            && !launched.settledByTargetedSuite
+    }
+
+    private func confirm(
+        _ mutant: MutantDescriptor,
+        killedBy killer: String,
+        in context: TestExecutionContext,
+        timeout: Double
+    ) async throws -> ExecutionResult {
+        if let filter = KillerTestFilter.filter(for: killer) {
+            let marker = ActivationMarker(for: mutant.id, in: context.sandbox)
+            var launched = try await launchSPM(
+                mutant: mutant, in: context, timeout: timeout,
+                run: SPMRun(filter: filter, bundles: context.bundles, activationFile: marker.path)
+            )
+            launched.activated = marker.wasWritten()
+            let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
+
+            if outcome.isDetected {
+                return await recordResult(mutant: mutant, outcome: outcome, launched: launched, in: context)
+            }
+        }
+
+        return try await runAgain(mutant, in: context, timeout: timeout)
     }
 
     private func runAgain(
@@ -190,6 +234,7 @@ struct TestExecutionStage: Sendable {
             let outcome = SPMResultParser().parse(exitCode: targeted.exitCode, output: targeted.output)
             activated = marker.wasWritten()
             targeted.activated = activated
+            targeted.settledByTargetedSuite = true
 
             if outcome.isDetected { return (outcome, targeted) }
         }
