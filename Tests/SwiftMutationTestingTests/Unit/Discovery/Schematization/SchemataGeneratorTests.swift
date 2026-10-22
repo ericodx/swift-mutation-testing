@@ -90,6 +90,27 @@ struct SchemataGeneratorTests {
         #expect(innerCases == 2)
     }
 
+    @Test(
+        "Given a one-expression body ending in a comment, when generated, then every case is closed outside it",
+        arguments: [
+            "func f() -> Bool {\n    true // why\n}\n",
+            "func f() -> Bool { true /* why */ }\n",
+            "func f() -> Bool {\n    true && false /// doc\n}\nfunc g() -> Bool { false }\n",
+        ]
+    )
+    func aTrailingCommentDoesNotSwallowTheCase(code: String) {
+        let source = makeParsedSource(code)
+        let mutations = mutationsWithIndices(source)
+        let result = generator.generate(source: source, mutations: mutations)
+
+        #expect(!mutations.isEmpty)
+        #expect(result.discarded.isEmpty)
+        for entry in mutations {
+            #expect(result.content.contains("case \"swift-mutation-testing_\(entry.index)\":"))
+        }
+        #expect(!Parser.parse(source: result.content).hasError)
+    }
+
     @Test("Given a mutation after a nested function, when generated, then it is applied at its own place")
     func mutationAfterANestedFunctionLandsOnItsOwnText() {
         let source = makeParsedSource("func f() -> Bool { func g() -> Bool { return true }; return g() && false }")
@@ -207,7 +228,7 @@ struct SchemataGeneratorTests {
         let result = generator.generate(source: source, mutations: mutations).content
 
         let activation = SupportDeclarations.activationCall(for: source.file.path)
-        #expect(result.contains("case \"swift-mutation-testing_0\":\n(\(activation), a - b ).1\n"))
+        #expect(result.contains("case \"swift-mutation-testing_0\":\n(\(activation), a - b \n).1\n"))
         #expect(result.contains("default:\na + b \n"))
         #expect(!result.contains("let _ ="))
     }
