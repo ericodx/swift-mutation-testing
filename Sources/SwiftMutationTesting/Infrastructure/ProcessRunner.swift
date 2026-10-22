@@ -86,7 +86,7 @@ struct ProcessRunner: Sendable {
         FileManager.default.createFile(atPath: tempURL.path, contents: nil)
         let fileHandle = try FileHandle(forWritingTo: tempURL)
         process.standardOutput = fileHandle
-        process.standardError = fileHandle
+        process.standardError = request.discardsStandardError ? FileHandle.nullDevice : fileHandle
 
         let killedByUs = KilledByUsFlag()
         let stoppedByRule = KilledByUsFlag()

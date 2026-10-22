@@ -83,7 +83,7 @@ struct ProjectDetector: Sendable {
                     additionalEnvironment: [:],
                     workingDirectoryURL: workingDirectory,
                     timeout: 30
-                )
+                ).discardingStandardError()
             ),
             result.exitCode == 0
         else {
@@ -103,7 +103,7 @@ struct ProjectDetector: Sendable {
                     additionalEnvironment: [:],
                     workingDirectoryURL: projectURL,
                     timeout: 30
-                )
+                ).discardingStandardError()
             ),
             result.exitCode == 0,
             let data = result.output.data(using: .utf8),
@@ -202,7 +202,7 @@ struct ProjectDetector: Sendable {
                     additionalEnvironment: [:],
                     workingDirectoryURL: URL(fileURLWithPath: "."),
                     timeout: 10
-                )
+                ).discardingStandardError()
             ),
             result.exitCode == 0,
             let data = result.output.data(using: .utf8),

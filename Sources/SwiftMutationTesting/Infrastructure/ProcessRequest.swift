@@ -8,6 +8,7 @@ struct ProcessRequest: Sendable {
     let workingDirectoryURL: URL
     var timeout: Double
     var stopRule: OutputStopRule?
+    var discardsStandardError = false
 
     func withTimeout(_ timeout: Double) -> ProcessRequest {
         var copy = self
@@ -18,6 +19,12 @@ struct ProcessRequest: Sendable {
     func stopping(at rule: OutputStopRule) -> ProcessRequest {
         var copy = self
         copy.stopRule = rule
+        return copy
+    }
+
+    func discardingStandardError() -> ProcessRequest {
+        var copy = self
+        copy.discardsStandardError = true
         return copy
     }
 }
