@@ -434,7 +434,7 @@ Raw result from a single test run — `xcodebuild test-without-building`, or the
 | Field | Description |
 |---|---|
 | `exitCode` | Process exit code; `-1` means killed by timeout |
-| `output` | Combined stdout + stderr |
+| `output` | Combined stdout + stderr, or stdout alone for a request that `discardingStandardError()` |
 | `xcresultPath` | Absolute path to the `.xcresult` bundle |
 | `duration` | Wall-clock seconds from launch to termination |
 | `activated` | Whether the mutant's `case` wrote its activation marker during this run (or, on the SPM path, during the targeted or the full run) |
