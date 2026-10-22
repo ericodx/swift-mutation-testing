@@ -57,6 +57,8 @@ This document explains every possible outcome for a mutant, what causes it, and 
 
 **What it tells you:** a crash is a kill. The test suite caught the mutation — even if not through an explicit assertion. However, a crash may also indicate that certain input paths lack guard conditions. It is worth reviewing what triggered the crash.
 
+**When the same mutant flips between runs:** a mutant that is a crash kill in one run and a survivor or a timeout in the next usually points at the test suite, not at the mutant. Swift Testing runs tests in parallel inside one process, so a test that redirects the process's own `stdout` or `stderr` — for example with `dup2` into a `Pipe` it reads only once its body returns — also captures the console output of every test running at the same time. When that pipe fills, the process hangs (a timeout); when output reaches it after it is closed, the process dies with no failing test named (a crash). Which of the two happens, if any, depends on timing. Mark the suites that touch process-wide streams with `@Suite(.serialized)`, or pass the stream into the code under test instead of redirecting a file descriptor.
+
 ---
 
 ### Survived ✗
