@@ -315,11 +315,13 @@ struct TestExecutionStage: Sendable {
 }
 ```
 
-Runs each mutant's tests in parallel — `xcodebuild test-without-building` on the Xcode path (the artifact has a plist), the test bundles directly on the SPM one. The three passes below are three calls of one private `forEach(_:concurrency:run:collect:)`: a `withThrowingTaskGroup` that starts `concurrency` tasks and starts the next element as each finishes, and hands every outcome to `collect` on the calling task, so the results and the two retry lists are plain local arrays. `classify` turns a survivor whose activation marker was not written into `.noCoverage`; `IncompatibleMutantExecutor` classifies with it too.
+Runs each mutant's tests in parallel — `xcodebuild test-without-building` on the Xcode path (the artifact has a plist), the test bundles directly on the SPM one. The four passes below are four calls of one private `forEach(_:concurrency:run:collect:)`: a `withThrowingTaskGroup` that starts `concurrency` tasks and starts the next element as each finishes, and hands every outcome to `collect` on the calling task, so the results and the three retry lists are plain local arrays. `classify` turns a survivor whose activation marker was not written into `.noCoverage`; `IncompatibleMutantExecutor` classifies with it too.
 
 A mutant whose run times out during that parallel pass is not recorded yet. Once the group has drained, every such mutant is run once more with at most a quarter of the workers (`retryWorkerShare`, never fewer than one), under the configured `--timeout`, and that second outcome is the one reported and cached. The parallel pass itself allows twice the configured timeout (`loadedTimeoutFactor`): a verdict that settles under load is the same verdict the mutant would get alone, so the wider limit only spares the second run, while a mutant that is still running at twice the limit is handed to the quieter pass, whose limit is the one the user asked for.
 
 A mutant killed during the parallel pass without its activation marker is not recorded yet either. After the timeout pass, each such mutant runs once more, alone, one after another, under the configured `--timeout`, and that run's outcome is the one reported and cached. A flaky test usually passes the second time, and the mutant is then judged like any other run: survived, or `noCoverage` when its code still did not run. A kill that repeats without activation stays a kill, reported as an integrity warning. Kills that come from the timeout pass are not run a third time. Warnings are rare: over the campaign projects, 1 to 7 per run against 209 to 1275 mutants, under 1% of mutants, so the extra run costs little.
+
+**Confirming kills made in parallel.** On the SPM path, every worker runs the same bundles from one sandbox, so a test that writes a file at a fixed path can fail because a copy of itself in another worker removed or rewrote that file — and when the mutated code ran in that process, nothing else tells that failure from a real kill. So a kill with activation made by the whole-suite run of a run with more than one worker (`needsConfirmation`) is not recorded yet either. A kill made by the file's own suite is trusted (`TestLaunchResult.settledByTargetedSuite`): that suite exercises the mutated file, and every false kill seen in #187 came from an unrelated test. After the unactivated kills, each mutant set aside runs the killing test alone, filtered by `KillerTestFilter.filter(for:)`. When that test fails again, or crashes or times out, its run is the one recorded. When it passes, or its name cannot be turned into a filter, the mutant runs once more alone, the file's suite first and then the whole suite, and that run decides — a survivor then, or `noCoverage` when its code did not run. The pass is skipped on the Xcode path, with one worker and when reproducing. Its cost is one launch of one test per kill that came from outside the file's suite: measured on `swift-cpd`, 38% of kills.
 
 Measured on `swift-cpd` (944 tests), the suite takes 14s alone, 15s with 8 workers and 24s with 15 on a 12P+4E machine, so a 30s limit under 15 workers turned a third of all mutants into stragglers: each one cost its 30s in the parallel pass and was then run again in series, and the 26 mutants that time out for real cost the full limit twice. Doubling the loaded limit settles almost every straggler in the parallel pass, and a quarter of the workers is a load the machine does not notice (8 workers cost 8% over running alone) while it cuts the second pass by the same factor.
 
@@ -365,6 +367,11 @@ flowchart TD
     GROUP -- "killed without activation" --> UNACTIVATED["unactivated kills"]
     UNACTIVATED --> ALONE["forEach, run again, alone<br>one worker<br>limit = --timeout"]
     ALONE --> RESULTS
+    GROUP -- "SPM, more than one worker:<br>activated kill outside the file's suite" --> PARALLEL["kills to confirm"]
+    PARALLEL --> KILLER["forEach, one worker<br>the killing test alone"]
+    KILLER -- "fails again" --> RESULTS
+    KILLER -- "passes, or no filter" --> ALONE2["run again, alone<br>file's suite, then whole suite"]
+    ALONE2 --> RESULTS
 ```
 
 **One mutant on the SPM path:**
@@ -426,6 +433,7 @@ struct TestLaunchResult: Sendable {
     let xcresultPath: String
     let duration: Double
     var activated: Bool = false
+    var settledByTargetedSuite: Bool = false
 }
 ```
 
@@ -438,6 +446,25 @@ Raw result from a single test run — `xcodebuild test-without-building`, or the
 | `xcresultPath` | Absolute path to the `.xcresult` bundle |
 | `duration` | Wall-clock seconds from launch to termination |
 | `activated` | Whether the mutant's `case` wrote its activation marker during this run (or, on the SPM path, during the targeted or the full run) |
+| `settledByTargetedSuite` | On the SPM path, whether the file's own suite detected the mutant, so the whole suite never ran; such a kill is not confirmed alone |
+
+---
+
+## Execution/KillerTestFilter.swift
+
+```swift
+enum KillerTestFilter {
+    static func filter(for killer: String) -> String?
+}
+```
+
+Turns the name of the test that killed a mutant into a filter that runs that test alone, for the confirmation of kills made in parallel. The same filter goes to both libraries, and the one it does not match reports no tests.
+
+| Killer name | Filter |
+|---|---|
+| A Swift Testing function, `roundTripsAFixtureFile()` or `check(value:limit:)` | The name with its parentheses escaped, since Swift Testing's `--filter` is a regular expression matched against the test's identifier, `Module.Suite/check(value:limit:)` |
+| An XCTest method, `Module.Class.testName` | `Module.Class/testName`, the form `-XCTest` takes |
+| Anything else — a display name such as `"a check"`, a bare method name | `nil`: the name does not identify one test, so the caller runs the whole suite alone instead |
 
 ---
 
