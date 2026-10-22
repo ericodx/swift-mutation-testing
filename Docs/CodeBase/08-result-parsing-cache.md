@@ -220,7 +220,7 @@ actor CacheStore {
     func cachedResult(for mutant: MutantDescriptor) -> ExecutionResult?
     func store(
         status: ExecutionStatus, for key: MutantCacheKey, killerTestFile: String? = nil, activated: Bool? = nil,
-        duration: Double = 0
+        unconfirmedKiller: String? = nil, duration: Double = 0
     )
     func load() throws
     func persist() throws
@@ -238,9 +238,9 @@ Persists execution results across runs with granular per-file invalidation. All 
 |---|---|
 | `directoryName` | `".swift-mutation-testing-cache"` |
 | `journalName` | `"journal.jsonl"` |
-| `formatVersion` | `4` — bump whenever the shape of `results.json` or `metadata.json` changes, or the meaning of what it holds. `2` added `activated`, so caches written before the activation marker existed are discarded once; `3` discards caches whose incompatible mutants were stored before their activation was measured, which would otherwise keep reporting them as not measured; `4` discards caches holding `unviable` verdicts recorded while a SwiftLint build tool plugin failed the build on generated code — an `unviable` verdict is only retested when its file changes, so it would never have been corrected |
+| `formatVersion` | `5` — bump whenever the shape of `results.json` or `metadata.json` changes, or the meaning of what it holds. `2` added `activated`, so caches written before the activation marker existed are discarded once; `3` discards caches whose incompatible mutants were stored before their activation was measured, which would otherwise keep reporting them as not measured; `4` discards caches holding `unviable` verdicts recorded while a SwiftLint build tool plugin failed the build on generated code — an `unviable` verdict is only retested when its file changes, so it would never have been corrected; `5` discards caches holding kills an SPM run made in parallel before they were confirmed alone, and adds `unconfirmedKiller` |
 
-Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of the private `CacheEntry` values (key + status + killerTestFile + activated), with `metadata.json` and the journal in the same directory. A `.timeout` is never cached: `store` records it in the `PlanJournal`, if any, and keeps nothing itself, so the mutant is tested again on the next run.
+Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of the private `CacheEntry` values (key + status + killerTestFile + activated + unconfirmedKiller), with `metadata.json` and the journal in the same directory. A `.timeout` is never cached: `store` records it in the `PlanJournal`, if any, and keeps nothing itself, so the mutant is tested again on the next run.
 
 **The journal.** `store(…)` also appends the entry as one JSON line to `journal.jsonl` (`JSONLines.append`, the helper `PlanJournal` shares), next to `results.json`, the moment it is called — before any report, before `persist()`; a line that cannot be written is reported once through `journalWarning`. `load()` reads `results.json` and then replays the journal over it, the journal's verdicts winning, and does the replay even when `results.json` does not exist yet; a line cut short by a crash is skipped (`JSONLines.read`). `persist()` writes `results.json` and removes the journal. So a run that ends before `persist()` — `Ctrl+C`, a crash, a lost machine — leaves every verdict it reached, and the next `load()` starts from them. `MutantExecutor` writes the cache's metadata at the start of the run for the same reason: the journal must be read back against the test files it ran with. Under `noCache` nothing is journaled here; a `PlanJournal` given at init still records every verdict, timeouts included, since it is the progress of a planned run rather than a cache (see [11 — Plans](11-plans.md)). `store` takes the mutant's test `duration` for it.
 

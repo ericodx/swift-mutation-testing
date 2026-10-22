@@ -92,6 +92,7 @@ struct RunnerSummary: Sendable {
     let fromCache: [ExecutionResult]
     let integrityWarnings: [ExecutionResult]
     let activationNotMeasured: [ExecutionResult]
+    let unconfirmedKills: [ExecutionResult]
 
     init(results: [ExecutionResult], totalDuration: Double)
 
@@ -119,17 +120,19 @@ score      = detected / (detected + undetected) × 100
 
 ### Integrity lists
 
-`integrityWarnings` are the kills and timeouts whose mutated code never ran (`activated == false`); `activationNotMeasured` are the results other than `unviable` with no measurement at all (`activated == nil`), such as the incompatible mutants that could not be instrumented. `TextReporter` and `MarkdownReporter` print both.
+`integrityWarnings` are the kills and timeouts whose mutated code never ran (`activated == false`); `activationNotMeasured` are the results other than `unviable` with no measurement at all (`activated == nil`), such as the incompatible mutants that could not be instrumented. `unconfirmedKills` are the results with an `unconfirmedKiller`: a kill made in parallel whose killing test passed alone, so a run on its own judged the mutant undetected. `TextReporter` and `MarkdownReporter` print all three.
 
 ### Reporting/ExecutionResult+ReportStatusReason.swift
 
 ```swift
 extension ExecutionResult {
+    static let unconfirmedKillSuffix: String
+    static func unconfirmedKiller(in statusReason: String?) -> String?
     var reportStatusReason: String?
 }
 ```
 
-The `statusReason` the JSON report and the integrity list carry: `crash`, `crash without activation`, `killed without activation`, `timed out without activation`, or `nil`.
+The `statusReason` the JSON report and the integrity list carry: `crash`, `crash without activation`, `killed without activation`, `timed out without activation`, `<test> failed only while other workers ran` for an undetected mutant with an `unconfirmedKiller`, or `nil`. `unconfirmedKiller(in:)` reads the test back from that reason, so `ResultMerger` keeps it across shards.
 
 ### Reporting/RunnerSummary+DetectionLine.swift
 
@@ -180,12 +183,13 @@ Output sections:
 1. `Results by file:` — one line per file (`RunnerSummary.files`): relative path, score (`formattedScore`), and the killed, survived, timeout, unviable and no coverage counts
 2. Undetected mutants list — survived and no coverage: `<file>:<line>:<col>   <operator>   <survived | no coverage>` sorted by location (`RunnerSummary.byLocation`), when there are any
 3. Integrity warnings — kills and timeouts whose code never ran, the first `integrityWarningsListed` (10) with their reason, then a count — when there are any
-4. Overall score line
-5. Detection line (`RunnerSummary.detectionLine`)
-6. Total killed / survived / timeouts / unviable / noCoverage counts
-7. `Activation not measured: N mutants`, when N > 0
-8. `Verdicts from cache: N of M` (`RunnerSummary.cacheLine`), when any result has `fromCache`
-9. Total duration
+4. `Kills not repeated alone (N)` — mutants killed in parallel whose killing test passed alone, the first `integrityWarningsListed` with that test's name, then a count — when there are any
+5. Overall score line
+6. Detection line (`RunnerSummary.detectionLine`)
+7. Total killed / survived / timeouts / unviable / noCoverage counts
+8. `Activation not measured: N mutants`, when N > 0
+9. `Verdicts from cache: N of M` (`RunnerSummary.cacheLine`), when any result has `fromCache`
+10. Total duration
 
 `format(_:)` is exposed separately for testing.
 

@@ -170,7 +170,8 @@ struct ResultRecorder: Sendable {
         status: ExecutionStatus,
         duration: Double = 0,
         output: String = "",
-        activated: Bool? = nil
+        activated: Bool? = nil,
+        unconfirmedKiller: String? = nil
     ) async -> ExecutionResult
     func finish(_ result: ExecutionResult) async
 }
@@ -321,7 +322,7 @@ A mutant whose run times out during that parallel pass is not recorded yet. Once
 
 A mutant killed during the parallel pass without its activation marker is not recorded yet either. After the timeout pass, each such mutant runs once more, alone, one after another, under the configured `--timeout`, and that run's outcome is the one reported and cached. A flaky test usually passes the second time, and the mutant is then judged like any other run: survived, or `noCoverage` when its code still did not run. A kill that repeats without activation stays a kill, reported as an integrity warning. Kills that come from the timeout pass are not run a third time. Warnings are rare: over the campaign projects, 1 to 7 per run against 209 to 1275 mutants, under 1% of mutants, so the extra run costs little.
 
-**Confirming kills made in parallel.** On the SPM path, every worker runs the same bundles from one sandbox, so a test that writes a file at a fixed path can fail because a copy of itself in another worker removed or rewrote that file — and when the mutated code ran in that process, nothing else tells that failure from a real kill. So a kill with activation made by the whole-suite run of a run with more than one worker (`needsConfirmation`) is not recorded yet either. A kill made by the file's own suite is trusted (`TestLaunchResult.settledByTargetedSuite`): that suite exercises the mutated file, and every false kill seen in #187 came from an unrelated test. After the unactivated kills, each mutant set aside runs the killing test alone, filtered by `KillerTestFilter.filter(for:)`. When that test fails again, or crashes or times out, its run is the one recorded. When it passes, or its name cannot be turned into a filter, the mutant runs once more alone, the file's suite first and then the whole suite, and that run decides — a survivor then, or `noCoverage` when its code did not run. The pass is skipped on the Xcode path, with one worker and when reproducing. Its cost is one launch of one test per kill that came from outside the file's suite: measured on `swift-cpd`, 38% of kills.
+**Confirming kills made in parallel.** On the SPM path, every worker runs the same bundles from one sandbox, so a test that writes a file at a fixed path can fail because a copy of itself in another worker removed or rewrote that file — and when the mutated code ran in that process, nothing else tells that failure from a real kill. So a kill with activation made by the whole-suite run of a run with more than one worker (`needsConfirmation`) is not recorded yet either. A kill made by the file's own suite is trusted (`TestLaunchResult.settledByTargetedSuite`): that suite exercises the mutated file, and every false kill seen in #187 came from an unrelated test. After the unactivated kills, each mutant set aside runs the killing test alone, filtered by `KillerTestFilter.filter(for:)`. When that test fails again, or crashes or times out, its run is the one recorded. When it passes, or its name cannot be turned into a filter, the mutant runs once more alone, the file's suite first and then the whole suite, and that run decides — a survivor then, or `noCoverage` when its code did not run. An undetected verdict reached this way keeps the parallel killer as `ExecutionResult.unconfirmedKiller`, so the reports list it and the user learns the suite shares files; a kill reached this way keeps none. The pass is skipped on the Xcode path, with one worker and when reproducing. Its cost is one launch of one test per kill that came from outside the file's suite: measured on `swift-cpd`, 38% of kills.
 
 Measured on `swift-cpd` (944 tests), the suite takes 14s alone, 15s with 8 workers and 24s with 15 on a 12P+4E machine, so a 30s limit under 15 workers turned a third of all mutants into stragglers: each one cost its 30s in the parallel pass and was then run again in series, and the 26 mutants that time out for real cost the full limit twice. Doubling the loaded limit settles almost every straggler in the parallel pass, and a quarter of the workers is a load the machine does not notice (8 workers cost 8% over running alone) while it cuts the second pass by the same factor.
 
@@ -959,6 +960,7 @@ struct ExecutionResult: Sendable, Codable {
     let testDuration: Double
     let killerTestFile: String?
     let activated: Bool?
+    let unconfirmedKiller: String?
     let fromCache: Bool
 }
 ```
@@ -970,6 +972,7 @@ struct ExecutionResult: Sendable, Codable {
 | `testDuration` | Wall-clock seconds for the test-without-building invocation; `0` for cache hits |
 | `killerTestFile` | Source file path of the test that killed this mutant; `nil` for non-killed statuses and cache hits without metadata |
 | `activated` | Whether the mutated code ran: `true`, `false`, or `nil` when it was not measured — a mutant the instrumenter could not reach or whose instrumented copy did not build, and unviable ones, which never ran |
+| `unconfirmedKiller` | The test that killed the mutant in parallel and passed when run alone, when a run on its own then judged the mutant survived or `noCoverage`; `nil` otherwise. Cached with the verdict |
 | `fromCache` | `true` when the verdict was replayed from the cache rather than tested in this run; counted by the summaries' `Verdicts from cache` line |
 
 ---

@@ -739,7 +739,7 @@ Results are cached at `<project>/.swift-mutation-testing-cache/results.json`, ke
 
 The cache format is versioned. A cache written by an older version is discarded once, with a warning, and the run tests every mutant again; the next run writes a cache in the current format.
 
-The cache does not record how many workers ran. A kill from a test that tripped over a copy of itself in another worker (see [Parallelism](#parallelism)) is cached like any other and replayed by a later run with `--concurrency 1`. `--no-cache` neither reads nor writes the cache, so it does not clear it either: delete `.swift-mutation-testing-cache` to have those mutants tested again.
+The cache does not record how many workers ran. A kill from a test that tripped over a copy of itself in another worker (see [Parallelism](#parallelism)) is cached like any other and replayed by a later run with `--concurrency 1`. `--no-cache` neither reads nor writes the cache, so it does not clear it either: delete `.swift-mutation-testing-cache` to have those mutants tested again. Kills made outside the mutated file's suite are confirmed alone before they are cached, and a cache written before that check existed is discarded once.
 
 A cache belongs to the tests it was made with: the scheme, destination, project or workspace and `--xcodebuild-arg` arguments for Xcode, `--target` and `--testing-framework`. A run with any of them changed discards the cache, with a note, and tests every mutant again. To keep verdicts for two targets, give each its own CI job and cache. When some verdicts come from the cache, the summary says how many:
 
