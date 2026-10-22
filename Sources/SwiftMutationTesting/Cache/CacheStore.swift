@@ -21,7 +21,7 @@ actor CacheStore {
     }
 
     static let directoryName = ".swift-mutation-testing-cache"
-    static let formatVersion = 4
+    static let formatVersion = 5
     static let journalName = "journal.jsonl"
 
     private let storePath: String
