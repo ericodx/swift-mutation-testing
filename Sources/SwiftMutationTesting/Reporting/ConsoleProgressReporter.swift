@@ -12,6 +12,10 @@ actor ConsoleProgressReporter: ProgressReporter {
         case .loadedFromCache(let mutantCount):
             StandardOutput.write("  ✓ Loaded \(mutantCount) mutants from cache")
 
+        case .schemaBatchStarted(let index, let count, let limit):
+            StandardOutput.write("")
+            StandardOutput.write("Schema batch \(index) of \(count) (at most \(limit) mutants per function):")
+
         case .buildStarted:
             StandardOutput.write("")
             StandardOutput.write("Building for testing...")
@@ -25,6 +29,12 @@ actor ConsoleProgressReporter: ProgressReporter {
                 ? "1 mutant, to be built on its own"
                 : "\(excludedCount) mutants, to be built one by one"
             StandardOutput.write("  ⚠ Schema did not build: retrying without \(mutants)")
+
+        case .schemaSuiteFailed:
+            StandardOutput.write(
+                "  ⚠ The unmutated suite fails against the schema build but passes without it: "
+                    + "building this batch's mutants one by one"
+            )
 
         case .workersReady(let count, let usesSimulators):
             let unit = usesSimulators ? "simulator" : "worker"
