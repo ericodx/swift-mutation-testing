@@ -158,6 +158,21 @@ struct SchemaNarrowerExclusionTests {
         #expect(excluded.map(\.id) == [blamed])
     }
 
+    @Test(
+        "Given an error between the dispatch's switch and its first case, when excluded, then no case above it is blamed"
+    )
+    func anErrorAboveTheFirstCaseBlamesNoEarlierCase() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withLocalFunction)
+        defer { fixture.cleanUp() }
+        let lines = fixture.schema.components(separatedBy: "\n")
+        let dispatches = lines.indices.filter { lines[$0].hasPrefix("switch \(SupportDeclarations.identifierPrefix)") }
+        let innerSwitch = try #require(dispatches.dropFirst().first)
+
+        let excluded = try fixture.exclude(errorLine: innerSwitch + 1)
+
+        #expect(excluded.map(\.id) == fixture.indexed.map(\.mutantID))
+    }
+
     // MARK: - Private
 
     private struct SchematizedFixture {
