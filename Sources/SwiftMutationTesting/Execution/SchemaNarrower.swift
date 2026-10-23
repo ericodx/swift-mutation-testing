@@ -158,7 +158,8 @@ struct SchemaNarrower: Sendable {
             if line == "default:" {
                 skippedDispatches += 1
             } else if line.hasPrefix("switch \(SupportDeclarations.identifierPrefix)") {
-                skippedDispatches = max(skippedDispatches - 1, 0)
+                guard skippedDispatches > 0 else { return nil }
+                skippedDispatches -= 1
             } else if skippedDispatches == 0, let id = mutantCaseID(from: line.trimmingCharacters(in: .whitespaces)),
                 ids.contains(id)
             {
