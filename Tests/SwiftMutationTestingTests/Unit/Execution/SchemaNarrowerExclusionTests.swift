@@ -123,6 +123,41 @@ struct SchemaNarrowerExclusionTests {
         #expect(excluded.map(\.id) == fixture.indexed.map(\.mutantID))
     }
 
+    @Test("Given an error after a local function in a mutant's case, when its mutants are excluded, then that one goes")
+    func anErrorAfterALocalFunctionsDispatchExcludesTheEnclosingMutant() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withLocalFunction)
+        defer { fixture.cleanUp() }
+        let blamed = fixture.indexed[1].mutantID
+
+        let excluded = try fixture.exclude(
+            errorLine: try fixture.line("return inner(a) + b", after: "case \"\(blamed)\":"))
+
+        #expect(excluded.map(\.id) == [blamed])
+    }
+
+    @Test(
+        "Given an error in a local function's original body inside a mutant's case, when excluded, then that one goes")
+    func anErrorInALocalFunctionsDefaultExcludesTheEnclosingMutant() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withLocalFunction)
+        defer { fixture.cleanUp() }
+        let blamed = fixture.indexed[1].mutantID
+
+        let excluded = try fixture.exclude(errorLine: try fixture.line("return x + 1", after: "case \"\(blamed)\":"))
+
+        #expect(excluded.map(\.id) == [blamed])
+    }
+
+    @Test("Given an error in the local function's mutant case, when excluded, then the local function's mutant goes")
+    func anErrorInALocalFunctionsCaseExcludesItsMutant() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withLocalFunction)
+        defer { fixture.cleanUp() }
+        let blamed = fixture.indexed[0].mutantID
+
+        let excluded = try fixture.exclude(errorLine: try fixture.line("return x - 1", after: "default:"))
+
+        #expect(excluded.map(\.id) == [blamed])
+    }
+
     // MARK: - Private
 
     private struct SchematizedFixture {
@@ -145,6 +180,17 @@ struct SchemaNarrowerExclusionTests {
                     default:
                         return a - b
                     }
+                }
+            }
+            """
+
+        static let withLocalFunction = """
+            struct Foo {
+                func outer(_ a: Int, _ b: Int) -> Int {
+                    func inner(_ x: Int) -> Int {
+                        return x + 1
+                    }
+                    return inner(a) - b
                 }
             }
             """
