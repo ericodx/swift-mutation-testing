@@ -109,12 +109,12 @@ struct SchemaNarrower: Sendable {
             guard lineIndex >= 0, lineIndex < lines.count else { continue }
             var searchIndex = lineIndex
             while searchIndex >= 0 {
-                let trimmed = lines[searchIndex].trimmingCharacters(in: .whitespaces)
-                if let id = mutantCaseID(from: trimmed), mutantIDs.contains(id) {
+                let line = lines[searchIndex]
+                if let id = mutantCaseID(from: line.trimmingCharacters(in: .whitespaces)), mutantIDs.contains(id) {
                     problematicIDs.insert(id)
                     break
                 }
-                if trimmed == "default:" || trimmed.hasPrefix("switch ") { break }
+                if isDispatchBoundary(line) { break }
                 searchIndex -= 1
             }
         }
@@ -156,6 +156,10 @@ struct SchemaNarrower: Sendable {
 
         let generation = SchemataGenerator().generate(source: source, mutations: entries, importStyle: importStyle)
         return generation.discarded.isEmpty ? generation.content : nil
+    }
+
+    private static func isDispatchBoundary(_ line: String) -> Bool {
+        line == "default:" || line.hasPrefix("switch \(SupportDeclarations.identifierPrefix)")
     }
 
     private static func mutantCaseID(from trimmedLine: String) -> String? {
