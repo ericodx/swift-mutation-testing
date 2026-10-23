@@ -32,9 +32,11 @@ Serialises progress output to stdout. Each `RunnerEvent` case maps to one or two
 |---|---|
 | `.discoveryFinished` | `✓ Discovery: N mutants (M schematizable[, K incompatible]) in X.Xs` |
 | `.loadedFromCache` | `✓ Loaded N mutants from cache` |
+| `.schemaBatchStarted` | blank line + `Schema batch I of N (at most K mutants per function):` |
 | `.buildStarted` | blank line + `Building for testing...` |
 | `.buildFinished` | `✓ Built in X.Xs` |
 | `.schemaNarrowed` | `⚠ Schema did not build: retrying without N mutants, to be built one by one` (`1 mutant, to be built on its own` for one) |
+| `.schemaSuiteFailed` | `⚠ The unmutated suite fails against the schema build but passes without it: building this batch's mutants one by one` |
 | `.workersReady` | `✓ N simulators ready` or `✓ N workers ready` (singular for one) + blank line + `Testing mutants...` |
 | `.mutantFinished` | `<icon> <index>/<total>  <operator>  <filename>:<line>` |
 
@@ -60,9 +62,11 @@ No-op reporter. Used when `--quiet` is active.
 enum RunnerEvent: Sendable {
     case discoveryFinished(mutantCount: Int, schematizableCount: Int, incompatibleCount: Int, duration: Double)
     case loadedFromCache(mutantCount: Int)
+    case schemaBatchStarted(index: Int, count: Int, limit: Int)
     case buildStarted
     case buildFinished(duration: Double)
     case schemaNarrowed(excludedCount: Int)
+    case schemaSuiteFailed
     case workersReady(count: Int, usesSimulators: Bool)
     case mutantStarted(descriptor: MutantDescriptor, index: Int, total: Int)
     case mutantFinished(descriptor: MutantDescriptor, status: ExecutionStatus, index: Int, total: Int)

@@ -634,6 +634,18 @@ When the schema does not build, the run says which mutants it drops before rebui
   ⚠ Schema did not build: retrying without 2 mutants, to be built one by one
 ```
 
+When a function body holds more than 16 mutants, the schema is built in batches, each with at most 16 mutants of any body, and each batch is announced before its build:
+
+```
+Schema batch 2 of 5 (at most 16 mutants per function):
+```
+
+A run with no body over the limit builds once, as before. If the unmutated suite fails against a batch's build but passes against the unmutated project, the run says so and builds that batch's mutants one by one, instead of stopping:
+
+```
+  ⚠ The unmutated suite fails against the schema build but passes without it: building this batch's mutants one by one
+```
+
 The readiness line names simulators on a simulator destination and workers elsewhere (`✓ 4 workers ready`). A run whose every mutant has a verdict in the cache prints `✓ Loaded 147 mutants from cache` instead of building.
 
 Those mutants are not lost: each gets a build of its own, like an incompatible mutant, which is slower. Their build errors are in the `--keep-logs` output.

@@ -79,7 +79,7 @@ Handles cleanup of orphaned sandbox directories and signal-based cleanup of the 
 
 ## BuildStage
 
-Runs a single build for all schematizable mutants.
+Runs one build for the schematizable mutants of each schema batch: a single build unless a function body holds more than 16 mutants. `SchemaBatches` keeps at most that many of any body in one build, because each mutant adds a copy of the body to the function's frame in a debug build, and a deep enough frame overflows a secondary thread's stack; the later batches rewrite their files in the same sandbox, so their builds are incremental.
 
 **Xcode path:** `xcodebuild build-for-testing` → find `.xctestrun` in `Build/Products` → parse plist → `BuildArtifact`
 
@@ -132,7 +132,7 @@ The container's relative path is passed as `-workspace` or `-project`, from the 
 
 Before the first mutant runs, the suite is run once with no mutant selected. `__swiftMutationTestingID_<hash>` is empty, so every schema falls through to its `default` branch and the original code executes.
 
-The run continues only if that suite passes. A suite that already fails without a mutation kills every mutant it reaches, so every verdict it produces is worthless — and nothing in the report would reveal it. `BaselineProbe` throws `BaselineError` instead, naming the failing tests, the timeout that stopped the suite, or the output it failed with (written to `baseline.log` under `--keep-logs`).
+The run continues only if that suite passes, or if it fails only against the schema: a suite that fails against a schema build is run again against a clean unmutated build (`UnmutatedSuiteCheck`), and when it passes there the batch's mutants are built one by one on the incompatible path instead of the run ending. A suite that already fails without a mutation kills every mutant it reaches, so every verdict it produces is worthless — and nothing in the report would reveal it. `BaselineProbe` throws `BaselineError` instead, naming the failing tests, the timeout that stopped the suite, or the output it failed with (written to `baseline.log` under `--keep-logs`).
 
 **The baseline and the library probe are the same run.** A package builds one test bundle per test target. Each bundle is invoked once with each testing library against the unmutated sandbox, and that single invocation answers both questions: a bundle and library reporting no tests — exit 69 from SwiftPM's helper, `Executed 0 tests` from `xctest` — is dropped from every mutant's run, and one that does have tests must pass them. A bundle with tests in neither library is dropped altogether, unless no bundle has any, in which case every bundle keeps both libraries. Only when no bundle was produced does the baseline fall back to a separate `swift test --skip-build`. `--target` naming a bundle narrows the run to that bundle (`TestTargetSelection`); otherwise it is passed on as a filter. The probe runs the suite to the end; mutants stop at their first failing test.
 
