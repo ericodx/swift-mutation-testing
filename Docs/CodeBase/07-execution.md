@@ -29,7 +29,7 @@ Entry point for the execution pipeline. Orchestrates sandbox creation, build, si
 
 `Environment` holds the collaborators a run works through, each the real one unless a test hands in another. With no `reporter`, progress goes to a `ConsoleProgressReporter`, or a `SilentProgressReporter` under `--quiet`. The `sandboxFactory` is also the one `IncompatibleMutantExecutor` is given.
 
-The work that used to live inline here is split across types of its own: `SchemaNarrower` retries a schematized SPM build that does not compile, `UnmutatedBuildCheck` builds the unmutated project when the schema leaves no artifact, `BaselineProbe` runs the unmutated suite, `SimulatorPool.make(for:launcher:)` picks the pool, and every verdict goes through `ResultRecorder`. `execute` itself only prepares the cache, returns early when every mutant is cached, builds the `ExecutionDeps` — `TargetedSuites.declared(in:read:)` over the test files the cache snapshot already read — creates and registers the sandbox, and persists the cache; the private `run(_:in:deps:reporter:)` verifies the sandbox, builds, sets up the pool, runs every mutant and checks activation, tearing the pool down whether it throws or not. The sandbox is released in a `defer` through `release(keepingFor:)`, which keeps it for a reproduction.
+The work that used to live inline here is split across types of its own: `SchemaNarrower` retries a schematized SPM build that does not compile, `UnmutatedBuildCheck` builds the unmutated project when the schema leaves no artifact, `BaselineProbe` runs the unmutated suite, `SimulatorPool.make(for:launcher:)` picks the pool, and every verdict goes through `ResultRecorder`. `execute` itself only prepares the cache, returns early when every mutant is cached, builds the `ExecutionDeps` — `TargetedSuites.declared(in:read:)` over the test files the cache snapshot already read — creates and registers the sandbox, and persists the cache; the private `run(_:in:deps:reporter:)` verifies the sandbox, builds and runs every mutant against the whole schema through `runBatch`, then runs each schema batch that run asked for — installing its schemas in the sandbox (`SchemaInstaller`) first — the same way; the pool is set up once, on the first build that needs it, and activation is checked over every batch's results, the pool torn down whether it throws or not. The sandbox is released in a `defer` through `release(keepingFor:)`, which keeps it for a reproduction.
 
 ```mermaid
 flowchart TD
@@ -42,7 +42,7 @@ flowchart TD
     REG --> VERIFY["ApplicationVerifier.verify"]
     VERIFY -- "a mutant is missing" --> ABORTI["throw IntegrityError<br>run ends"]
     VERIFY -- "every mutant present" --> BUILD["BuildStage.build / buildSPM"]
-    BUILD -- success --> POOL["SimulatorPool.make, setUp<br>report workersReady"]
+    BUILD -- success --> POOL["SimulatorPool.make, setUp<br>report workersReady<br>first build only"]
     BUILD -- timedOut --> ABORT["throw BuildError<br>run ends"]
     BUILD -- "compilationFailed, Xcode" --> CLEAN{"UnmutatedBuildCheck<br>does the unmutated<br>project build?"}
     BUILD -- "compilationFailed, SPM" --> RETRY["SchemaNarrower.narrow<br>regenerate the schema without<br>the mutants the compiler blamed"]
@@ -53,15 +53,24 @@ flowchart TD
     POOL --> ART{"build artifact?"}
     ART -- "none, schematizable mutants left" --> FALLBACK["FallbackExecutor<br>one build per schematized file"]
     ART -- "yes, SPM" --> PROBE{"SPM: BaselineProbe runs each<br>testing library once on the<br>unmutated sandbox"}
-    PROBE -- "a library fails, crashes or hangs" --> ABORTB["throw BaselineError<br>run ends"]
+    PROBE -- "a library fails, crashes or hangs" --> SUITE{"UnmutatedSuiteCheck<br>does the suite pass on a<br>clean unmutated build?"}
+    SUITE -- no --> ABORTB["throw BaselineError<br>run ends"]
+    SUITE -- yes --> SPLIT{"SchemaBatches.split<br>whole schema, a function body<br>over 16 mutants?"}
+    SPLIT -- yes --> BATCHES["report schemaSuiteFailed(splitting: true)<br>the batches join the queue"]
+    SPLIT -- "no, or already a batch" --> REROUTE["report schemaSuiteFailed(splitting: false)<br>the mutants join the<br>incompatible path"]
+    BATCHES --> INCOMPAT
+    REROUTE --> INCOMPAT
     ART -- "yes, Xcode" --> XBASE{"TestExecutionStage runs the<br>unmutated .xctestrun once"}
-    XBASE -- "fails, crashes or hangs" --> ABORTB
+    XBASE -- "fails, crashes or hangs" --> SUITE
     XBASE -- passes --> NORMAL
     PROBE -- passes --> NORMAL["TestExecutionStage<br>schematizable mutants"]
     NORMAL --> INCOMPAT["IncompatibleMutantExecutor<br>incompatible and rerouted mutants"]
     FALLBACK --> INCOMPAT
     ART -- "none, nothing left" --> INCOMPAT
-    INCOMPAT --> OBSERVED{"kills, but no mutant's<br>code ever seen running?"}
+    INCOMPAT --> NEXT{"another batch?"}
+    NEXT -- yes --> INSTALL["report schemaBatchStarted<br>SchemaInstaller.install<br>the batch's schemas"]
+    INSTALL --> VERIFY
+    NEXT -- no --> OBSERVED{"kills, but no mutant's<br>code ever seen running?"}
     OBSERVED -- yes --> ABORTI
     OBSERVED -- no --> TEARDOWN["pool.tearDown<br>sandbox.release(keepingFor:)<br>SandboxCleaner.deregister<br>cacheStore.persist"]
     TEARDOWN --> RESULTS[["[ExecutionResult]"]]
@@ -70,6 +79,10 @@ flowchart TD
 **Baseline validation:** before any mutant runs, the suite runs once with no mutant selected — the schema falls through to its `default` branch, so this is the original code. A kill verdict only means something if the same tests pass unmutated: a suite that already fails kills every mutant it reaches and produces a flattering score with nothing in the report to show it. Anything other than a passing suite throws `BaselineError` and ends the run. On SPM the run is `BaselineProbe`'s; on Xcode it is `TestExecutionStage.requireXcodeBaselineToPass`, which used to be missing: a failing suite killed every mutant there. Both decide through `BaselineProbe.requirePassing`.
 
 **Normal path:** builds once, runs `TestExecutionStage` for all schematizable mutants in parallel, then re-runs any mutant that timed out on its own before reporting it.
+
+**Schema batches:** each `case` of a function's dispatch holds a full copy of its body, and a debug build gives every copy's locals their own stack slots, so a function's frame grows with its mutant count: on Euclid, a local function of 6.1 KB took 471 KB with 79 mutants, and with its caller at 342 KB it overflowed the 512 KB stack of a `DispatchQueue.concurrentPerform` thread, killing the unmutated suite. Batches are built only on that symptom, a suite that fails against the whole schema and passes without it: splitting every run up front cost swift-cpd three more runs of its suite, 4% of the run, with nothing to fix. Then `SchemaBatches` splits what is left to test of the whole schema — its testable schematizable mutants, without the ones narrowing took out, which run one by one as before — into batches of at most `SchemaBatches.mutantsPerFunction` (16) mutants of any function body, so no frame grows past 17 times its size. Each batch rewrites its files in the same sandbox, so its build is incremental, and is checked, built, narrowed, baseline-tested and run on its own; a batch is never split again. `.schemaBatchStarted` names each batch.
+
+**Suite that fails only against the schema:** when the unmutated suite fails, crashes or hangs against a schema build, `UnmutatedSuiteCheck` runs it against a clean build of the unmutated project. If it fails there too, that error ends the run, as it always did. If it passes, the schema is what broke it — a frame still too deep, for one — so the run reports `.schemaSuiteFailed` and, instead of ending with a `BaselineError` about a suite that is fine, tests the mutants another way: in schema batches when the whole schema fails and a function body holds more than 16 mutants, otherwise on the incompatible path, one build each. The check costs a build and a run of the suite, only on that path.
 
 **Unmutated build:** when the schematized build leaves no artifact and the run has mutants, `UnmutatedBuildCheck` builds a clean copy of the project before any mutant is marked. A project that does not build at all — a missing dependency, a plugin that cannot run, a broken file — would otherwise send every mutant to the fallback and the incompatible path, fail every build there, and report every mutant unviable: a run with nothing measured that read as a perfect score. The check ends the run with `BaselineError.buildFailed` instead. It costs a build only on the path where the schema already failed.
 
@@ -135,6 +148,53 @@ Builds the project without any mutation, in a sandbox of its own from `createCle
 | `BuildError.xctestrunNotFound` | Returns: the project compiled, which is all the check asks |
 | `BuildError.compilationFailed(output:)` | Writes the output as `baseline.log` under `--keep-logs`, and throws `BaselineError.buildFailed(output:)` |
 | `BuildError.timedOut` or any other error | Propagates, as a timed-out schematized build does |
+
+---
+
+## Execution/SchemaBatches.swift
+
+```swift
+struct SchemaBatches: Sendable {
+    static let mutantsPerFunction = 16
+
+    var limit = Self.mutantsPerFunction
+
+    func split(_ input: RunnerInput) -> [RunnerInput]
+}
+```
+
+Splits a run into schema builds that each hold at most `limit` mutants of any one function body. For every schematized file it parses the original source and groups the file's schematizable mutants by `FunctionBodyScopes.innermostScope(containing:)`, the scope `SchemataGenerator` gives each one its `case` in, ordered by `MutantID.ordered(_:by:)`; the n-th mutant of a scope goes to batch `n / limit`. A file whose every scope fits stays as it is, in the first batch. A file that splits gets each batch's schema from `SchemaNarrower.regeneratedSchema`; when any of them cannot be regenerated the file is not split, rather than losing that batch's mutants. The first batch also carries every incompatible mutant and every mutant of a file that did not split. With nothing to split, the result is `[input]`.
+
+---
+
+## Execution/SchemaInstaller.swift
+
+```swift
+struct SchemaInstaller: Sendable {
+    let sandbox: Sandbox
+    let projectPath: String
+
+    func install(_ files: [SchematizedFile], replacing previous: [SchematizedFile]) throws
+}
+```
+
+Puts a batch's schemas in the sandbox the previous batch built. Each file is written over its sandbox copy, wrapped by `LintSuppression.wrapping`, at the path `ApplicationVerifier` reads (the sandbox root plus the file's canonical path under the canonical project root); each file of `previous` the batch leaves out goes back to a link to its original through `SandboxLink.restore`. A file outside the project throws `IntegrityError.schemaNotApplied`.
+
+---
+
+## Execution/UnmutatedSuiteCheck.swift
+
+```swift
+struct UnmutatedSuiteCheck: Sendable {
+    let configuration: RunnerConfiguration
+    let deps: ExecutionDeps
+    let sandboxFactory: SandboxFactory
+
+    func verify(projectPath: String, pool: SimulatorPool) async throws
+}
+```
+
+Runs the unmutated suite against a clean build of the project, from `createClean(projectPath:disablingSwiftLint: true)`, released afterwards. On SPM it is `BaselineProbe.probeTestBundles(in:)`; on Xcode `TestExecutionStage.requireXcodeBaselineToPass(in:)` on a slot of the pool. A build that does not compile throws `BaselineError.buildFailed`, written as `baseline.log` under `--keep-logs`; a failing suite throws the `BaselineError` the probe throws. `MutantExecutor` calls it only when the suite failed against a schema build, to tell a schema that broke the suite from a suite that was already broken.
 
 ---
 

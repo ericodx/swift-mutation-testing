@@ -72,6 +72,41 @@ struct ConsoleProgressReporterTests {
         #expect(output == line + "\n")
     }
 
+    @Test("Given a schema batch starting, when reported, then its position and the per-function limit are named")
+    func schemaBatchStartedNamesItsPosition() async {
+        let output = await captureOutput {
+            await reporter.report(.schemaBatchStarted(index: 2, count: 3, limit: 16))
+        }
+
+        #expect(output == "\nSchema batch 2 of 3 (at most 16 mutants per function):\n")
+    }
+
+    @Test("Given the unmutated suite failing against the schema only, when reported, then the fallback is named")
+    func schemaSuiteFailedNamesTheFallback() async {
+        let output = await captureOutput {
+            await reporter.report(.schemaSuiteFailed(splitting: false))
+        }
+
+        #expect(
+            output
+                == "  ⚠ The unmutated suite fails against the schema build but passes without it: "
+                + "building its mutants one by one\n"
+        )
+    }
+
+    @Test("Given the unmutated suite failing against the schema only, when splitting, then the batches are named")
+    func schemaSuiteFailedNamesTheSplit() async {
+        let output = await captureOutput {
+            await reporter.report(.schemaSuiteFailed(splitting: true))
+        }
+
+        #expect(
+            output
+                == "  ⚠ The unmutated suite fails against the schema build but passes without it: "
+                + "testing its largest functions in batches\n"
+        )
+    }
+
     @Test("Given workersReady with simulators, when reported, then they are named as simulators")
     func workersReadyNamesSimulators() async {
         let output = await captureOutput {
