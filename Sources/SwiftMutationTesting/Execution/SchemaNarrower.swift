@@ -106,17 +106,10 @@ struct SchemaNarrower: Sendable {
 
         for errorLine in errorLines {
             let lineIndex = errorLine - 1
-            guard lineIndex >= 0, lineIndex < lines.count else { continue }
-            var searchIndex = lineIndex
-            while searchIndex >= 0 {
-                let trimmed = lines[searchIndex].trimmingCharacters(in: .whitespaces)
-                if let id = mutantCaseID(from: trimmed), mutantIDs.contains(id) {
-                    problematicIDs.insert(id)
-                    break
-                }
-                if trimmed == "default:" || trimmed.hasPrefix("switch ") { break }
-                searchIndex -= 1
-            }
+            guard lineIndex >= 0, lineIndex < lines.count,
+                let id = blamedMutantID(above: lineIndex, in: lines, among: mutantIDs)
+            else { continue }
+            problematicIDs.insert(id)
         }
 
         guard !problematicIDs.isEmpty else {
@@ -156,6 +149,25 @@ struct SchemaNarrower: Sendable {
 
         let generation = SchemataGenerator().generate(source: source, mutations: entries, importStyle: importStyle)
         return generation.discarded.isEmpty ? generation.content : nil
+    }
+
+    private static func blamedMutantID(above index: Int, in lines: [String], among ids: Set<String>) -> String? {
+        var skippedDispatches = 0
+
+        for line in lines[...index].reversed() {
+            if line == "default:" {
+                skippedDispatches += 1
+            } else if line.hasPrefix("switch \(SupportDeclarations.identifierPrefix)") {
+                guard skippedDispatches > 0 else { return nil }
+                skippedDispatches -= 1
+            } else if skippedDispatches == 0, let id = mutantCaseID(from: line.trimmingCharacters(in: .whitespaces)),
+                ids.contains(id)
+            {
+                return id
+            }
+        }
+
+        return nil
     }
 
     private static func mutantCaseID(from trimmedLine: String) -> String? {

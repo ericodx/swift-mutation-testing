@@ -88,6 +88,91 @@ struct SchemaNarrowerExclusionTests {
         #expect(try String(contentsOf: fixture.sandboxCopy, encoding: .utf8) == SchematizedFixture.original)
     }
 
+    @Test("Given an error on a switch inside a mutant's case, when its mutants are excluded, then only that one goes")
+    func anErrorOnANestedSwitchExcludesOnlyThatMutant() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withSwitch)
+        defer { fixture.cleanUp() }
+        let blamed = fixture.indexed[0].mutantID
+
+        let excluded = try fixture.exclude(errorLine: try fixture.line("switch kind {", after: "case \"\(blamed)\":"))
+
+        #expect(excluded.map(\.id) == [blamed])
+    }
+
+    @Test(
+        "Given an error below a default inside a mutant's case, when its mutants are excluded, then only that one goes")
+    func anErrorBelowANestedDefaultExcludesOnlyThatMutant() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withSwitch)
+        defer { fixture.cleanUp() }
+        let blamed = fixture.indexed[1].mutantID
+
+        let excluded = try fixture.exclude(errorLine: try fixture.line("default:", after: "case \"\(blamed)\":") + 1)
+
+        #expect(excluded.map(\.id) == [blamed])
+    }
+
+    @Test(
+        "Given an error under the dispatch's default, when its mutants are excluded, then no nested switch is mistaken for a case"
+    )
+    func anErrorUnderTheDispatchDefaultWithANestedSwitchBlamesNoCase() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withSwitch)
+        defer { fixture.cleanUp() }
+
+        let excluded = try fixture.exclude(errorLine: try fixture.line("switch kind {", after: "default:"))
+
+        #expect(excluded.map(\.id) == fixture.indexed.map(\.mutantID))
+    }
+
+    @Test("Given an error after a local function in a mutant's case, when its mutants are excluded, then that one goes")
+    func anErrorAfterALocalFunctionsDispatchExcludesTheEnclosingMutant() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withLocalFunction)
+        defer { fixture.cleanUp() }
+        let blamed = fixture.indexed[1].mutantID
+
+        let excluded = try fixture.exclude(
+            errorLine: try fixture.line("return inner(a) + b", after: "case \"\(blamed)\":"))
+
+        #expect(excluded.map(\.id) == [blamed])
+    }
+
+    @Test(
+        "Given an error in a local function's original body inside a mutant's case, when excluded, then that one goes")
+    func anErrorInALocalFunctionsDefaultExcludesTheEnclosingMutant() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withLocalFunction)
+        defer { fixture.cleanUp() }
+        let blamed = fixture.indexed[1].mutantID
+
+        let excluded = try fixture.exclude(errorLine: try fixture.line("return x + 1", after: "case \"\(blamed)\":"))
+
+        #expect(excluded.map(\.id) == [blamed])
+    }
+
+    @Test("Given an error in the local function's mutant case, when excluded, then the local function's mutant goes")
+    func anErrorInALocalFunctionsCaseExcludesItsMutant() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withLocalFunction)
+        defer { fixture.cleanUp() }
+        let blamed = fixture.indexed[0].mutantID
+
+        let excluded = try fixture.exclude(errorLine: try fixture.line("return x - 1", after: "default:"))
+
+        #expect(excluded.map(\.id) == [blamed])
+    }
+
+    @Test(
+        "Given an error between the dispatch's switch and its first case, when excluded, then no case above it is blamed"
+    )
+    func anErrorAboveTheFirstCaseBlamesNoEarlierCase() throws {
+        let fixture = try SchematizedFixture(source: SchematizedFixture.withLocalFunction)
+        defer { fixture.cleanUp() }
+        let lines = fixture.schema.components(separatedBy: "\n")
+        let dispatches = lines.indices.filter { lines[$0].hasPrefix("switch \(SupportDeclarations.identifierPrefix)") }
+        let innerSwitch = try #require(dispatches.dropFirst().first)
+
+        let excluded = try fixture.exclude(errorLine: innerSwitch + 1)
+
+        #expect(excluded.map(\.id) == fixture.indexed.map(\.mutantID))
+    }
+
     // MARK: - Private
 
     private struct SchematizedFixture {
@@ -101,24 +186,48 @@ struct SchemaNarrowerExclusionTests {
             }
             """
 
+        static let withSwitch = """
+            struct Foo {
+                func pick(_ kind: Int, _ a: Int, _ b: Int) -> Int {
+                    switch kind {
+                    case 0:
+                        return a + b
+                    default:
+                        return a - b
+                    }
+                }
+            }
+            """
+
+        static let withLocalFunction = """
+            struct Foo {
+                func outer(_ a: Int, _ b: Int) -> Int {
+                    func inner(_ x: Int) -> Int {
+                        return x + 1
+                    }
+                    return inner(a) - b
+                }
+            }
+            """
+
         let directory: URL
         let originalFile: URL
         let sandboxCopy: URL
         let indexed: [IndexedMutationPoint]
         let schema: String
 
-        init() throws {
+        init(source: String = Self.original) throws {
             directory = try FileHelpers.makeTemporaryDirectory()
             originalFile = directory.appendingPathComponent("Foo.swift")
             sandboxCopy = directory.appendingPathComponent("sandbox/Foo.swift")
             try FileManager.default.createDirectory(
                 at: sandboxCopy.deletingLastPathComponent(), withIntermediateDirectories: true
             )
-            try Self.original.write(to: originalFile, atomically: true, encoding: .utf8)
+            try source.write(to: originalFile, atomically: true, encoding: .utf8)
 
             let parsed = ParsedSource(
-                file: SourceFile(path: originalFile.path, content: Self.original),
-                syntax: Parser.parse(source: Self.original)
+                file: SourceFile(path: originalFile.path, content: source),
+                syntax: Parser.parse(source: source)
             )
             indexed = ArithmeticOperatorReplacement().mutations(in: parsed).enumerated().map {
                 IndexedMutationPoint(
@@ -142,6 +251,15 @@ struct SchemaNarrowerExclusionTests {
             let lines = schema.components(separatedBy: "\n")
             let index = try #require(lines.firstIndex { $0.trimmingCharacters(in: .whitespaces) == marker })
             return index + 2
+        }
+
+        func line(_ text: String, after marker: String) throws -> Int {
+            let lines = schema.components(separatedBy: "\n")
+            let start = try #require(lines.firstIndex { $0 == marker })
+            let index = try #require(
+                lines[start...].firstIndex { $0.trimmingCharacters(in: .whitespaces) == text && $0 != marker }
+            )
+            return index + 1
         }
 
         func exclude(errorLine: Int) throws -> [MutantDescriptor] {
