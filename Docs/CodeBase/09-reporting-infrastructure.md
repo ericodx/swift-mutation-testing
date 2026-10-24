@@ -36,7 +36,7 @@ Serialises progress output to stdout. Each `RunnerEvent` case maps to one or two
 | `.buildStarted` | blank line + `Building for testing...` |
 | `.buildFinished` | `✓ Built in X.Xs` |
 | `.schemaNarrowed` | `⚠ Schema did not build: retrying without N mutants, to be built one by one` (`1 mutant, to be built on its own` for one) |
-| `.schemaSuiteFailed` | `⚠ The unmutated suite fails against the schema build but passes without it: building this batch's mutants one by one` |
+| `.schemaSuiteFailed` | `⚠ The unmutated suite fails against the schema build but passes without it: testing its largest functions in batches` (`building its mutants one by one` when not splitting) |
 | `.workersReady` | `✓ N simulators ready` or `✓ N workers ready` (singular for one) + blank line + `Testing mutants...` |
 | `.mutantFinished` | `<icon> <index>/<total>  <operator>  <filename>:<line>` |
 
@@ -66,7 +66,7 @@ enum RunnerEvent: Sendable {
     case buildStarted
     case buildFinished(duration: Double)
     case schemaNarrowed(excludedCount: Int)
-    case schemaSuiteFailed
+    case schemaSuiteFailed(splitting: Bool)
     case workersReady(count: Int, usesSimulators: Bool)
     case mutantStarted(descriptor: MutantDescriptor, index: Int, total: Int)
     case mutantFinished(descriptor: MutantDescriptor, status: ExecutionStatus, index: Int, total: Int)
