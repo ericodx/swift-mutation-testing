@@ -84,13 +84,26 @@ struct ConsoleProgressReporterTests {
     @Test("Given the unmutated suite failing against the schema only, when reported, then the fallback is named")
     func schemaSuiteFailedNamesTheFallback() async {
         let output = await captureOutput {
-            await reporter.report(.schemaSuiteFailed)
+            await reporter.report(.schemaSuiteFailed(splitting: false))
         }
 
         #expect(
             output
                 == "  ⚠ The unmutated suite fails against the schema build but passes without it: "
-                + "building this batch's mutants one by one\n"
+                + "building its mutants one by one\n"
+        )
+    }
+
+    @Test("Given the unmutated suite failing against the schema only, when splitting, then the batches are named")
+    func schemaSuiteFailedNamesTheSplit() async {
+        let output = await captureOutput {
+            await reporter.report(.schemaSuiteFailed(splitting: true))
+        }
+
+        #expect(
+            output
+                == "  ⚠ The unmutated suite fails against the schema build but passes without it: "
+                + "testing its largest functions in batches\n"
         )
     }
 

@@ -5,24 +5,64 @@ import Testing
 
 @Suite("MutantExecutor schema batches")
 struct MutantExecutorSchemaBatchTests {
-    @Test("Given a function over the batch limit, when run, then each batch is built and every mutant is tested")
-    func aFunctionOverTheLimitIsBuiltInBatches() async throws {
+    @Test("Given a function over the limit, when the suite crashes on the whole schema, then it is built in batches")
+    func aFunctionOverTheLimitIsBuiltInBatchesAfterTheSuiteCrashes() async throws {
         let fixture = try Fixture(mutantCount: SchemaBatches.mutantsPerFunction + 1)
         defer { fixture.cleanUp() }
-        let launcher = SchemaSuiteLauncher()
+        let launcher = SchemaSuiteLauncher(crashesAgainstSchemasOver: SchemaBatches.mutantsPerFunction)
         let reporter = MockProgressReporter()
 
         let results = try await fixture.run(launcher: launcher, reporter: reporter)
 
         let schemas = await launcher.builtSchemas
-        #expect(schemas.count == 2)
-        #expect(schemas.map { $0.components(separatedBy: "case \"").count - 1 } == [16, 1])
+        #expect(schemas.map { $0.components(separatedBy: "case \"").count - 1 } == [17, 16, 1])
         #expect(Set(results.map(\.descriptor.id)) == Set(fixture.input.mutants.map(\.id)))
+        #expect(await launcher.builtMutatedSources == 0)
         let batches = await reporter.events.compactMap { event -> Int? in
             guard case .schemaBatchStarted(let index, let count, _) = event, count == 2 else { return nil }
             return index
         }
         #expect(batches == [1, 2])
+        let splitting = await reporter.events.compactMap { event -> Bool? in
+            guard case .schemaSuiteFailed(let splitting) = event else { return nil }
+            return splitting
+        }
+        #expect(splitting == [true])
+    }
+
+    @Test("Given a function over the batch limit, when the suite passes on the whole schema, then it is built once")
+    func aFunctionOverTheLimitBuildsOnceWhenTheSuitePasses() async throws {
+        let fixture = try Fixture(mutantCount: SchemaBatches.mutantsPerFunction + 1)
+        defer { fixture.cleanUp() }
+        let launcher = SchemaSuiteLauncher()
+        let reporter = MockProgressReporter()
+
+        _ = try await fixture.run(launcher: launcher, reporter: reporter)
+
+        #expect(await launcher.builtSchemas.count == 1)
+        let reportedBatch = await reporter.events.contains { event in
+            if case .schemaBatchStarted = event { return true }
+            return false
+        }
+        #expect(!reportedBatch)
+    }
+
+    @Test("Given the suite also crashes on every batch, when run, then the batches' mutants are built one by one")
+    func batchesThatCrashTooFallBackToOneByOne() async throws {
+        let fixture = try Fixture(mutantCount: SchemaBatches.mutantsPerFunction + 1)
+        defer { fixture.cleanUp() }
+        let launcher = SchemaSuiteLauncher(crashesAgainstSchemasOver: 0)
+        let reporter = MockProgressReporter()
+
+        let results = try await fixture.run(launcher: launcher, reporter: reporter)
+
+        #expect(results.count == fixture.input.mutants.count)
+        #expect(await launcher.builtMutatedSources == fixture.input.mutants.count)
+        let splitting = await reporter.events.compactMap { event -> Bool? in
+            guard case .schemaSuiteFailed(let splitting) = event else { return nil }
+            return splitting
+        }
+        #expect(splitting == [true, false, false])
     }
 
     @Test("Given every function within the limit, when run, then the schema is built once and no batch is reported")
@@ -46,25 +86,25 @@ struct MutantExecutorSchemaBatchTests {
     func aSuiteThatCrashesOnlyAgainstTheSchemaFallsBack() async throws {
         let fixture = try Fixture(mutantCount: 2)
         defer { fixture.cleanUp() }
-        let launcher = SchemaSuiteLauncher(crashesAgainstSchema: true)
+        let launcher = SchemaSuiteLauncher(crashesAgainstSchemasOver: 0)
         let reporter = MockProgressReporter()
 
         let results = try await fixture.run(launcher: launcher, reporter: reporter)
 
         #expect(results.map(\.status) == [.survived, .survived])
         #expect(await launcher.builtMutatedSources == 2)
-        let reportedFallback = await reporter.events.contains { event in
-            if case .schemaSuiteFailed = event { return true }
-            return false
+        let splitting = await reporter.events.compactMap { event -> Bool? in
+            guard case .schemaSuiteFailed(let splitting) = event else { return nil }
+            return splitting
         }
-        #expect(reportedFallback)
+        #expect(splitting == [false])
     }
 
     @Test("Given the unmutated suite also crashes without the schema, when run, then the run stops")
     func aSuiteThatCrashesEverywhereStopsTheRun() async throws {
         let fixture = try Fixture(mutantCount: 2)
         defer { fixture.cleanUp() }
-        let launcher = SchemaSuiteLauncher(crashesAgainstSchema: true, crashesUnmutated: true)
+        let launcher = SchemaSuiteLauncher(crashesAgainstSchemasOver: 0, crashesUnmutated: true)
 
         await #expect(throws: BaselineError.self) {
             _ = try await fixture.run(launcher: launcher, reporter: MockProgressReporter())
@@ -123,13 +163,13 @@ struct MutantExecutorSchemaBatchTests {
 }
 
 private actor SchemaSuiteLauncher: ProcessLaunching {
-    private let crashesAgainstSchema: Bool
+    private let crashesAgainstSchemasOver: Int?
     private let crashesUnmutated: Bool
     private(set) var builtSchemas: [String] = []
     private(set) var builtMutatedSources = 0
 
-    init(crashesAgainstSchema: Bool = false, crashesUnmutated: Bool = false) {
-        self.crashesAgainstSchema = crashesAgainstSchema
+    init(crashesAgainstSchemasOver: Int? = nil, crashesUnmutated: Bool = false) {
+        self.crashesAgainstSchemasOver = crashesAgainstSchemasOver
         self.crashesUnmutated = crashesUnmutated
     }
 
@@ -147,7 +187,8 @@ private actor SchemaSuiteLauncher: ProcessLaunching {
         let source =
             (try? String(contentsOf: request.workingDirectoryURL.appendingPathComponent("Foo.swift"), encoding: .utf8))
             ?? ""
-        let isSchema = source.contains("case \"\(MutantID.prefix)")
+        let caseCount = source.components(separatedBy: "case \"\(MutantID.prefix)").count - 1
+        let isSchema = caseCount > 0
 
         if request.executableURL.lastPathComponent == "swift", request.arguments.first == "build" {
             if isSchema {
@@ -162,7 +203,10 @@ private actor SchemaSuiteLauncher: ProcessLaunching {
             request.additionalEnvironment["__SWIFT_MUTATION_TESTING_ACTIVE"]
             ?? request.environment?["__SWIFT_MUTATION_TESTING_ACTIVE"] ?? ""
         let crashes =
-            active.isEmpty && (isSchema ? crashesAgainstSchema : crashesUnmutated && !source.contains("false"))
+            active.isEmpty
+            && (isSchema
+                ? caseCount > (crashesAgainstSchemasOver ?? .max)
+                : crashesUnmutated && !source.contains("false"))
         return crashes ? (1, "") : (0, "")
     }
 }
