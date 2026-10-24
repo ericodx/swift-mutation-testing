@@ -33,6 +33,17 @@ struct MutantExecutor: Sendable {
         let pool: SimulatorPool
         let artifact: BuildArtifact?
         let schemaBuildExcluded: [MutantDescriptor]
+        let splitsOnSuiteFailure: Bool
+    }
+
+    private struct BatchState {
+        var checkedUnmutatedBuild = false
+        var pool: SimulatorPool?
+    }
+
+    private struct BatchOutcome {
+        var results: [ExecutionResult] = []
+        var batches: [RunnerInput] = []
     }
 
     func execute(_ input: RunnerInput) async throws -> [ExecutionResult] {
@@ -77,66 +88,76 @@ struct MutantExecutor: Sendable {
         deps: ExecutionDeps,
         reporter: any ProgressReporter
     ) async throws -> [ExecutionResult] {
-        let batches = SchemaBatches().split(input)
         let installer = SchemaInstaller(sandbox: sandbox, projectPath: input.projectPath)
-        var installed = input.schematizedFiles
-        var checkedUnmutatedBuild = false
-        var pool: SimulatorPool?
-        var results: [ExecutionResult] = []
+        var state = BatchState()
 
         do {
-            for (offset, batch) in batches.enumerated() {
-                if batches.count > 1 {
-                    await reporter.report(
-                        .schemaBatchStarted(index: offset + 1, count: batches.count, limit: SchemaBatches().limit)
-                    )
-                    try installer.install(batch.schematizedFiles, replacing: installed)
-                    installed = batch.schematizedFiles
-                }
+            let whole = try await runBatch(
+                input, splitsOnSuiteFailure: true, sandbox: sandbox, deps: deps, state: &state
+            )
+            var results = whole.results
+            var installed = input.schematizedFiles
 
-                try environment.verifier.verify(
-                    schematizedFiles: batch.schematizedFiles, mutants: batch.mutants,
-                    sandbox: sandbox, projectPath: input.projectPath
+            for (offset, batch) in whole.batches.enumerated() {
+                await reporter.report(
+                    .schemaBatchStarted(index: offset + 1, count: whole.batches.count, limit: SchemaBatches().limit)
                 )
-
-                let (artifact, schemaBuildExcluded) = try await buildArtifact(
-                    sandbox: sandbox, input: batch, deps: deps
-                )
-                if artifact == nil, !batch.mutants.isEmpty, !checkedUnmutatedBuild {
-                    try await UnmutatedBuildCheck(
-                        configuration: configuration, stage: BuildStage(launcher: deps.launcher),
-                        sandboxFactory: environment.sandboxFactory
-                    ).verify(projectPath: input.projectPath)
-                    checkedUnmutatedBuild = true
-                }
-
-                let activePool: SimulatorPool
-                if let pool {
-                    activePool = pool
-                } else {
-                    activePool = try await makePool(reporter: reporter)
-                    pool = activePool
-                }
-
-                results += try await runAllMutants(
-                    MutantRunContext(
-                        deps: deps,
-                        input: batch,
-                        sandbox: sandbox,
-                        pool: activePool,
-                        artifact: artifact,
-                        schemaBuildExcluded: schemaBuildExcluded
-                    )
-                )
+                try installer.install(batch.schematizedFiles, replacing: installed)
+                installed = batch.schematizedFiles
+                results += try await runBatch(
+                    batch, splitsOnSuiteFailure: false, sandbox: sandbox, deps: deps, state: &state
+                ).results
             }
+
             try Self.requireObservedActivation(in: results)
+            await state.pool?.tearDown()
+            return results
         } catch {
-            await pool?.tearDown()
+            await state.pool?.tearDown()
             throw error
         }
+    }
 
-        await pool?.tearDown()
-        return results
+    private func runBatch(
+        _ batch: RunnerInput,
+        splitsOnSuiteFailure: Bool,
+        sandbox: Sandbox,
+        deps: ExecutionDeps,
+        state: inout BatchState
+    ) async throws -> BatchOutcome {
+        try environment.verifier.verify(
+            schematizedFiles: batch.schematizedFiles, mutants: batch.mutants,
+            sandbox: sandbox, projectPath: batch.projectPath
+        )
+
+        let (artifact, schemaBuildExcluded) = try await buildArtifact(sandbox: sandbox, input: batch, deps: deps)
+        if artifact == nil, !batch.mutants.isEmpty, !state.checkedUnmutatedBuild {
+            try await UnmutatedBuildCheck(
+                configuration: configuration, stage: BuildStage(launcher: deps.launcher),
+                sandboxFactory: environment.sandboxFactory
+            ).verify(projectPath: batch.projectPath)
+            state.checkedUnmutatedBuild = true
+        }
+
+        let pool: SimulatorPool
+        if let existing = state.pool {
+            pool = existing
+        } else {
+            pool = try await makePool(reporter: deps.reporter)
+            state.pool = pool
+        }
+
+        return try await runAllMutants(
+            MutantRunContext(
+                deps: deps,
+                input: batch,
+                sandbox: sandbox,
+                pool: pool,
+                artifact: artifact,
+                schemaBuildExcluded: schemaBuildExcluded,
+                splitsOnSuiteFailure: splitsOnSuiteFailure
+            )
+        )
     }
 
     private func makePool(reporter: any ProgressReporter) async throws -> SimulatorPool {
@@ -192,7 +213,7 @@ struct MutantExecutor: Sendable {
 
     private func runAllMutants(
         _ context: MutantRunContext
-    ) async throws -> [ExecutionResult] {
+    ) async throws -> BatchOutcome {
         let deps = context.deps
         let input = context.input
         let sandbox = context.sandbox
@@ -203,6 +224,7 @@ struct MutantExecutor: Sendable {
         let incompatible = input.mutants.filter { !$0.isSchematizable }
 
         var results: [ExecutionResult] = []
+        var batches: [RunnerInput] = []
 
         var reroutedToIncompatible: [MutantDescriptor] = []
         var sourceCache: [String: String] = [:]
@@ -230,7 +252,14 @@ struct MutantExecutor: Sendable {
             ) {
                 results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
             } else {
-                await reroute(testableSchematizable)
+                let remaining = input.excluding(excludedIDs).keeping(testableSchematizable)
+                let split = context.splitsOnSuiteFailure ? SchemaBatches().split(remaining) : [remaining]
+                await deps.reporter.report(.schemaSuiteFailed(splitting: split.count > 1))
+                if split.count > 1 {
+                    batches = split
+                } else {
+                    await reroute(testableSchematizable)
+                }
             }
         } else if !testableSchematizable.isEmpty {
             results += try await runFallback(deps: deps, input: input.excluding(excludedIDs), pool: pool)
@@ -240,7 +269,7 @@ struct MutantExecutor: Sendable {
             deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool, importStyle: input.importStyle
         )
 
-        return results
+        return BatchOutcome(results: results, batches: batches)
     }
 
     private func baselineContext(
@@ -272,7 +301,6 @@ struct MutantExecutor: Sendable {
             try await UnmutatedSuiteCheck(
                 configuration: configuration, deps: deps, sandboxFactory: environment.sandboxFactory
             ).verify(projectPath: projectPath, pool: pool)
-            await deps.reporter.report(.schemaSuiteFailed)
             return nil
         }
     }

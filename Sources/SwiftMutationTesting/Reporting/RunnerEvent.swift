@@ -6,7 +6,7 @@ enum RunnerEvent: Sendable {
     case buildStarted
     case buildFinished(duration: Double)
     case schemaNarrowed(excludedCount: Int)
-    case schemaSuiteFailed
+    case schemaSuiteFailed(splitting: Bool)
     case workersReady(count: Int, usesSimulators: Bool)
 
     case mutantStarted(descriptor: MutantDescriptor, index: Int, total: Int)

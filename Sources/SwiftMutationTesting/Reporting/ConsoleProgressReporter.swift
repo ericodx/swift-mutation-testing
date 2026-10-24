@@ -30,10 +30,13 @@ actor ConsoleProgressReporter: ProgressReporter {
                 : "\(excludedCount) mutants, to be built one by one"
             StandardOutput.write("  ⚠ Schema did not build: retrying without \(mutants)")
 
-        case .schemaSuiteFailed:
+        case .schemaSuiteFailed(let splitting):
+            let fallback =
+                splitting
+                ? "testing its largest functions in batches"
+                : "building its mutants one by one"
             StandardOutput.write(
-                "  ⚠ The unmutated suite fails against the schema build but passes without it: "
-                    + "building this batch's mutants one by one"
+                "  ⚠ The unmutated suite fails against the schema build but passes without it: \(fallback)"
             )
 
         case .workersReady(let count, let usesSimulators):
