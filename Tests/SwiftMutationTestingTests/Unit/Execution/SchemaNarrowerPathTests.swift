@@ -27,6 +27,41 @@ struct SchemaNarrowerPathTests {
         #expect(excluded.map(\.id) == [fixture.mutants[0].id, fixture.mutants[2].id])
     }
 
+    @Test(
+        "Given a warning, note or remark inside a mutant's case, when narrowed, then only the error blames its mutant",
+        arguments: ["warning: ", "\u{1B}[1;33mwarning: \u{1B}[1;39m", "note: ", "remark: "]
+    )
+    func onlyErrorsBlameAMutant(label: String) async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+
+        let (_, excluded) = try await fixture.narrow(diagnostics: [(0, "error: "), (1, label)])
+
+        #expect(excluded.map(\.id) == [fixture.mutants[0].id])
+    }
+
+    @Test("Given a warning labelled before its path, when narrowed, then it blames no mutant")
+    func aWarningLabelledBeforeItsPathBlamesNoMutant() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+
+        let (_, excluded) = try await fixture.narrow(diagnostics: [(0, "error: "), (1, nil)])
+
+        #expect(excluded.map(\.id) == [fixture.mutants[0].id])
+    }
+
+    @Test("Given only warnings in a file, when narrowed, then no mutant is excluded and its schema stays")
+    func onlyWarningsLeaveTheSchemaInPlace() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+
+        let (artifact, excluded) = try await fixture.narrow(diagnostics: [(1, "warning: ")])
+
+        #expect(artifact == nil)
+        #expect(excluded.isEmpty)
+        #expect(try String(contentsOf: fixture.sandboxCopy, encoding: .utf8) == fixture.schema)
+    }
+
     private struct Fixture {
         static let original = """
             struct Foo {
@@ -83,13 +118,22 @@ struct SchemaNarrowerPathTests {
             )
         }
 
+        var sandboxCopy: URL {
+            sandbox.rootURL.appendingPathComponent("Sources/Foo.swift")
+        }
+
         func narrow(blaming indices: [Int]) async throws -> (BuildArtifact?, [MutantDescriptor]) {
+            try await narrow(diagnostics: indices.map { ($0, "error: ") })
+        }
+
+        func narrow(diagnostics: [(index: Int, label: String?)]) async throws -> (BuildArtifact?, [MutantDescriptor]) {
             let copy = CanonicalPath.make(for: sandbox.rootURL.path) + "/Sources/Foo.swift"
             let lines = schema.components(separatedBy: "\n")
-            let output = try indices.map { index in
+            let output = try diagnostics.map { index, label in
                 let marker = "case \"\(mutants[index].id)\":"
                 let line = try #require(lines.firstIndex { $0.trimmingCharacters(in: .whitespaces) == marker })
-                return "\(copy):\(line + 2):5: error: cannot find 'y' in scope"
+                guard let label else { return "warning: \(copy):\(line + 2):5 initialization was never used" }
+                return "\(copy):\(line + 2):5: \(label)cannot find 'y' in scope"
             }.joined(separator: "\n")
             let narrower = SchemaNarrower(
                 stage: BuildStage(launcher: MockProcessLauncher(exitCode: 0)),
