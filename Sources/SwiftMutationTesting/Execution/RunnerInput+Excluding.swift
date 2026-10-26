@@ -32,4 +32,17 @@ extension RunnerInput {
             importStyle: importStyle
         )
     }
+
+    func keeping(_ kept: [MutantDescriptor]) -> RunnerInput {
+        RunnerInput(
+            projectPath: projectPath,
+            projectType: projectType,
+            timeout: timeout,
+            concurrency: concurrency,
+            noCache: noCache,
+            schematizedFiles: schematizedFiles,
+            mutants: kept,
+            importStyle: importStyle
+        )
+    }
 }
