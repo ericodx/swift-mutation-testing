@@ -7,8 +7,10 @@ enum SupportDeclarations {
         SHA256.hash(data: Data(path.utf8)).prefix(4).map { String(format: "%02x", $0) }.joined()
     }
 
+    static let identifierPrefix = "__swiftMutationTestingID_"
+
     static func identifier(for path: String) -> String {
-        "__swiftMutationTestingID_\(suffix(for: path))"
+        "\(identifierPrefix)\(suffix(for: path))"
     }
 
     static func activationCall(for path: String) -> String {
