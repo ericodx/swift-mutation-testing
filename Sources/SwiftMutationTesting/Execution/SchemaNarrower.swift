@@ -76,7 +76,21 @@ struct SchemaNarrower: Sendable {
 
         guard let lineNumber = Int(digits), afterPath.dropFirst(digits.count).first == ":" else { return nil }
 
+        let afterLine = afterPath.dropFirst(digits.count + 1)
+        let afterColumn = afterLine.drop { $0.isNumber }.drop { $0 == ":" }
+        guard !isNonErrorLabel(line[..<rootRange.lowerBound], atEnd: true),
+            !isNonErrorLabel(afterColumn, atEnd: false)
+        else { return nil }
+
         return (String(fromRoot[..<marker.upperBound].dropLast()), lineNumber)
+    }
+
+    private static let nonErrorLabels = ["warning:", "note:", "remark:"]
+
+    private static func isNonErrorLabel(_ text: Substring, atEnd: Bool) -> Bool {
+        let plain = text.replacingOccurrences(of: "\u{1B}\\[[0-9;]*m", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return nonErrorLabels.contains { atEnd ? plain.hasSuffix($0) : plain.hasPrefix($0) }
     }
 
     static func excludeProblematicMutants(
