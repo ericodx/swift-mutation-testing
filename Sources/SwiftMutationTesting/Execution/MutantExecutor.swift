@@ -42,8 +42,8 @@ struct MutantExecutor: Sendable {
     }
 
     private struct BatchOutcome {
-        var results: [ExecutionResult] = []
-        var batches: [RunnerInput] = []
+        var results: [ExecutionResult]
+        var batches: [RunnerInput]
     }
 
     func execute(_ input: RunnerInput) async throws -> [ExecutionResult] {

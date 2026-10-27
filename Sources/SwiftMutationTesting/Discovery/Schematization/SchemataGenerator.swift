@@ -20,11 +20,6 @@ struct SchemataGenerator: Sendable {
             let scope = group.scope
             let start = edits.current(scope.bodyStartOffset)
             let end = edits.current(scope.bodyEndOffset)
-            guard UTF8Splice.isRange(from: start, to: end, in: bytes) else {
-                discarded += group.mutations.map(\.point)
-                continue
-            }
-
             bytes.replaceSubrange(start ..< end, with: switchBody.utf8)
             edits.record(
                 start: scope.bodyStartOffset,
@@ -73,6 +68,9 @@ struct SchemataGenerator: Sendable {
         let statementsEnd = edits.current(scope.statementsEndOffset)
 
         guard
+            UTF8Splice.isRange(
+                from: edits.current(scope.bodyStartOffset), to: edits.current(scope.bodyEndOffset), in: bytes
+            ),
             UTF8Splice.isRange(from: statementsStart, to: statementsEnd, in: bytes),
             let originalStatements = String(bytes: bytes[statementsStart ..< statementsEnd], encoding: .utf8)
         else {
