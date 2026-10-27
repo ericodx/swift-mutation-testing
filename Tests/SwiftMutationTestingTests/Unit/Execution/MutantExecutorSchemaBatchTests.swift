@@ -111,6 +111,17 @@ struct MutantExecutorSchemaBatchTests {
         }
     }
 
+    @Test("Given the unmutated project no longer builds after the schema suite fails, when run, then the run stops")
+    func anUnmutatedBuildFailureAfterTheSchemaSuiteFailsStopsTheRun() async throws {
+        let fixture = try Fixture(mutantCount: 2)
+        defer { fixture.cleanUp() }
+        let launcher = SchemaSuiteLauncher(crashesAgainstSchemasOver: 0, unmutatedBuildOutput: "Validate plug-in")
+
+        await #expect(throws: BaselineError.buildFailed(output: "Validate plug-in")) {
+            _ = try await fixture.run(launcher: launcher, reporter: MockProgressReporter())
+        }
+    }
+
     // MARK: - Private
 
     private struct Fixture {
@@ -165,12 +176,14 @@ struct MutantExecutorSchemaBatchTests {
 private actor SchemaSuiteLauncher: ProcessLaunching {
     private let crashesAgainstSchemasOver: Int?
     private let crashesUnmutated: Bool
+    private let unmutatedBuildOutput: String?
     private(set) var builtSchemas: [String] = []
     private(set) var builtMutatedSources = 0
 
-    init(crashesAgainstSchemasOver: Int? = nil, crashesUnmutated: Bool = false) {
+    init(crashesAgainstSchemasOver: Int? = nil, crashesUnmutated: Bool = false, unmutatedBuildOutput: String? = nil) {
         self.crashesAgainstSchemasOver = crashesAgainstSchemasOver
         self.crashesUnmutated = crashesUnmutated
+        self.unmutatedBuildOutput = unmutatedBuildOutput
     }
 
     func launch(
@@ -195,6 +208,8 @@ private actor SchemaSuiteLauncher: ProcessLaunching {
                 builtSchemas.append(source)
             } else if source.contains("false") {
                 builtMutatedSources += 1
+            } else if let unmutatedBuildOutput {
+                return (1, unmutatedBuildOutput)
             }
             return (0, "")
         }
