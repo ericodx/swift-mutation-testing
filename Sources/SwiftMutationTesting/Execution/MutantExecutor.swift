@@ -7,6 +7,7 @@ struct MutantExecutor: Sendable {
         var verifier = ApplicationVerifier()
         var testFilesHasher = TestFilesHasher()
         var reporter: (any ProgressReporter)?
+        var timings = PhaseTimings()
     }
 
     init(
@@ -65,17 +66,25 @@ struct MutantExecutor: Sendable {
             input: input, testFiles: testFiles, cacheStore: cacheStore, reporter: reporter
         )
 
-        let sandbox = try await environment.sandboxFactory.create(
-            projectPath: input.projectPath,
-            schematizedFiles: input.schematizedFiles
-        )
-        SandboxCleaner.register(sandbox)
-        defer {
-            sandbox.release(keepingFor: configuration.build.reproduction)
-            SandboxCleaner.deregister()
+        let sandbox = try await PhaseTimings.measure(.sandbox, in: deps.timings) {
+            try await environment.sandboxFactory.create(
+                projectPath: input.projectPath,
+                schematizedFiles: input.schematizedFiles
+            )
         }
+        SandboxCleaner.register(sandbox)
+        defer { SandboxCleaner.deregister() }
 
-        let results = try await run(input, in: sandbox, deps: deps, reporter: reporter)
+        let results: [ExecutionResult]
+        do {
+            results = try await run(input, in: sandbox, deps: deps, reporter: reporter)
+        } catch {
+            sandbox.release(keepingFor: configuration.build.reproduction)
+            throw error
+        }
+        await PhaseTimings.measure(.teardown, in: deps.timings) {
+            sandbox.release(keepingFor: configuration.build.reproduction)
+        }
         try await cacheStore.persist()
         try await cacheStore.persistMetadata(metadata)
 
@@ -110,7 +119,7 @@ struct MutantExecutor: Sendable {
             }
 
             try Self.requireObservedActivation(in: results)
-            await state.pool?.tearDown()
+            await PhaseTimings.measure(.teardown, in: deps.timings) { await state.pool?.tearDown() }
             return results
         } catch {
             await state.pool?.tearDown()
@@ -132,10 +141,12 @@ struct MutantExecutor: Sendable {
 
         let (artifact, schemaBuildExcluded) = try await buildArtifact(sandbox: sandbox, input: batch, deps: deps)
         if artifact == nil, !batch.mutants.isEmpty, !state.checkedUnmutatedBuild {
-            try await UnmutatedBuildCheck(
-                configuration: configuration, stage: BuildStage(launcher: deps.launcher),
-                sandboxFactory: environment.sandboxFactory
-            ).verify(projectPath: batch.projectPath)
+            try await PhaseTimings.measure(.unmutatedBuildCheck, in: deps.timings) {
+                try await UnmutatedBuildCheck(
+                    configuration: configuration, stage: BuildStage(launcher: deps.launcher),
+                    sandboxFactory: environment.sandboxFactory
+                ).verify(projectPath: batch.projectPath)
+            }
             state.checkedUnmutatedBuild = true
         }
 
@@ -143,7 +154,7 @@ struct MutantExecutor: Sendable {
         if let existing = state.pool {
             pool = existing
         } else {
-            pool = try await makePool(reporter: deps.reporter)
+            pool = try await makePool(deps: deps)
             state.pool = pool
         }
 
@@ -160,10 +171,13 @@ struct MutantExecutor: Sendable {
         )
     }
 
-    private func makePool(reporter: any ProgressReporter) async throws -> SimulatorPool {
-        let pool = try await SimulatorPool.make(for: configuration, launcher: launcher)
-        try await pool.setUp()
-        await reporter.report(.workersReady(count: pool.size, usesSimulators: pool.usesSimulators))
+    private func makePool(deps: ExecutionDeps) async throws -> SimulatorPool {
+        let pool = try await PhaseTimings.measure(.workers, in: deps.timings) {
+            let pool = try await SimulatorPool.make(for: configuration, launcher: launcher)
+            try await pool.setUp()
+            return pool
+        }
+        await deps.reporter.report(.workersReady(count: pool.size, usesSimulators: pool.usesSimulators))
         return pool
     }
 
@@ -207,7 +221,8 @@ struct MutantExecutor: Sendable {
         return ExecutionDeps(
             launcher: launcher, cacheStore: cacheStore, reporter: reporter,
             counter: counter, killerTestFileResolver: resolver,
-            targetedSuites: TargetedSuites.declared(in: testFiles.paths, read: { testFiles.contents[$0] })
+            targetedSuites: TargetedSuites.declared(in: testFiles.paths, read: { testFiles.contents[$0] }),
+            timings: environment.timings
         )
     }
 
@@ -279,6 +294,7 @@ struct MutantExecutor: Sendable {
         deps: ExecutionDeps,
         projectPath: String
     ) async throws -> TestExecutionContext? {
+        let start = Date()
         do {
             var bundles: [TestBundle] = []
             var testFilter = configuration.build.testTarget
@@ -296,11 +312,15 @@ struct MutantExecutor: Sendable {
             if case .xcode = configuration.build.projectType {
                 try await TestExecutionStage(deps: deps).requireXcodeBaselineToPass(in: context)
             }
+            await deps.timings.record(.baseline, start: start)
             return context
         } catch is BaselineError {
-            try await UnmutatedSuiteCheck(
-                configuration: configuration, deps: deps, sandboxFactory: environment.sandboxFactory
-            ).verify(projectPath: projectPath, pool: pool)
+            await deps.timings.record(.baseline, start: start)
+            try await PhaseTimings.measure(.unmutatedSuiteCheck, in: deps.timings) {
+                try await UnmutatedSuiteCheck(
+                    configuration: configuration, deps: deps, sandboxFactory: environment.sandboxFactory
+                ).verify(projectPath: projectPath, pool: pool)
+            }
             return nil
         }
     }
@@ -348,9 +368,11 @@ struct MutantExecutor: Sendable {
                     destination: destination,
                     timeout: configuration.build.buildTimeout
                 )
+                await deps.timings.record(.schemaBuild, start: start)
                 await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
                 return (artifact, [])
             } catch BuildError.compilationFailed(_) {
+                await deps.timings.record(.schemaBuild, start: start)
                 return (nil, [])
             }
 
@@ -360,11 +382,14 @@ struct MutantExecutor: Sendable {
                     sandbox: sandbox,
                     timeout: configuration.build.buildTimeout
                 )
+                await deps.timings.record(.schemaBuild, start: start)
                 await deps.reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
                 return (artifact, [])
             } catch BuildError.compilationFailed(let output) {
+                await deps.timings.record(.schemaBuild, start: start)
                 return try await SchemaNarrower(
-                    stage: stage, reporter: deps.reporter, buildTimeout: configuration.build.buildTimeout
+                    stage: stage, reporter: deps.reporter, buildTimeout: configuration.build.buildTimeout,
+                    timings: deps.timings
                 ).narrow(after: output, sandbox: sandbox, input: input, start: start)
             }
         }

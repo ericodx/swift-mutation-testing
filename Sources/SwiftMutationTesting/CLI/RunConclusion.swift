@@ -6,9 +6,23 @@ struct RunConclusion: Sendable {
 
     func conclude(_ summary: RunnerSummary, identity: RunIdentity) throws -> ExitCode {
         TextReporter(projectRoot: configuration.projectPath).report(summary)
+        Self.reportTiming(summary, configuration: configuration)
         let gate = Self.evaluateGate(summary, configuration: configuration, baseline: baseline)
         ReportWriter(configuration: configuration).write(summary, gate: gate, identity: identity)
         return try Self.applyGate(gate, summary: summary, configuration: configuration)
+    }
+
+    static func reportTiming(_ summary: RunnerSummary, configuration: RunnerConfiguration) {
+        guard !summary.phases.isEmpty else { return }
+        let reporter = TimingReporter()
+        if configuration.reporting.timing {
+            reporter.report(summary)
+        }
+        if let writer = MutantLogWriter(directory: configuration.reporting.keepLogsPath),
+            let data = try? reporter.json(summary)
+        {
+            writer.write(timing: data)
+        }
     }
 
     static func loadBaseline(for configuration: RunnerConfiguration) throws -> Baseline? {

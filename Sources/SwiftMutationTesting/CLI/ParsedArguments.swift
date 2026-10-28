@@ -35,6 +35,7 @@ struct ParsedArguments: Sendable {
         var outputs: [ReportFormat: String] = [:]
         var keepLogsPath: String?
         var quiet: Bool = false
+        var timing: Bool = false
     }
 
     struct FilterOptions: Sendable {

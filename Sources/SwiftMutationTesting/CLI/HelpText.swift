@@ -40,6 +40,7 @@ enum HelpText {
           \(ReportFormat.allCases.map(\.helpLine).joined(separator: "\n  "))
           --keep-logs <directory>       Write each mutant's captured test output to <directory>
           --quiet                       Suppress progress output
+          --timing                      Print how the run's time splits between its phases
           --sources-path <path>         Root directory to discover Swift source files (default: project path)
           --exclude <pattern>           Leave out files matching a glob (**/Generated/**) or containing a
                                         path fragment (/Generated/) (repeatable)

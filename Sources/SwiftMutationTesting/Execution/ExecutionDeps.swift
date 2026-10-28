@@ -5,4 +5,5 @@ struct ExecutionDeps: Sendable {
     let counter: MutationCounter
     let killerTestFileResolver: KillerTestFileResolver
     var targetedSuites: [String: TargetedSuite] = [:]
+    var timings = PhaseTimings()
 }

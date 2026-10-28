@@ -5,6 +5,7 @@ struct SchemaNarrower: Sendable {
     let stage: BuildStage
     let reporter: any ProgressReporter
     let buildTimeout: Double
+    var timings: PhaseTimings?
 
     func narrow(
         after output: String,
@@ -47,11 +48,14 @@ struct SchemaNarrower: Sendable {
         let allExcluded = alreadyExcluded + newlyExcluded
         await reporter.report(.schemaNarrowed(excludedCount: newlyExcluded.count))
 
+        let roundStart = Date()
         do {
             let artifact = try await stage.buildSPM(sandbox: sandbox, timeout: buildTimeout)
+            await timings?.record(.schemaNarrowing, start: roundStart)
             await reporter.report(.buildFinished(duration: Date().timeIntervalSince(start)))
             return (artifact, allExcluded)
         } catch BuildError.compilationFailed(let newOutput) {
+            await timings?.record(.schemaNarrowing, start: roundStart)
             return try await narrow(
                 after: newOutput, sandbox: sandbox, input: input, start: start, alreadyExcluded: allExcluded
             )

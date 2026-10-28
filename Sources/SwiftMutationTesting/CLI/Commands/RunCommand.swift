@@ -53,11 +53,15 @@ struct RunCommand: Command {
             )
         }
 
+        let timings = PhaseTimings()
+        await timings.record(.discovery, start: Date(timeIntervalSinceNow: -discovered.duration))
+
         let start = Date()
         var results = discovered.resumed
         if !input.mutants.isEmpty || discovered.resumed.isEmpty {
             results += try await MutantExecutor(
-                configuration: configuration, launcher: executionLauncher, planJournal: discovered.journal
+                configuration: configuration, launcher: executionLauncher, planJournal: discovered.journal,
+                environment: MutantExecutor.Environment(timings: timings)
             ).execute(input)
         }
         results = MutantID.ordered(results, by: \.descriptor.id)
@@ -65,7 +69,9 @@ struct RunCommand: Command {
             PlanJournal.remove(at: journal.path)
         }
 
-        let summary = RunnerSummary(results: results, totalDuration: Date().timeIntervalSince(start))
+        let summary = RunnerSummary(
+            results: results, totalDuration: Date().timeIntervalSince(start), phases: await timings.entries
+        )
         return try conclusion.conclude(summary, identity: discovered.identity)
     }
 

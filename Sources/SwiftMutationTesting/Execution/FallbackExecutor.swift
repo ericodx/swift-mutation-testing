@@ -1,3 +1,5 @@
+import Foundation
+
 struct FallbackExecutor: Sendable {
     let deps: ExecutionDeps
     let configuration: RunnerConfiguration
@@ -29,6 +31,7 @@ struct FallbackExecutor: Sendable {
             return cached
         }
 
+        let buildStart = Date()
         let sandbox = try await SandboxFactory().create(
             projectPath: input.projectPath,
             schematizedFiles: [file]
@@ -44,8 +47,10 @@ struct FallbackExecutor: Sendable {
         let artifact: BuildArtifact
         do {
             artifact = try await build(sandbox)
+            await deps.timings.record(.fallbackBuilds, start: buildStart)
             await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: true))
         } catch let error as BuildError where Self.isVerdict(error) {
+            await deps.timings.record(.fallbackBuilds, start: buildStart)
             await deps.reporter.report(.fallbackBuildFinished(filePath: file.originalPath, success: false))
             return await markBuildFailure(error, mutants: fileMutants)
         }

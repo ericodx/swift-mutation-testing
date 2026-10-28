@@ -6,7 +6,7 @@ struct ConfigurationResolver: Sendable {
     static let fileKeys: Set<String> = Set(
         [
             "scheme", "destination", "workspace", "project", "test-target", "timeout", "build-timeout",
-            "concurrency", "no-cache", "testing-framework", "keep-logs", "quiet", "sources-path", "exclude",
+            "concurrency", "no-cache", "testing-framework", "keep-logs", "quiet", "timing", "sources-path", "exclude",
             "exclude-patterns", "operators", "disabled-mutators", "operator-tier", "min-score", "max-score-drop",
             "max-new-survivors", "max-integrity-warnings", "baseline", "xcodebuild-args",
         ] + ReportFormat.allCases.map(\.fileKey)
@@ -62,13 +62,7 @@ struct ConfigurationResolver: Sendable {
                 noCache: try cliArguments.build.noCache || flag(fileValues["no-cache"], key: "no-cache"),
                 testingFramework: testingFramework
             ),
-            reporting: .init(
-                outputs: ReportFormat.allCases.reduce(into: [:]) { outputs, format in
-                    outputs[format] = cliArguments.reporting.outputs[format] ?? fileValues[format.fileKey]
-                },
-                keepLogsPath: cliArguments.reporting.keepLogsPath ?? fileValues["keep-logs"],
-                quiet: try cliArguments.reporting.quiet || flag(fileValues["quiet"], key: "quiet")
-            ),
+            reporting: try resolvedReporting(cli: cliArguments, fileValues: fileValues),
             filter: .init(
                 sourcesPath: cliArguments.filter.sourcesPath ?? fileValues["sources-path"],
                 excludePatterns: resolveList(
@@ -185,6 +179,19 @@ struct ConfigurationResolver: Sendable {
             return concurrency
         }
         return RunnerConfiguration.defaultConcurrency
+    }
+
+    private func resolvedReporting(
+        cli: ParsedArguments, fileValues: [String: String]
+    ) throws -> RunnerConfiguration.ReportingOptions {
+        .init(
+            outputs: ReportFormat.allCases.reduce(into: [:]) { outputs, format in
+                outputs[format] = cli.reporting.outputs[format] ?? fileValues[format.fileKey]
+            },
+            keepLogsPath: cli.reporting.keepLogsPath ?? fileValues["keep-logs"],
+            quiet: try cli.reporting.quiet || flag(fileValues["quiet"], key: "quiet"),
+            timing: try cli.reporting.timing || flag(fileValues["timing"], key: "timing")
+        )
     }
 
     private func warnAboutUnknownKeys(in fileValues: [String: String]) {

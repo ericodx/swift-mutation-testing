@@ -33,6 +33,13 @@ struct MutantLogWriter: Sendable {
         try? output.write(to: directory.appendingPathComponent("baseline.log"), atomically: true, encoding: .utf8)
     }
 
+    static let timingFileName = "timing.json"
+
+    func write(timing: Data) {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? timing.write(to: directory.appendingPathComponent(Self.timingFileName), options: .atomic)
+    }
+
     // MARK: - Private
 
     private func header(
