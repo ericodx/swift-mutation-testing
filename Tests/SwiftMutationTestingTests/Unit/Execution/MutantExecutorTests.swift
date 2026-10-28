@@ -153,6 +153,63 @@ struct MutantExecutorTests {
         #expect(await launcher.requests.filter { $0.arguments.first == verb }.count == 2)
     }
 
+    @Test("Given the schema does not build, when the unmutated project is checked, then it builds in the same sandbox")
+    func theUnmutatedBuildCheckRunsInTheSchemaSandbox() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+        let launcher = BuildSnapshotLauncher(base: MockProcessLauncher(exitCode: 1, output: "Validate plug-in"))
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm), launcher: launcher
+        )
+
+        await #expect(throws: BaselineError.buildFailed(output: "Validate plug-in")) {
+            try await executor.execute(
+                makeRunnerInput(
+                    projectPath: dir.path, projectType: .spm,
+                    schematizedFiles: [
+                        SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")
+                    ],
+                    mutants: [makeMutantDescriptor(id: "m0", filePath: sourceFile.path, isSchematizable: true)]
+                )
+            )
+        }
+
+        #expect(await launcher.builds.map(\.schematized) == [["Foo.swift"], []])
+        #expect(await launcher.roots.count == 1)
+    }
+
+    @Test("Given an incompatible mutant, when execute called, then it builds in the schema sandbox linked back")
+    func incompatibleMutantsReuseTheSchemaSandbox() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let foo = dir.appendingPathComponent("Foo.swift")
+        let bar = dir.appendingPathComponent("Bar.swift")
+        try "let x = true".write(to: foo, atomically: true, encoding: .utf8)
+        try "let y = 1".write(to: bar, atomically: true, encoding: .utf8)
+        let launcher = BuildSnapshotLauncher(base: MockProcessLauncher(exitCode: 0))
+        let executor = MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm), launcher: launcher
+        )
+
+        let results = try await executor.execute(
+            makeRunnerInput(
+                projectPath: dir.path, projectType: .spm,
+                schematizedFiles: [SchematizedFile(originalPath: foo.path, schematizedContent: "let x = false")],
+                mutants: [
+                    makeMutantDescriptor(id: "m0", filePath: foo.path, isSchematizable: true),
+                    makeMutantDescriptor(id: "m1", filePath: bar.path, mutatedSourceContent: "let y = 2"),
+                ]
+            )
+        )
+
+        #expect(results.map(\.status) == [.survived, .survived])
+        #expect(await launcher.builds.map(\.schematized) == [["Foo.swift"], [], ["Bar.swift"]])
+        #expect(await launcher.roots.count == 1)
+        #expect(try String(contentsOf: bar, encoding: .utf8) == "let y = 1")
+    }
+
     @Test("Given incompatible mutant with nil content, when execute called, then the run stops before any build")
     func incompatibleMutantWithNilContentStopsTheRun() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

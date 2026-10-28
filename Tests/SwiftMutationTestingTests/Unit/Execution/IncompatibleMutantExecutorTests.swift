@@ -969,6 +969,37 @@ struct IncompatibleMutantExecutorTests {
         #expect(await launcher.testRunsByRoot.isEmpty)
     }
 
+    @Test("Given a sandbox to reuse and eight workers, when executed, then it is the first warm sandbox and survives")
+    func aReusedSandboxIsTheFirstWarmSandbox() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        try "let x = 1".write(to: dir.appendingPathComponent("Foo.swift"), atomically: true, encoding: .utf8)
+        let reused = try await SandboxFactory().createClean(projectPath: dir.path)
+        defer { try? reused.cleanup() }
+
+        let launcher = WarmSandboxLauncher()
+        let executor = makeIncompatibleMutantExecutorSPM(in: dir, launcher: launcher)
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+
+        let results = try await executor.execute(
+            fourIncompatibleMutants(in: dir),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 8),
+            pool: pool,
+            reusing: reused
+        )
+
+        #expect(results.allSatisfy { $0.status == .survived })
+        #expect(await launcher.buildRoots.count == 2)
+        #expect(await launcher.buildRoots.contains(reused.rootURL.path))
+        #expect(await launcher.testRunsByRoot.values.sorted() == [2, 2])
+        #expect(FileManager.default.fileExists(atPath: reused.rootURL.path))
+        let fooIsLink =
+            try reused.rootURL.appendingPathComponent("Foo.swift")
+            .resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink
+        #expect(fooIsLink == true)
+    }
+
     private func fourIncompatibleMutants(in dir: URL) -> [MutantDescriptor] {
         (0 ..< 4).map {
             makeMutantDescriptor(

@@ -23,6 +23,8 @@ struct FallbackExecutorTests {
 
         let pool = makeSimulatorPool()
         try await pool.setUp()
+        let schema = try await makeSchemaSandbox(projectPath: dir.path)
+        defer { try? schema.sandbox.cleanup() }
 
         let mutant = makeMutantDescriptor(
             id: "m0",
@@ -45,7 +47,7 @@ struct FallbackExecutorTests {
         )
 
         let executor = FallbackExecutor(deps: deps, configuration: config)
-        let results = try await executor.execute(input: input, pool: pool)
+        let results = try await executor.execute(input: input, pool: pool, in: schema)
 
         #expect(results.count == 1)
     }
@@ -59,6 +61,8 @@ struct FallbackExecutorTests {
         let launcher = TwoBundleLauncher()
         let pool = makeSimulatorPool()
         try await pool.setUp()
+        let schema = try await makeSchemaSandbox(projectPath: dir.path)
+        defer { try? schema.sandbox.cleanup() }
         let mutant = makeMutantDescriptor(
             id: "m0", filePath: sourceFile.path, originalText: "true", mutatedText: "false",
             operatorIdentifier: "BooleanLiteralReplacement", replacementKind: .booleanLiteral,
@@ -73,7 +77,7 @@ struct FallbackExecutorTests {
         let results = try await FallbackExecutor(
             deps: makeExecutionDeps(launcher: launcher, cacheStorePath: dir.appendingPathComponent("c.json").path),
             configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm)
-        ).execute(input: input, pool: pool)
+        ).execute(input: input, pool: pool, in: schema)
 
         #expect(results.count == 1)
         #expect(Set(await launcher.runs.map(\.bundle)).isSubset(of: Set(TwoBundleLauncher.bundles)))
@@ -97,6 +101,8 @@ struct FallbackExecutorTests {
 
         let pool = makeSimulatorPool()
         try await pool.setUp()
+        let schema = try await makeSchemaSandbox(projectPath: dir.path)
+        defer { try? schema.sandbox.cleanup() }
 
         let mutant = makeMutantDescriptor(
             id: "m0",
@@ -120,7 +126,7 @@ struct FallbackExecutorTests {
 
         await #expect(throws: BuildError.timedOut(seconds: 0, output: "")) {
             _ = try await FallbackExecutor(deps: deps, configuration: config)
-                .execute(input: input, pool: pool)
+                .execute(input: input, pool: pool, in: schema)
         }
 
         #expect(await deps.cacheStore.result(for: MutantCacheKey.make(for: mutant)) == nil)
@@ -141,6 +147,8 @@ struct FallbackExecutorTests {
         )
         let pool = makeSimulatorPool()
         try await pool.setUp()
+        let schema = try await makeSchemaSandbox(projectPath: dir.path)
+        defer { try? schema.sandbox.cleanup() }
         let mutant = makeMutantDescriptor(id: "m0", filePath: sourceFile.path, isSchematizable: true)
 
         let results = try await FallbackExecutor(deps: deps, configuration: config).execute(
@@ -150,7 +158,8 @@ struct FallbackExecutorTests {
                 schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = 1 -")],
                 mutants: [mutant]
             ),
-            pool: pool
+            pool: pool,
+            in: schema
         )
 
         #expect(results.map(\.status) == [.unviable])
@@ -174,6 +183,8 @@ struct FallbackExecutorTests {
 
         let pool = makeSimulatorPool()
         try await pool.setUp()
+        let schema = try await makeSchemaSandbox(projectPath: dir.path)
+        defer { try? schema.sandbox.cleanup() }
 
         let launcher = RecordingProcessLauncher(responses: [(0, "")])
         let config = makeRunnerConfiguration(
@@ -195,7 +206,8 @@ struct FallbackExecutorTests {
             ]
         )
 
-        _ = try? await FallbackExecutor(deps: deps, configuration: config).execute(input: input, pool: pool)
+        _ = try? await FallbackExecutor(deps: deps, configuration: config)
+            .execute(input: input, pool: pool, in: schema)
 
         #expect(await launcher.timeouts(forCommandStartingWith: verb) == [240])
     }
@@ -216,6 +228,8 @@ struct FallbackExecutorTests {
         )
         let pool = makeSimulatorPool()
         try await pool.setUp()
+        let schema = try await makeSchemaSandbox(projectPath: dir.path)
+        defer { try? schema.sandbox.cleanup() }
 
         let input = makeRunnerInput(
             projectPath: dir.path,
@@ -236,9 +250,49 @@ struct FallbackExecutorTests {
 
         let results = try await FallbackExecutor(
             deps: deps, configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm)
-        ).execute(input: input, pool: pool)
+        ).execute(input: input, pool: pool, in: schema)
 
         #expect(results.map(\.descriptor.id) == ["m0"])
+    }
+
+    @Test(
+        "Given two schematized files, when execute called, then each builds in the one sandbox holding only its own schema"
+    )
+    func filesAreBuiltOneAtATimeInTheOneSandbox() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let foo = dir.appendingPathComponent("Foo.swift")
+        let bar = dir.appendingPathComponent("Bar.swift")
+        try "let x = true".write(to: foo, atomically: true, encoding: .utf8)
+        try "let y = true".write(to: bar, atomically: true, encoding: .utf8)
+        let launcher = BuildSnapshotLauncher(base: MockProcessLauncher(exitCode: 0))
+        let pool = makeSimulatorPool()
+        try await pool.setUp()
+        let schema = try await makeSchemaSandbox(projectPath: dir.path)
+        defer { try? schema.sandbox.cleanup() }
+        let input = makeRunnerInput(
+            projectPath: dir.path, projectType: .spm,
+            schematizedFiles: [
+                SchematizedFile(originalPath: foo.path, schematizedContent: "let x = false"),
+                SchematizedFile(originalPath: bar.path, schematizedContent: "let y = false"),
+            ],
+            mutants: [
+                makeMutantDescriptor(id: "m0", filePath: foo.path, isSchematizable: true),
+                makeMutantDescriptor(id: "m1", filePath: bar.path, utf8Offset: 1, isSchematizable: true),
+            ]
+        )
+
+        let results = try await FallbackExecutor(
+            deps: makeExecutionDeps(launcher: launcher, cacheStorePath: dir.appendingPathComponent("c.json").path),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm)
+        ).execute(input: input, pool: pool, in: schema)
+
+        #expect(results.map(\.descriptor.id) == ["m0", "m1"])
+        #expect(await launcher.builds.map(\.schematized) == [["Foo.swift"], ["Bar.swift"]])
+        #expect(await launcher.roots == [schema.sandbox.rootURL.path])
+        #expect(await schema.installed.isEmpty)
+        #expect(try String(contentsOf: foo, encoding: .utf8) == "let x = true")
+        #expect(try String(contentsOf: bar, encoding: .utf8) == "let y = true")
     }
 
     @Test(
@@ -318,6 +372,8 @@ struct FallbackExecutorTests {
         func execute() async throws -> [ExecutionResult] {
             let pool = makeSimulatorPool()
             try await pool.setUp()
+            let schema = try await makeSchemaSandbox(projectPath: directory.path)
+            defer { try? schema.sandbox.cleanup() }
             return try await FallbackExecutor(deps: deps, configuration: configuration).execute(
                 input: makeRunnerInput(
                     projectPath: directory.path,
@@ -327,7 +383,8 @@ struct FallbackExecutorTests {
                     ],
                     mutants: [mutant]
                 ),
-                pool: pool
+                pool: pool,
+                in: schema
             )
         }
 

@@ -100,6 +100,18 @@ struct MutantExecutorSchemaBatchTests {
         #expect(splitting == [false])
     }
 
+    @Test("Given the suite fails only against the schema, when run, then the check and the mutants share its sandbox")
+    func theUnmutatedSuiteCheckAndTheMutantsRunInTheSchemaSandbox() async throws {
+        let fixture = try Fixture(mutantCount: 2)
+        defer { fixture.cleanUp() }
+        let launcher = SchemaSuiteLauncher(crashesAgainstSchemasOver: 0)
+
+        _ = try await fixture.run(launcher: launcher, reporter: MockProgressReporter())
+
+        #expect(await launcher.builtUnmutatedSources == 2)
+        #expect(await launcher.buildRoots.count == 1)
+    }
+
     @Test("Given the unmutated suite also crashes without the schema, when run, then the run stops")
     func aSuiteThatCrashesEverywhereStopsTheRun() async throws {
         let fixture = try Fixture(mutantCount: 2)
@@ -179,6 +191,8 @@ private actor SchemaSuiteLauncher: ProcessLaunching {
     private let unmutatedBuildOutput: String?
     private(set) var builtSchemas: [String] = []
     private(set) var builtMutatedSources = 0
+    private(set) var builtUnmutatedSources = 0
+    private(set) var buildRoots: Set<String> = []
 
     init(crashesAgainstSchemasOver: Int? = nil, crashesUnmutated: Bool = false, unmutatedBuildOutput: String? = nil) {
         self.crashesAgainstSchemasOver = crashesAgainstSchemasOver
@@ -204,12 +218,15 @@ private actor SchemaSuiteLauncher: ProcessLaunching {
         let isSchema = caseCount > 0
 
         if request.executableURL.lastPathComponent == "swift", request.arguments.first == "build" {
+            buildRoots.insert(request.workingDirectoryURL.path)
             if isSchema {
                 builtSchemas.append(source)
             } else if source.contains("false") {
                 builtMutatedSources += 1
             } else if let unmutatedBuildOutput {
                 return (1, unmutatedBuildOutput)
+            } else {
+                builtUnmutatedSources += 1
             }
             return (0, "")
         }
