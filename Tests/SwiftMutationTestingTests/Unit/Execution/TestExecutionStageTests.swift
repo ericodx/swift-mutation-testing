@@ -412,7 +412,8 @@ struct TestExecutionStageTests {
         in dir: URL,
         launcher: TimeoutUnderLoadLauncher,
         reporter: MockProgressReporter,
-        concurrency: Int = 4
+        concurrency: Int = 4,
+        processors: Int = 2
     ) async throws -> (TestExecutionStage, TestExecutionContext, ExecutionDeps) {
         let pool = SimulatorPool(baseUDID: nil, size: concurrency, destination: "platform=macOS", launcher: launcher)
         try await pool.setUp()
@@ -428,7 +429,7 @@ struct TestExecutionStageTests {
             pool: pool,
             configuration: makeRunnerConfiguration(projectType: .spm, timeout: 30, concurrency: concurrency)
         )
-        return (TestExecutionStage(deps: deps), context, deps)
+        return (TestExecutionStage(deps: deps, processorCount: processors), context, deps)
     }
 
     private func fourMutants() -> [MutantDescriptor] {
@@ -498,8 +499,8 @@ struct TestExecutionStageTests {
         #expect(timeouts["m0"]?[0] ?? 0 > 59)
     }
 
-    @Test("Given eight workers and stragglers, when they run again, then at most two run at once")
-    func stragglersRunAgainWithAQuarterOfTheWorkers() async throws {
+    @Test("Given four cores, eight workers and stragglers, when they run again, then at most two run at once")
+    func stragglersRunAgainOnHalfTheCores() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
 
@@ -508,7 +509,7 @@ struct TestExecutionStageTests {
             timesOutFirst: stragglers, holdFirstAttemptsUntil: 4, holdRetriesUntil: 2
         )
         let (stage, context, _) = try await makeLoadFixture(
-            in: dir, launcher: launcher, reporter: MockProgressReporter(), concurrency: 8
+            in: dir, launcher: launcher, reporter: MockProgressReporter(), concurrency: 8, processors: 4
         )
 
         _ = try await stage.execute(mutants: fourMutants(), in: context)
@@ -555,6 +556,14 @@ struct TestExecutionStageTests {
 
         #expect(results.first { $0.descriptor.id == "m0" }?.status == .survived)
         #expect(await launcher.attemptCount(for: "m0") == 0)
+    }
+
+    @Test(
+        "Given the cores and the workers, when the straggler pass is sized, then it takes half the cores, never more than the workers, at least one",
+        arguments: [(16, 15, 8), (16, 4, 4), (8, 15, 4), (2, 15, 1), (1, 1, 1), (3, 2, 1)]
+    )
+    func stragglerPassTakesHalfTheCores(processors: Int, concurrency: Int, workers: Int) {
+        #expect(TestExecutionStage.stragglerConcurrency(processors: processors, concurrency: concurrency) == workers)
     }
 
     @Test("Given mutants, when execute called, then the three passes are recorded, each once")

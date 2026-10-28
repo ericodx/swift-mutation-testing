@@ -2,9 +2,13 @@ import Foundation
 
 struct TestExecutionStage: Sendable {
     let deps: ExecutionDeps
+    var processorCount = ProcessInfo.processInfo.processorCount
 
     static let loadedTimeoutFactor: Double = 2
-    static let retryWorkerShare = 4
+
+    static func stragglerConcurrency(processors: Int, concurrency: Int) -> Int {
+        max(1, min(concurrency, processors / 2))
+    }
 
     func execute(
         mutants: [MutantDescriptor],
@@ -37,7 +41,7 @@ struct TestExecutionStage: Sendable {
 
         try await PhaseTimings.measure(.stragglers, in: deps.timings) {
             try await forEach(
-                timedOut, concurrency: max(1, concurrency / Self.retryWorkerShare),
+                timedOut, concurrency: Self.stragglerConcurrency(processors: processorCount, concurrency: concurrency),
                 run: { mutant in try await self.runAgain(mutant, in: context, timeout: timeout) },
                 collect: { result in results.append(result) }
             )

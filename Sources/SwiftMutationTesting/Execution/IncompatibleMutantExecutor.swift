@@ -5,6 +5,8 @@ struct IncompatibleMutantExecutor: Sendable {
     let sandboxFactory: SandboxFactory
     var importStyle: ImportStyle = .implicit
 
+    static let warmSandboxShare = 4
+
     func execute(
         _ mutants: [MutantDescriptor],
         configuration: RunnerConfiguration,
@@ -54,8 +56,7 @@ struct IncompatibleMutantExecutor: Sendable {
 
         guard !viable.isEmpty else { return results }
 
-        let share = TestExecutionStage.retryWorkerShare
-        let workerCount = max(1, min(configuration.build.concurrency / share, viable.count))
+        let workerCount = max(1, min(configuration.build.concurrency / Self.warmSandboxShare, viable.count))
         let workers = try await PhaseTimings.measure(.warmSandboxes, in: deps.timings) {
             try await warmSandboxes(count: workerCount, configuration: configuration)
         }

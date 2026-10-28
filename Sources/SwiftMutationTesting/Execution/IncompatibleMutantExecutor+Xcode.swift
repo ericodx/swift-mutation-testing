@@ -226,7 +226,7 @@ extension IncompatibleMutantExecutor {
     }
 
     static func xcodeWidth(concurrency: Int, poolSize: Int, mutantCount: Int) -> Int {
-        max(1, min(concurrency / TestExecutionStage.retryWorkerShare, poolSize, mutantCount))
+        max(1, min(concurrency / warmSandboxShare, poolSize, mutantCount))
     }
 
     func runXcodeCold(

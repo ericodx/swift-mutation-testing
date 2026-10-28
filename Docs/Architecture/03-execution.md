@@ -150,7 +150,7 @@ flowchart TD
     end
     TG -- settled --> RESULTS["[ExecutionResult]"]
     TG -- still running at the limit --> SG
-    subgraph SG["pass 2 — the stragglers (concurrency ÷ 4, limit = timeout)"]
+    subgraph SG["pass 2 — the stragglers (cores ÷ 2, limit = timeout)"]
         S1["Task: straggler 1"] & S2["Task: straggler M"]
     end
     SG --> RESULTS
@@ -180,7 +180,7 @@ Either run stops at its first failing test: a mutant is killed by one test, and 
 
 Both paths hand each test process an activation marker path. A passing suite whose marker was never written is reported as `noCoverage` rather than `survived`; a kill without the marker is run once more, and a kill or a timeout without the marker in the final run keeps its verdict and becomes an integrity warning. See [Activation Marker](05-schematization.md#activation-marker).
 
-**Three passes.** The first runs every mutant with `concurrency` workers and a limit of twice `--timeout`; a mutant still running at that point is not recorded, it is set aside. Once the group drains, the stragglers run again with a quarter of the workers (at least one) and the configured `--timeout`, and that second outcome is the one reported. A verdict that settles under load is the verdict the mutant gets alone, so the wider limit only spares the second run — and the second pass has no contention to blame for a timeout. That holds for a suite whose tests do not share files: an SPM run's workers run the same bundles from one sandbox, with the same working directory, temporary directory and `#filePath` paths, so a test that writes a file at a fixed path can fail because a copy of it in another worker removed or rewrote that file. When the mutated code ran, such a failure is a kill like any other, and nothing reruns it; the run cannot tell it from a real one.
+**Three passes.** The first runs every mutant with `concurrency` workers and a limit of twice `--timeout`; a mutant still running at that point is not recorded, it is set aside. Once the group drains, the stragglers run again on half the machine's cores (`stragglerConcurrency`: `processorCount / 2`, never more than `concurrency`, at least one) and the configured `--timeout`, and that second outcome is the one reported. A verdict that settles under load is the verdict the mutant gets alone, so the wider limit only spares the second run — and the second pass has no contention to blame for a timeout: a mutant that is still running is looping, and a loop spins one core, so half the cores in use leaves the other half idle. The width used to be a quarter of the workers — 3 on a 16-core machine — which made the pass 6 rounds of `--timeout` for swift-cpd's 18 loops, 211 of a 586 s run, while 13 cores sat idle. That holds for a suite whose tests do not share files: an SPM run's workers run the same bundles from one sandbox, with the same working directory, temporary directory and `#filePath` paths, so a test that writes a file at a fixed path can fail because a copy of it in another worker removed or rewrote that file. When the mutated code ran, such a failure is a kill like any other, and nothing reruns it; the run cannot tell it from a real one.
 
 **Rerun of kills without activation.** A mutant killed in the first pass without its marker is set aside too. After the timeout pass, each one runs once more, alone, under the configured `--timeout`, and that run decides. A flaky test usually passes the second time; a kill that repeats without activation is systematic and stays an integrity warning.
 
