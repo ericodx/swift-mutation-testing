@@ -157,7 +157,7 @@ When mutants were killed and no mutant's code was ever seen running, the run sto
 
 ## Application Check
 
-`SchemataGenerator` returns the mutations it could not place (`SchemaGeneration.discarded`) and writes no `case` for them. Before the first build, `ApplicationVerifier` proves that the sandbox holds what discovery produced: every schematized file differs from its original and ends with the support declarations, every schematizable mutant has its `case` in the sandbox copy, and every incompatible mutant's content differs from the original. Anything missing ends the run with an `IntegrityError` naming it, before a build is paid for. The check runs again for each per-file sandbox of the fallback path. A schema narrowed after a failed build is not checked again, so narrowing refuses one whose regeneration discarded a mutation and builds that file's mutants one by one instead.
+`SchemataGenerator` returns the mutations it could not place (`SchemaGeneration.discarded`) and writes no `case` for them. Before the first build, `ApplicationVerifier` proves that the sandbox holds what discovery produced: every schematized file differs from its original and ends with the support declarations, every schematizable mutant has its `case` in the sandbox copy, and every incompatible mutant's content differs from the original. Anything missing ends the run with an `IntegrityError` naming it, before a build is paid for. The check runs again for each file the fallback path installs on its own in the schema sandbox. A schema narrowed after a failed build is not checked again, so narrowing refuses one whose regeneration discarded a mutation and builds that file's mutants one by one instead.
 
 ---
 

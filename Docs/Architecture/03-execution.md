@@ -32,9 +32,9 @@ flowchart TD
     ART -- "yes, Xcode" --> XBASE["TestExecutionStage\nunmutated test-without-building once"]
     XBASE -- fails --> ABORT
     XBASE -- passes --> TES
-    ART -- no --> FBP["FallbackExecutor\none build per schematized file"]
+    ART -- no --> FBP["FallbackExecutor\none file at a time in the schema sandbox"]
     NARROW -- "excluded mutants, rewritten whole-file" --> IME
-    POOL -- incompatible mutants --> IME["IncompatibleMutantExecutor\nwarm sandboxes, incremental rebuild per mutant"]
+    POOL -- incompatible mutants --> IME["IncompatibleMutantExecutor\nschema sandbox restored + warm sandboxes\nincremental rebuild per mutant"]
     TES --> REC["ResultRecorder\nlog · CacheStore · plan journal · progress"]
     FBP --> REC
     IME --> REC
@@ -49,8 +49,8 @@ flowchart TD
 Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<pid>-<UUID>/` (`SandboxName`) before every build. Supports both Xcode and SPM projects. The copy runs on a dispatch queue rather than the cooperative pool, since it is blocking file-system work.
 
 **Factory methods:**
-- `create(projectPath:schematizedFiles:)` — full sandbox with schematized files (normal path, and one per file on the fallback path)
-- `createClean(projectPath:disablingSwiftLint:)` — clean sandbox without mutations: the warm sandboxes of `IncompatibleMutantExecutor`, SPM and Xcode (the Xcode ones with SwiftLint disabled)
+- `create(projectPath:schematizedFiles:)` — full sandbox with schematized files: the schema sandbox, the one sandbox of a run that is not a reproduction
+- `createClean(projectPath:disablingSwiftLint:)` — clean sandbox without mutations: the warm sandboxes of `IncompatibleMutantExecutor` after the first, SPM and Xcode (the Xcode ones with SwiftLint disabled)
 - `create(projectPath:mutatedFilePath:mutatedContent:)` — sandbox with a single mutated file: the cold sandbox of an incompatible Xcode mutant under `reproduce`
 
 **Copy strategy:**
@@ -81,6 +81,8 @@ Handles cleanup of orphaned sandbox directories and signal-based cleanup of the 
 
 Runs a single build for all schematizable mutants. Each mutant adds a copy of its function's body to the function's frame in a debug build, and a deep enough frame overflows a secondary thread's stack; when the unmutated suite fails against that build but passes against a clean unmutated one, the schema is built again in batches (`SchemaBatches`) holding at most 16 mutants of any function body. The batches rewrite their files in the same sandbox, so their builds are incremental. A run whose suite passes against the whole schema builds once, however many mutants a body holds.
 
+That sandbox is the only one a run creates with the schema, and the only one it builds cold. `SchemaSandbox` keeps track of which schemas are in it: `install` writes a batch's files over the copies and links the files it leaves out back to their originals, `restore` links every file back. The unmutated checks, the fallback and the incompatible path all run in it, restored to the unmutated project and rebuilt incrementally, instead of each building a clean sandbox of its own cold — on swift-cpd 8.7 s against 17.6 s, and far more on a project that compiles swift-syntax from source. Only the warm sandboxes the incompatible path adds beside it are still built cold.
+
 **Xcode path:** `xcodebuild build-for-testing` → find `.xctestrun` in `Build/Products` → parse plist → `BuildArtifact`
 
 **SPM path:** `swift build --build-tests` → `BuildArtifact` (no `.xctestrun` needed)
@@ -109,7 +111,7 @@ The container's relative path is passed as `-workspace` or `-project`, from the 
 
 **`ToolRequests`** builds every `swift` and `xcodebuild` request of a run — `swift build --build-tests`, `swift test --skip-build [--filter]`, `xcodebuild build-for-testing` and the other `xcodebuild` calls — so the schematized, fallback, incompatible and baseline paths build and test a sandbox the same way, with one derived data directory, `<sandbox>/.xmr-derived-data`. The incompatible Xcode path used `.derived-data` before. Every `xcodebuild test-without-building` also passes `ToolRequests.noTestDiagnostics`, `-collect-test-diagnostics never`, so no run of a mutant pays for diagnostics nobody reads, and every `build-for-testing` passes `ToolRequests.skipPackageValidation`, `-skipPackagePluginValidation -skipMacroValidation`, so a package's build tool plugins and macros run without the trust prompt a headless build cannot answer.
 
-`BuildError` conforms to `LocalizedError`, providing structured error descriptions. On `BuildError.compilationFailed`, `MutantExecutor` hands an SPM build to `SchemaNarrower`, which takes out the mutants whose `case` the compiler blamed, regenerates their files' schemas and rebuilds until the build compiles. The mutants it took out are rewritten as whole-file mutants (`MutationRewriter`) and run on the incompatible path, or recorded `unviable` when the rewrite changes nothing. When it can blame no `case` it gives up — and on the Xcode path a failed build always does. `UnmutatedBuildCheck` then builds a clean copy of the project: if that fails too, the project itself does not build, and the run ends with `BaselineError.buildFailed` and the build's output instead of reporting every mutant unviable. Otherwise `FallbackExecutor` takes over with per-file rebuilds rather than aborting. A build that times out or yields no `.xctestrun`, and any other thrown error, propagate up and end the run.
+`BuildError` conforms to `LocalizedError`, providing structured error descriptions. On `BuildError.compilationFailed`, `MutantExecutor` hands an SPM build to `SchemaNarrower`, which takes out the mutants whose `case` the compiler blamed, regenerates their files' schemas and rebuilds until the build compiles. The mutants it took out are rewritten as whole-file mutants (`MutationRewriter`) and run on the incompatible path, or recorded `unviable` when the rewrite changes nothing. When it can blame no `case` it gives up — and on the Xcode path a failed build always does. `UnmutatedBuildCheck` then links the schema sandbox's files back to the originals and builds it again, incrementally: if that fails too, the project itself does not build, and the run ends with `BaselineError.buildFailed` and the build's output instead of reporting every mutant unviable. Otherwise `FallbackExecutor` takes over with per-file rebuilds rather than aborting. A build that times out or yields no `.xctestrun`, and any other thrown error, propagate up and end the run.
 
 ## SimulatorPool
 
@@ -132,7 +134,7 @@ The container's relative path is passed as `-workspace` or `-project`, from the 
 
 Before the first mutant runs, the suite is run once with no mutant selected. `__swiftMutationTestingID_<hash>` is empty, so every schema falls through to its `default` branch and the original code executes.
 
-The run continues only if that suite passes, or if it fails only against the schema: a suite that fails against a schema build is run again against a clean unmutated build (`UnmutatedSuiteCheck`), and when it passes there the schema is built again in batches if a function body holds more than 16 mutants, or the mutants are built one by one on the incompatible path, instead of the run ending. A suite that already fails without a mutation kills every mutant it reaches, so every verdict it produces is worthless — and nothing in the report would reveal it. `BaselineProbe` throws `BaselineError` instead, naming the failing tests, the timeout that stopped the suite, or the output it failed with (written to `baseline.log` under `--keep-logs`).
+The run continues only if that suite passes, or if it fails only against the schema: a suite that fails against a schema build is run again against the unmutated project (`UnmutatedSuiteCheck`) — the schema sandbox with its files linked back, rebuilt incrementally — and when it passes there the schema is built again in batches if a function body holds more than 16 mutants, or the mutants are built one by one on the incompatible path, instead of the run ending. A suite that already fails without a mutation kills every mutant it reaches, so every verdict it produces is worthless — and nothing in the report would reveal it. `BaselineProbe` throws `BaselineError` instead, naming the failing tests, the timeout that stopped the suite, or the output it failed with (written to `baseline.log` under `--keep-logs`).
 
 **The baseline and the library probe are the same run.** A package builds one test bundle per test target. Each bundle is invoked once with each testing library against the unmutated sandbox, and that single invocation answers both questions: a bundle and library reporting no tests — exit 69 from SwiftPM's helper, `Executed 0 tests` from `xctest` — is dropped from every mutant's run, and one that does have tests must pass them. A bundle with tests in neither library is dropped altogether, unless no bundle has any, in which case every bundle keeps both libraries. Only when no bundle was produced does the baseline fall back to a separate `swift test --skip-build`. `--target` naming a bundle narrows the run to that bundle (`TestTargetSelection`); otherwise it is passed on as a filter. The probe runs the suite to the end; mutants stop at their first failing test.
 
@@ -195,19 +197,22 @@ flowchart TD
     FILES["[SchematizedFile]"] --> LOOP["For each file"]
     LOOP --> CACHED{"every mutant\nof the file cached?"}
     CACHED -- yes --> DONE[cached results]
-    CACHED -- no --> SF["SandboxFactory\nsingle-file sandbox"]
+    CACHED -- no --> SF["SchemaSandbox.install\nthis file's schema alone"]
     SF --> AV[ApplicationVerifier]
-    AV --> BS[BuildStage]
+    AV --> BS["BuildStage\nincremental"]
     BS -- success --> TES["TestExecutionStage\ntest mutants in this file"]
     BS -- compilationFailed --> UNVIABLE["Mark all mutants in file\n.unviable"]
     BS -- timedOut --> STOP["the run stops"]
+    TES --> LOOP
+    UNVIABLE --> LOOP
+    LOOP -- done --> RESTORE["SchemaSandbox.restore"]
 ```
 
-For each schematized file, `FallbackExecutor` creates a sandbox containing only that file's schematization, checks it, builds it, and runs the test suite against its mutants, through the same three passes and the shared pool. Files whose builds fail to compile have all their mutants marked as `.unviable`, each with a mutant log holding the build error. A build that times out ends the run with `BuildError.timedOut`: the file holds all its mutants at once, so running out of time says nothing about any of them, and recording them `.timeout` would count them as detected. Any other error — cancellation included — is rethrown and recorded as no verdict, since the journal would carry it into a resumed run. Verdicts are recorded through `ResultRecorder`.
+For each schematized file, `FallbackExecutor` installs that file's schematization alone in the schema sandbox — the previous file goes back to its link — checks it, builds it incrementally, and runs the test suite against its mutants, through the same three passes and the shared pool; every file is linked back at the end. It used to create a sandbox per file and build each one cold. Files whose builds fail to compile have all their mutants marked as `.unviable`, each with a mutant log holding the build error. A build that times out ends the run with `BuildError.timedOut`: the file holds all its mutants at once, so running out of time says nothing about any of them, and recording them `.timeout` would count them as detected. Any other error — cancellation included — is rethrown and recorded as no verdict, since the journal would carry it into a resumed run. Verdicts are recorded through `ResultRecorder`.
 
 ## IncompatibleMutantExecutor
 
-Handles mutants that cannot be schematized — mutations outside function bodies (e.g. in stored property initializers or global scope) — and the mutants `SchemaNarrower` took out of the schema. Each incompatible mutant requires its own rebuild before its tests can run, which makes these the most expensive mutants in a run. Both project types therefore run them in **warm sandboxes**: clean copies of the project, each built once up front, so that every mutant after the first costs an incremental rebuild rather than a cold one.
+Handles mutants that cannot be schematized — mutations outside function bodies (e.g. in stored property initializers or global scope) — and the mutants `SchemaNarrower` took out of the schema. Each incompatible mutant requires its own rebuild before its tests can run, which makes these the most expensive mutants in a run. Both project types therefore run them in **warm sandboxes**: unmutated copies of the project, each built once up front, so that every mutant after the first costs an incremental rebuild rather than a cold one. The first warm sandbox is the schema sandbox, its files linked back to the originals and rebuilt incrementally; the others are clean copies built cold.
 
 ```mermaid
 flowchart TD
@@ -216,8 +221,8 @@ flowchart TD
     CACHE -- no --> PT{ProjectType?}
     PT -- .xcode --> REPRO{reproduce?}
     REPRO -- yes --> COLD["one cold sandbox per attempt\nSandboxFactory.create(mutatedFilePath:)"]
-    REPRO -- no --> XW["xcodeWidth warm workers\neach: pool slot + createClean + build-for-testing"]
-    PT -- .spm --> SW["warm sandboxes\nconcurrency ÷ 4, swift build --build-tests"]
+    REPRO -- no --> XW["xcodeWidth warm workers\neach: pool slot + build-for-testing\nthe schema sandbox first, then createClean"]
+    PT -- .spm --> SW["warm sandboxes\nconcurrency ÷ 4, swift build --build-tests\nthe schema sandbox first, then createClean"]
     XW -- none built --> UNVIABLE[".unviable\nwith the warm build's output\n(a timed-out build stops the run)"]
     SW -- none built --> UNVIABLE
     XW --> DEAL["mutants dealt round-robin\nover the sandboxes that built"]
@@ -232,9 +237,9 @@ Cache hits and every verdict — a mutation that could not be applied and a fail
 
 **Activation:** each mutant is first built with a call that records when its mutated code runs, and tested with the activation marker, so an unreached survivor is `noCoverage` and a kill without activation is run once more, as on the schematized path. If that copy does not build, the plain mutant is built and tested unmeasured. See [Activation Marker](05-schematization.md#activation-marker).
 
-**Xcode path:** `xcodeWidth` workers — a quarter of `--concurrency`, never more than the pool's slots or the mutants, never fewer than one. Each worker acquires a pool slot, creates a clean sandbox (`createClean`, SwiftLint disabled) and runs `build-for-testing` for the slot's destination, the workers in parallel. Mutants are dealt round-robin over the workers whose warm build succeeded; for each, the mutated source is written into the worker's sandbox, `build-for-testing` rebuilds incrementally, `xcodebuild test-without-building` runs with `-parallel-testing-enabled NO` and `-collect-test-diagnostics never`, and the original file is restored and the `.xcresult` bundles removed. The slots go back to the pool when every mutant is done. Under `reproduce`, each attempt instead builds in a cold sandbox of its own (`SandboxFactory.create(projectPath:mutatedFilePath:mutatedContent:)`), which the reproduction keeps.
+**Xcode path:** `xcodeWidth` workers — a quarter of `--concurrency`, never more than the pool's slots or the mutants, never fewer than one. Each worker acquires a pool slot and runs `build-for-testing` for the slot's destination, the workers in parallel: the first in the schema sandbox `MutantExecutor` hands over restored, incrementally, the others in a clean sandbox each (`createClean`, SwiftLint disabled), cold. Mutants are dealt round-robin over the workers whose warm build succeeded; for each, the mutated source is written into the worker's sandbox, `build-for-testing` rebuilds incrementally, `xcodebuild test-without-building` runs with `-parallel-testing-enabled NO` and `-collect-test-diagnostics never`, and the original file is restored and the `.xcresult` bundles removed. The slots go back to the pool when every mutant is done, and the clean sandboxes are removed; the schema sandbox stays for `MutantExecutor` to release. Under `reproduce`, each attempt instead builds in a cold sandbox of its own (`SandboxFactory.create(projectPath:mutatedFilePath:mutatedContent:)`), which the reproduction keeps.
 
-**SPM path:** a quarter of `--concurrency` warm sandboxes (`SandboxFactory.createClean(projectPath:)`), never fewer than one and never more than there are mutants, built in parallel. Mutants are dealt round-robin over the sandboxes that built; for each, the mutated source is written into its sandbox, the package is rebuilt, and `swift test --skip-build` runs the file's own suite first — `FooTests` for `Foo.swift`, as on the schematized path — then, unless that one killed the mutant or timed out, the whole suite, each stopping at the first failing test; the original file is then restored.
+**SPM path:** a quarter of `--concurrency` warm sandboxes, never fewer than one and never more than there are mutants, built in parallel: the schema sandbox restored, then clean ones (`SandboxFactory.createClean(projectPath:)`) for the rest. Mutants are dealt round-robin over the sandboxes that built; for each, the mutated source is written into its sandbox, the package is rebuilt, and `swift test --skip-build` runs the file's own suite first — `FooTests` for `Foo.swift`, as on the schematized path — then, unless that one killed the mutant or timed out, the whole suite, each stopping at the first failing test; the original file is then restored.
 
 On both paths a sandbox whose warm build failed is left out, and only when none built are the mutants reported unviable (or timed out) with that build's output.
 
@@ -333,8 +338,8 @@ Every verdict, whichever path reached it, goes through `ResultRecorder.record(..
 | `workers` | `MutantExecutor.makePool` — the pool's `make` and `setUp` |
 | `baseline` | `MutantExecutor.baselineContext` — the probe, or the Xcode baseline |
 | `mutants`, `stragglers`, `unactivatedKills` | `TestExecutionStage.execute` — its three passes, wherever it is called from |
-| `fallbackBuilds` | `FallbackExecutor` — each file's sandbox, check and build; its tests are the three passes above |
-| `warmSandboxes`, `incompatible` | `IncompatibleMutantExecutor` — the warm builds, then the mutants; a reproduction's cold Xcode builds count as `incompatible` |
+| `fallbackBuilds` | `FallbackExecutor` — each file's install, check and build; its tests are the three passes above |
+| `warmSandboxes`, `incompatible` | `IncompatibleMutantExecutor` — the warm builds, the restored schema sandbox's incremental one included, then the mutants; a reproduction's cold Xcode builds count as `incompatible` |
 
 The phases are disjoint, so they add up: `TimingReporter` sums each phase's entries, lists them in `RunPhase` order with the count of entries when there is more than one, and closes with `Other`, the part of `RunnerSummary.totalDuration` no phase accounts for. Discovery is listed first but left out of `Other`, since `totalDuration` starts after it. `timing.json` holds the total and every entry.
 
