@@ -27,9 +27,9 @@ struct MutantExecutor: Sendable {
 
 Entry point for the execution pipeline. Orchestrates sandbox creation, build, simulator pool setup, and test execution for both schematizable and incompatible mutants. Supports both Xcode and SPM project types.
 
-`Environment` holds the collaborators a run works through, each the real one unless a test hands in another. With no `reporter`, progress goes to a `ConsoleProgressReporter`, or a `SilentProgressReporter` under `--quiet`. The `sandboxFactory` is also the one `IncompatibleMutantExecutor` is given.
+`Environment` holds the collaborators a run works through, each the real one unless a test hands in another. With no `reporter`, progress goes to a `ConsoleProgressReporter`, or a `SilentProgressReporter` under `--quiet`. The `sandboxFactory` is also the one `IncompatibleMutantExecutor` is given. `timings` is the `PhaseTimings` every phase of the run records into, handed on through `ExecutionDeps`; `RunCommand` passes its own so it can read the entries back for the summary.
 
-The work that used to live inline here is split across types of its own: `SchemaNarrower` retries a schematized SPM build that does not compile, `UnmutatedBuildCheck` builds the unmutated project when the schema leaves no artifact, `BaselineProbe` runs the unmutated suite, `SimulatorPool.make(for:launcher:)` picks the pool, and every verdict goes through `ResultRecorder`. `execute` itself only prepares the cache, returns early when every mutant is cached, builds the `ExecutionDeps` — `TargetedSuites.declared(in:read:)` over the test files the cache snapshot already read — creates and registers the sandbox, and persists the cache; the private `run(_:in:deps:reporter:)` verifies the sandbox, builds and runs every mutant against the whole schema through `runBatch`, then runs each schema batch that run asked for — installing its schemas in the sandbox (`SchemaInstaller`) first — the same way; the pool is set up once, on the first build that needs it, and activation is checked over every batch's results, the pool torn down whether it throws or not. The sandbox is released in a `defer` through `release(keepingFor:)`, which keeps it for a reproduction.
+The work that used to live inline here is split across types of its own: `SchemaNarrower` retries a schematized SPM build that does not compile, `UnmutatedBuildCheck` builds the unmutated project when the schema leaves no artifact, `BaselineProbe` runs the unmutated suite, `SimulatorPool.make(for:launcher:)` picks the pool, and every verdict goes through `ResultRecorder`. `execute` itself only prepares the cache, returns early when every mutant is cached, builds the `ExecutionDeps` — `TargetedSuites.declared(in:read:)` over the test files the cache snapshot already read — creates and registers the sandbox, and persists the cache; the private `run(_:in:deps:reporter:)` verifies the sandbox, builds and runs every mutant against the whole schema through `runBatch`, then runs each schema batch that run asked for — installing its schemas in the sandbox (`SchemaInstaller`) first — the same way; the pool is set up once, on the first build that needs it, and activation is checked over every batch's results, the pool torn down whether it throws or not. The sandbox is released through `release(keepingFor:)`, which keeps it for a reproduction — timed as `teardown` when the run returns, untimed when it throws; the `defer` only deregisters it from `SandboxCleaner`.
 
 ```mermaid
 flowchart TD
@@ -315,6 +315,7 @@ struct ExecutionDeps: Sendable {
     let counter: MutationCounter
     let killerTestFileResolver: KillerTestFileResolver
     var targetedSuites: [String: TargetedSuite] = [:]
+    var timings = PhaseTimings()
 }
 ```
 
@@ -328,8 +329,36 @@ Bundle of shared collaborators passed between `MutantExecutor` and the stage typ
 | `counter` | Shared actor tracking the current mutant index |
 | `killerTestFileResolver` | Maps killer test names to source file paths for granular cache invalidation |
 | `targetedSuites` | The suites named after source files (`TargetedSuites.declared(in:read:)`), run first for a mutant of that file, on the SPM test pass and the incompatible SPM path |
+| `timings` | The `PhaseTimings` every phase records into — `MutantExecutor.Environment`'s, so `RunCommand` reads the entries back; a fresh one in tests that do not ask |
 
 ---
+
+## Execution/PhaseTimings.swift
+
+```swift
+enum RunPhase: String, Codable, CaseIterable, Sendable {
+    case discovery, sandbox, schemaBuild, schemaNarrowing, unmutatedBuildCheck, workers, baseline,
+        unmutatedSuiteCheck, mutants, stragglers, unactivatedKills, fallbackBuilds, warmSandboxes, incompatible,
+        teardown
+    var label: String
+}
+
+struct PhaseTiming: Codable, Equatable, Sendable {
+    let phase: RunPhase
+    let start: Date
+    let duration: Double
+}
+
+actor PhaseTimings {
+    private(set) var entries: [PhaseTiming]
+    func record(_ phase: RunPhase, start: Date, end: Date = Date())
+    static func measure<Value: Sendable>(
+        _ phase: RunPhase, in timings: PhaseTimings?, _ work: () async throws -> Value
+    ) async rethrows -> Value
+}
+```
+
+The run's stopwatch. `record` appends one entry; `measure` runs `work`, records the phase around it whether it returns or throws, and passes the value or the error on — with `nil` timings it only runs the work, which is what `SchemaNarrower` gets when a test builds it without any. The entries are kept in the order they were recorded, one per run of a phase: a narrowing round, a schema batch's build and a fallback file's build each add their own, and `TimingReporter` sums them. The `RunPhase` cases are the order the table prints in, and `label` is the text it prints. See [Time by Phase](../Architecture/03-execution.md#time-by-phase) for which type records which phase.
 
 ## Execution/BaselineError.swift
 

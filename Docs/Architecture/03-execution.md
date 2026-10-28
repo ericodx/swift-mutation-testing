@@ -317,7 +317,26 @@ Every verdict, whichever path reached it, goes through `ResultRecorder.record(..
 
 ### Final Reports
 
-`RunnerSummary` aggregates all `ExecutionResult` values and computes the mutation score. `RunConclusion` prints it with `TextReporter`, evaluates the quality gate, has `ReportWriter` write the requested files, then prints the gate (`GateReporter`) and writes `--write-baseline`.
+`RunnerSummary` aggregates all `ExecutionResult` values and computes the mutation score. `RunConclusion` prints it with `TextReporter`, prints the time by phase (`TimingReporter`) under `--timing` and writes it as `timing.json` under `--keep-logs`, evaluates the quality gate, has `ReportWriter` write the requested files, then prints the gate (`GateReporter`) and writes `--write-baseline`.
+
+### Time by Phase
+
+`PhaseTimings` (actor) is the run's stopwatch, carried in `ExecutionDeps` and in `MutantExecutor.Environment`. Each phase records an entry — `PhaseTiming`: the `RunPhase`, its start and its duration — where it happens, so a phase that runs more than once has one entry per run:
+
+| Phase | Recorded by |
+|---|---|
+| `discovery` | `RunCommand`, from the discovery's duration |
+| `sandbox`, `teardown` | `MutantExecutor` — the schematized sandbox; the pool's `tearDown` and the sandbox's release |
+| `schemaBuild` | `MutantExecutor.buildArtifact` — the first build of a schema, whether it compiles or not; once per batch |
+| `schemaNarrowing` | `SchemaNarrower` — one entry per round, from the blame to the end of that round's rebuild |
+| `unmutatedBuildCheck`, `unmutatedSuiteCheck` | `MutantExecutor`, around each check |
+| `workers` | `MutantExecutor.makePool` — the pool's `make` and `setUp` |
+| `baseline` | `MutantExecutor.baselineContext` — the probe, or the Xcode baseline |
+| `mutants`, `stragglers`, `unactivatedKills` | `TestExecutionStage.execute` — its three passes, wherever it is called from |
+| `fallbackBuilds` | `FallbackExecutor` — each file's sandbox, check and build; its tests are the three passes above |
+| `warmSandboxes`, `incompatible` | `IncompatibleMutantExecutor` — the warm builds, then the mutants; a reproduction's cold Xcode builds count as `incompatible` |
+
+The phases are disjoint, so they add up: `TimingReporter` sums each phase's entries, lists them in `RunPhase` order with the count of entries when there is more than one, and closes with `Other`, the part of `RunnerSummary.totalDuration` no phase accounts for. Discovery is listed first but left out of `Other`, since `totalDuration` starts after it. `timing.json` holds the total and every entry.
 
 **Score formula:**
 

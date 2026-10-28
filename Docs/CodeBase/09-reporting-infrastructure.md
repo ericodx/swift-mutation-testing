@@ -195,6 +195,22 @@ Output sections:
 
 ---
 
+## Reporting/TimingReporter.swift
+
+```swift
+struct TimingReporter: Sendable {
+    struct Line: Equatable, Sendable { let label: String; let duration: Double; let count: Int }
+    struct Document: Codable, Equatable, Sendable { let totalDuration: Double; let phases: [PhaseTiming] }
+
+    func report(_ summary: RunnerSummary)
+    func format(_ summary: RunnerSummary) -> String?
+    func lines(for summary: RunnerSummary) -> [Line]
+    func json(_ summary: RunnerSummary) throws -> Data
+}
+```
+
+The time by phase, from `RunnerSummary.phases`. `lines` walks `RunPhase.allCases` in order, sums the entries of each phase that has any and counts them, then appends `Other`: `totalDuration` minus every phase but `discovery`, never below zero — discovery runs before the total starts. `format` lays the lines out as a table under `Time by phase:`, labels padded to the longest, durations to one decimal, and `N×` after a phase recorded more than once; it is `nil` when there are no phases, so a merge prints nothing. `json` encodes the total and every entry, dates in ISO 8601, keys sorted. `RunConclusion.reportTiming` prints the table under `--timing` and writes the JSON through `MutantLogWriter.write(timing:)` under `--keep-logs`.
+
 ## Reporting/JsonReporter.swift
 
 ```swift
@@ -691,10 +707,11 @@ struct MutantLogWriter: Sendable {
         mutant: MutantDescriptor, status: ExecutionStatus, duration: Double, output: String, activated: Bool? = nil
     )
     func write(baselineOutput output: String)
+    func write(timing: Data)
 }
 ```
 
-Writes one `<mutant id>.log` per mutant into the directory given by `--keep-logs`, creating it if needed, holding a header — id, file, line and column, operator, the mutation, verdict, whether the mutated code ran, duration — then `---` and the whole test output that produced it. `write(baselineOutput:)` writes the baseline's test output to `baseline.log` in the same directory. Write failures are ignored: a log is a convenience, not a result. The initialiser fails when no directory was configured, so the call site is `MutantLogWriter(directory:)?.write(…)` and the feature costs nothing when it is off.
+Writes one `<mutant id>.log` per mutant into the directory given by `--keep-logs`, creating it if needed, holding a header — id, file, line and column, operator, the mutation, verdict, whether the mutated code ran, duration — then `---` and the whole test output that produced it. `write(baselineOutput:)` writes the baseline's test output to `baseline.log` in the same directory, and `write(timing:)` the time by phase `TimingReporter.json` produced to `timing.json` (`timingFileName`). Write failures are ignored: a log is a convenience, not a result. The initialiser fails when no directory was configured, so the call site is `MutantLogWriter(directory:)?.write(…)` and the feature costs nothing when it is off.
 
 The verdict in the header uses the tool's own labels (`Killed by <test>`, `Crash`, `Survived`, `Unviable`, `Timeout`, `NoCoverage`), not the Stryker values of `mutationReportStatus`: the log is read by someone chasing one mutant, and `Crash` says more there than `Killed`.
 

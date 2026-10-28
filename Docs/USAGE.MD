@@ -261,7 +261,8 @@ The file is read line by line, not by a full YAML parser:
 | `sonar-output` | String | — | Path for a SonarQube generic issue import report: undetected mutants as issues, read with `sonar.externalIssuesReportPaths` |
 | `sarif-output` | String | — | Path for the SARIF 2.1.0 report of undetected mutants |
 | `markdown-output` | String | — | Path for a Markdown summary, for CI job summaries |
-| `keep-logs` | String | — | Directory for per-mutant test output logs, and for `baseline.log` when the unmutated project does not build or its suite fails |
+| `keep-logs` | String | — | Directory for per-mutant test output logs, for `baseline.log` when the unmutated project does not build or its suite fails, and for `timing.json` |
+| `timing` | Bool | `false` | Print how the run's time splits between its phases after the summary. See [Time by phase](#time-by-phase) |
 | `sources-path` | String | project root | Directory for Swift source file discovery, or a single `.swift` file to mutate alone |
 | `exclude` | List | `[]` | Files to skip: globs, or fragments of the path. See [Excluding files](#excluding-files). `exclude-patterns` is read as the same key |
 | `disabled-mutators` | List | `[]` | Operator identifiers to skip — deny-list alternative to the `mutators` block |
@@ -375,6 +376,7 @@ swift-mutation-testing [project-path] [options]
 | `--operator <id>` | Run only this operator, whatever its tier (repeatable) |
 | `--disable-mutator <id>` | Leave this operator out of the tier's set (repeatable) |
 | `--quiet` | Suppress progress output |
+| `--timing` | Print how the run's time splits between its phases, after the summary. See [Time by phase](#time-by-phase) |
 | `--min-score <0-100>` | Fail the run (exit code 2) when the score is below this |
 | `--baseline <path>` | Baseline to compare with, relative to the project |
 | `--max-score-drop <points>` | Fail when the score is more than this many points below the baseline's |
@@ -585,6 +587,29 @@ Two passes use fewer workers: mutants that timed out in the parallel pass are ru
 ---
 
 ## Output Formats
+
+### Time by phase
+
+`--timing` prints, after the summary, how long each phase of the run took: the sandbox, the schema build and its narrowing rounds, the checks of the unmutated project, the workers, the baseline, the three passes over the schematized mutants, the fallback builds, the warm sandboxes and the incompatible mutants, and the teardown. A phase that ran more than once — a narrowing round, a schema batch — is summed and marked with its count. `Other` is what the phases do not account for. Discovery precedes `Total duration`, so it is listed but left out of `Other`.
+
+```
+Time by phase:
+  Discovery                   0.6s
+  Sandbox                     0.3s
+  Schema build               20.1s
+  Schema narrowing           27.2s   4×
+  Workers                     0.1s
+  Baseline                    5.9s
+  Mutants                   154.0s
+  Stragglers                211.0s
+  Kills without activation    0.4s
+  Warm sandboxes             25.0s
+  Incompatible mutants      142.0s
+  Teardown                    0.2s
+  Other                       1.2s
+```
+
+The same table, with the start of every entry, is written to `<directory>/timing.json` whenever `--keep-logs` is set, with or without `--timing`. Use it to measure a change to the tool on one phase without the others' noise.
 
 ### Per-mutant logs
 

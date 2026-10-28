@@ -14,7 +14,7 @@ struct CommandLineParser: Sendable {
 
 No arguments at all yield the default `ParsedArguments` — `run` on `.`. `--help` (or `-h`) and `--version` as the first word yield `.help` and `.version` at once; `init` yields `.initialize` with the next word as its project path unless it starts with `-`, and reads nothing after it. Otherwise the first word may be a command — `run` (the default when none is given), `plan`, `merge` or `reproduce` — then the words before the first flag are the command's positionals (the project path for `run` and `plan`; the result files for `merge`; the mutant and an optional project path for `reproduce`), then the flags. Iterates the flags left-to-right, dispatching each token to an internal `applyFlag` method that writes straight into the `ParsedArguments` it returns. Throws `UsageError` for unrecognised flags, for a flag without its value, for more positionals than the command takes, for `merge` without result files and `reproduce` without a mutant, for `--shard` outside `run` and for a shard that is not `i/n` — `--shard` is parsed into a `Shard` on the spot, with `PlanError.invalidShard`'s message. For `plan`, `--output` is the plan's path, not a report's. `--project-path <path>` sets the project path of `merge`, whose positionals are the result files, and is refused elsewhere. `--workspace` and `--project` name the Xcode container.
 
-Multi-value flags (`--exclude`, `--operator`, `--disable-mutator`) accumulate into arrays. Boolean flags (`--no-cache`, `--quiet`) set a single Bool. All other flags consume the next token as their value: `--timeout` and `--build-timeout` must be positive numbers, `--min-score` and `--max-score-drop` numbers of at least 0, and `--concurrency`, `--max-new-survivors` and `--max-integrity-warnings` integers; their range is checked later, by `ConfigurationResolver`.
+Multi-value flags (`--exclude`, `--operator`, `--disable-mutator`) accumulate into arrays. Boolean flags (`--no-cache`, `--quiet`, `--timing`) set a single Bool. All other flags consume the next token as their value: `--timeout` and `--build-timeout` must be positive numbers, `--min-score` and `--max-score-drop` numbers of at least 0, and `--concurrency`, `--max-new-survivors` and `--max-integrity-warnings` integers; their range is checked later, by `ConfigurationResolver`.
 
 ---
 
@@ -49,6 +49,7 @@ struct ParsedArguments: Sendable {
         var outputs: [ReportFormat: String] = [:]
         var keepLogsPath: String?
         var quiet: Bool = false
+        var timing: Bool = false
     }
 
     struct FilterOptions: Sendable {
@@ -101,6 +102,7 @@ struct ParsedArguments: Sendable {
 | `reporting.outputs[format]` | none | each `ReportFormat`'s flag: `--output`, `--html-output`, `--sonar-output`, `--sarif-output`, `--markdown-output` `<path>` — read off `ReportFormat.named(flag:)`, so a new format needs no parser case |
 | `reporting.keepLogsPath` | `nil` | `--keep-logs <directory>` |
 | `reporting.quiet` | `false` | `--quiet` |
+| `reporting.timing` | `false` | `--timing` |
 | `filter.sourcesPath` | `nil` | `--sources-path <path>` |
 | `filter.excludePatterns` | `[]` | `--exclude <pattern>`, repeatable |
 | `filter.operators` | `[]` | `--operator <id>`, repeatable |
@@ -152,6 +154,7 @@ struct RunnerConfiguration: Sendable {
         var outputs: [ReportFormat: String] = [:]  // the CLI path, else the file's `format.fileKey`
         var keepLogsPath: String?
         var quiet: Bool
+        var timing: Bool = false
     }
 
     struct FilterOptions: Sendable {
