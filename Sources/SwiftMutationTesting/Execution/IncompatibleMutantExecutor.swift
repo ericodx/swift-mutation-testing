@@ -10,7 +10,8 @@ struct IncompatibleMutantExecutor: Sendable {
     func execute(
         _ mutants: [MutantDescriptor],
         configuration: RunnerConfiguration,
-        pool: SimulatorPool
+        pool: SimulatorPool,
+        reusing sandbox: Sandbox? = nil
     ) async throws -> [ExecutionResult] {
         var results: [ExecutionResult] = []
         var pending: [MutantDescriptor] = []
@@ -27,10 +28,11 @@ struct IncompatibleMutantExecutor: Sendable {
         }
 
         if case .spm = configuration.build.projectType {
-            results += try await runSPMShared(
-                mutants: pending, configuration: configuration)
+            results += try await runSPMShared(mutants: pending, configuration: configuration, reusing: sandbox)
         } else if case .xcode(let scheme, _) = configuration.build.projectType {
-            results += try await runXcode(pending, scheme: scheme, configuration: configuration, pool: pool)
+            results += try await runXcode(
+                pending, scheme: scheme, configuration: configuration, pool: pool, reusing: sandbox
+            )
         }
 
         return results
@@ -38,7 +40,8 @@ struct IncompatibleMutantExecutor: Sendable {
 
     private func runSPMShared(
         mutants: [MutantDescriptor],
-        configuration: RunnerConfiguration
+        configuration: RunnerConfiguration,
+        reusing sandbox: Sandbox?
     ) async throws -> [ExecutionResult] {
         var results: [ExecutionResult] = []
 
@@ -58,10 +61,12 @@ struct IncompatibleMutantExecutor: Sendable {
 
         let workerCount = max(1, min(configuration.build.concurrency / Self.warmSandboxShare, viable.count))
         let workers = try await PhaseTimings.measure(.warmSandboxes, in: deps.timings) {
-            try await warmSandboxes(count: workerCount, configuration: configuration)
+            try await warmSandboxes(count: workerCount, reusing: sandbox, configuration: configuration)
         }
         defer {
-            for worker in workers { worker.sandbox.release(keepingFor: configuration.build.reproduction) }
+            for worker in workers where !worker.reused {
+                worker.sandbox.release(keepingFor: configuration.build.reproduction)
+            }
         }
 
         let ready = workers.filter { $0.build.exitCode == 0 }
@@ -119,17 +124,25 @@ struct IncompatibleMutantExecutor: Sendable {
     private struct WarmSandbox: Sendable {
         let sandbox: Sandbox
         let build: (exitCode: Int32, output: String)
+        let reused: Bool
     }
 
-    private func warmSandboxes(count: Int, configuration: RunnerConfiguration) async throws -> [WarmSandbox] {
+    private func warmSandboxes(
+        count: Int, reusing reused: Sandbox?, configuration: RunnerConfiguration
+    ) async throws -> [WarmSandbox] {
         try await withThrowingTaskGroup(of: (Int, WarmSandbox).self) { group in
             for slot in 0 ..< count {
                 group.addTask {
-                    let sandbox = try await sandboxFactory.createClean(projectPath: configuration.projectPath)
+                    let sandbox: Sandbox
+                    if slot == 0, let reused {
+                        sandbox = reused
+                    } else {
+                        sandbox = try await sandboxFactory.createClean(projectPath: configuration.projectPath)
+                    }
                     let build = try await deps.launcher.launchCapturing(
                         ToolRequests.swiftBuildTests(in: sandbox, timeout: configuration.build.buildTimeout)
                     )
-                    return (slot, WarmSandbox(sandbox: sandbox, build: build))
+                    return (slot, WarmSandbox(sandbox: sandbox, build: build, reused: slot == 0 && reused != nil))
                 }
             }
 

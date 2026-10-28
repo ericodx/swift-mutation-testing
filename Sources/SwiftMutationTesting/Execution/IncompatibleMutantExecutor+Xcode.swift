@@ -5,7 +5,8 @@ extension IncompatibleMutantExecutor {
         _ mutants: [MutantDescriptor],
         scheme: String,
         configuration: RunnerConfiguration,
-        pool: SimulatorPool
+        pool: SimulatorPool,
+        reusing sandbox: Sandbox?
     ) async throws -> [ExecutionResult] {
         guard !configuration.build.reproducing else {
             return try await PhaseTimings.measure(.incompatible, in: deps.timings) {
@@ -31,7 +32,9 @@ extension IncompatibleMutantExecutor {
                 concurrency: configuration.build.concurrency, poolSize: pool.size, mutantCount: viable.count
             )
             let workers = try await PhaseTimings.measure(.warmSandboxes, in: deps.timings) {
-                try await warmXcodeWorkers(count: width, scheme: scheme, configuration: configuration, pool: pool)
+                try await warmXcodeWorkers(
+                    count: width, reusing: sandbox, scheme: scheme, configuration: configuration, pool: pool
+                )
             }
             do {
                 let warm = try await PhaseTimings.measure(.incompatible, in: deps.timings) {
@@ -61,19 +64,25 @@ extension IncompatibleMutantExecutor {
         let slot: SimulatorSlot
         let scheme: String
         let build: (exitCode: Int32, output: String)
+        var reused = false
     }
 
     private func warmXcodeWorkers(
-        count: Int, scheme: String, configuration: RunnerConfiguration, pool: SimulatorPool
+        count: Int, reusing reused: Sandbox?, scheme: String, configuration: RunnerConfiguration, pool: SimulatorPool
     ) async throws -> [XcodeWorker] {
         try await withThrowingTaskGroup(of: (Int, XcodeWorker).self) { group in
             for index in 0 ..< count {
                 group.addTask {
                     let slot = try await pool.acquire()
                     do {
-                        let sandbox = try await sandboxFactory.createClean(
-                            projectPath: configuration.projectPath, disablingSwiftLint: true
-                        )
+                        let sandbox: Sandbox
+                        if index == 0, let reused {
+                            sandbox = reused
+                        } else {
+                            sandbox = try await sandboxFactory.createClean(
+                                projectPath: configuration.projectPath, disablingSwiftLint: true
+                            )
+                        }
                         let build = try await deps.launcher.launchCapturing(
                             ToolRequests.buildForTesting(
                                 in: sandbox, scheme: scheme, destination: slot.destination,
@@ -81,7 +90,13 @@ extension IncompatibleMutantExecutor {
                                 timeout: configuration.build.buildTimeout
                             )
                         )
-                        return (index, XcodeWorker(sandbox: sandbox, slot: slot, scheme: scheme, build: build))
+                        return (
+                            index,
+                            XcodeWorker(
+                                sandbox: sandbox, slot: slot, scheme: scheme, build: build,
+                                reused: index == 0 && reused != nil
+                            )
+                        )
                     } catch {
                         await pool.release(slot)
                         throw error
@@ -102,7 +117,7 @@ extension IncompatibleMutantExecutor {
 
     private func release(_ workers: [XcodeWorker], to pool: SimulatorPool) async {
         for worker in workers {
-            worker.sandbox.release(keepingFor: nil)
+            if !worker.reused { worker.sandbox.release(keepingFor: nil) }
             await pool.release(worker.slot)
         }
     }

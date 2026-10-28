@@ -30,7 +30,7 @@ struct MutantExecutor: Sendable {
     private struct MutantRunContext {
         let deps: ExecutionDeps
         let input: RunnerInput
-        let sandbox: Sandbox
+        let schema: SchemaSandbox
         let pool: SimulatorPool
         let artifact: BuildArtifact?
         let schemaBuildExcluded: [MutantDescriptor]
@@ -75,9 +75,10 @@ struct MutantExecutor: Sendable {
         SandboxCleaner.register(sandbox)
         defer { SandboxCleaner.deregister() }
 
+        let schema = SchemaSandbox(sandbox: sandbox, projectPath: input.projectPath, installed: input.schematizedFiles)
         let results: [ExecutionResult]
         do {
-            results = try await run(input, in: sandbox, deps: deps, reporter: reporter)
+            results = try await run(input, in: schema, deps: deps, reporter: reporter)
         } catch {
             sandbox.release(keepingFor: configuration.build.reproduction)
             throw error
@@ -93,28 +94,25 @@ struct MutantExecutor: Sendable {
 
     private func run(
         _ input: RunnerInput,
-        in sandbox: Sandbox,
+        in schema: SchemaSandbox,
         deps: ExecutionDeps,
         reporter: any ProgressReporter
     ) async throws -> [ExecutionResult] {
-        let installer = SchemaInstaller(sandbox: sandbox, projectPath: input.projectPath)
         var state = BatchState()
 
         do {
             let whole = try await runBatch(
-                input, splitsOnSuiteFailure: true, sandbox: sandbox, deps: deps, state: &state
+                input, splitsOnSuiteFailure: true, schema: schema, deps: deps, state: &state
             )
             var results = whole.results
-            var installed = input.schematizedFiles
 
             for (offset, batch) in whole.batches.enumerated() {
                 await reporter.report(
                     .schemaBatchStarted(index: offset + 1, count: whole.batches.count, limit: SchemaBatches().limit)
                 )
-                try installer.install(batch.schematizedFiles, replacing: installed)
-                installed = batch.schematizedFiles
+                try await schema.install(batch.schematizedFiles)
                 results += try await runBatch(
-                    batch, splitsOnSuiteFailure: false, sandbox: sandbox, deps: deps, state: &state
+                    batch, splitsOnSuiteFailure: false, schema: schema, deps: deps, state: &state
                 ).results
             }
 
@@ -130,10 +128,11 @@ struct MutantExecutor: Sendable {
     private func runBatch(
         _ batch: RunnerInput,
         splitsOnSuiteFailure: Bool,
-        sandbox: Sandbox,
+        schema: SchemaSandbox,
         deps: ExecutionDeps,
         state: inout BatchState
     ) async throws -> BatchOutcome {
+        let sandbox = schema.sandbox
         try environment.verifier.verify(
             schematizedFiles: batch.schematizedFiles, mutants: batch.mutants,
             sandbox: sandbox, projectPath: batch.projectPath
@@ -142,10 +141,9 @@ struct MutantExecutor: Sendable {
         let (artifact, schemaBuildExcluded) = try await buildArtifact(sandbox: sandbox, input: batch, deps: deps)
         if artifact == nil, !batch.mutants.isEmpty, !state.checkedUnmutatedBuild {
             try await PhaseTimings.measure(.unmutatedBuildCheck, in: deps.timings) {
-                try await UnmutatedBuildCheck(
-                    configuration: configuration, stage: BuildStage(launcher: deps.launcher),
-                    sandboxFactory: environment.sandboxFactory
-                ).verify(projectPath: batch.projectPath)
+                try await schema.restore()
+                try await UnmutatedBuildCheck(configuration: configuration, stage: BuildStage(launcher: deps.launcher))
+                    .verify(in: sandbox)
             }
             state.checkedUnmutatedBuild = true
         }
@@ -162,7 +160,7 @@ struct MutantExecutor: Sendable {
             MutantRunContext(
                 deps: deps,
                 input: batch,
-                sandbox: sandbox,
+                schema: schema,
                 pool: pool,
                 artifact: artifact,
                 schemaBuildExcluded: schemaBuildExcluded,
@@ -231,7 +229,7 @@ struct MutantExecutor: Sendable {
     ) async throws -> BatchOutcome {
         let deps = context.deps
         let input = context.input
-        let sandbox = context.sandbox
+        let schema = context.schema
         let pool = context.pool
         let artifact = context.artifact
         let schemaBuildExcluded = context.schemaBuildExcluded
@@ -262,9 +260,7 @@ struct MutantExecutor: Sendable {
         let testableSchematizable = schematizable.filter { !excludedIDs.contains($0.id) }
 
         if let artifact {
-            if let context = try await baselineContext(
-                artifact: artifact, sandbox: sandbox, pool: pool, deps: deps, projectPath: input.projectPath
-            ) {
+            if let context = try await baselineContext(artifact: artifact, schema: schema, pool: pool, deps: deps) {
                 results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
             } else {
                 let remaining = input.excluding(excludedIDs).keeping(testableSchematizable)
@@ -277,11 +273,14 @@ struct MutantExecutor: Sendable {
                 }
             }
         } else if !testableSchematizable.isEmpty {
-            results += try await runFallback(deps: deps, input: input.excluding(excludedIDs), pool: pool)
+            results += try await runFallback(
+                deps: deps, input: input.excluding(excludedIDs), pool: pool, schema: schema
+            )
         }
 
         results += try await runIncompatible(
-            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool, importStyle: input.importStyle
+            deps: deps, mutants: incompatible + reroutedToIncompatible, pool: pool, importStyle: input.importStyle,
+            schema: schema
         )
 
         return BatchOutcome(results: results, batches: batches)
@@ -289,11 +288,11 @@ struct MutantExecutor: Sendable {
 
     private func baselineContext(
         artifact: BuildArtifact,
-        sandbox: Sandbox,
+        schema: SchemaSandbox,
         pool: SimulatorPool,
-        deps: ExecutionDeps,
-        projectPath: String
+        deps: ExecutionDeps
     ) async throws -> TestExecutionContext? {
+        let sandbox = schema.sandbox
         let start = Date()
         do {
             var bundles: [TestBundle] = []
@@ -317,9 +316,8 @@ struct MutantExecutor: Sendable {
         } catch is BaselineError {
             await deps.timings.record(.baseline, start: start)
             try await PhaseTimings.measure(.unmutatedSuiteCheck, in: deps.timings) {
-                try await UnmutatedSuiteCheck(
-                    configuration: configuration, deps: deps, sandboxFactory: environment.sandboxFactory
-                ).verify(projectPath: projectPath, pool: pool)
+                try await schema.restore()
+                try await UnmutatedSuiteCheck(configuration: configuration, deps: deps).verify(in: sandbox, pool: pool)
             }
             return nil
         }
@@ -406,22 +404,27 @@ struct MutantExecutor: Sendable {
     private func runFallback(
         deps: ExecutionDeps,
         input: RunnerInput,
-        pool: SimulatorPool
+        pool: SimulatorPool,
+        schema: SchemaSandbox
     ) async throws -> [ExecutionResult] {
         try await FallbackExecutor(deps: deps, configuration: configuration)
-            .execute(input: input, pool: pool)
+            .execute(input: input, pool: pool, in: schema)
     }
 
     private func runIncompatible(
         deps: ExecutionDeps,
         mutants: [MutantDescriptor],
         pool: SimulatorPool,
-        importStyle: ImportStyle
+        importStyle: ImportStyle,
+        schema: SchemaSandbox
     ) async throws -> [ExecutionResult] {
-        try await IncompatibleMutantExecutor(
+        guard !mutants.isEmpty else { return [] }
+
+        try await schema.restore()
+        return try await IncompatibleMutantExecutor(
             deps: deps, sandboxFactory: environment.sandboxFactory, importStyle: importStyle
         )
-        .execute(mutants, configuration: configuration, pool: pool)
+        .execute(mutants, configuration: configuration, pool: pool, reusing: schema.sandbox)
     }
 
     private func rewriteForIncompatible(

@@ -8,12 +8,13 @@ struct FallbackExecutor: Sendable {
         ResultRecorder(deps: deps, keepLogsPath: configuration.reporting.keepLogsPath)
     }
 
-    func execute(input: RunnerInput, pool: SimulatorPool) async throws -> [ExecutionResult] {
+    func execute(input: RunnerInput, pool: SimulatorPool, in schema: SchemaSandbox) async throws -> [ExecutionResult] {
         var results: [ExecutionResult] = []
 
         for file in input.schematizedFiles {
-            results += try await processFile(file: file, input: input, pool: pool)
+            results += try await processFile(file: file, input: input, pool: pool, schema: schema)
         }
+        try await schema.restore()
 
         return results
     }
@@ -21,7 +22,8 @@ struct FallbackExecutor: Sendable {
     private func processFile(
         file: SchematizedFile,
         input: RunnerInput,
-        pool: SimulatorPool
+        pool: SimulatorPool,
+        schema: SchemaSandbox
     ) async throws -> [ExecutionResult] {
         let fileMutants = input.mutants.filter { $0.filePath == file.originalPath && $0.isSchematizable }
 
@@ -32,11 +34,8 @@ struct FallbackExecutor: Sendable {
         }
 
         let buildStart = Date()
-        let sandbox = try await SandboxFactory().create(
-            projectPath: input.projectPath,
-            schematizedFiles: [file]
-        )
-        defer { sandbox.release(keepingFor: configuration.build.reproduction) }
+        let sandbox = schema.sandbox
+        try await schema.install([file])
 
         try ApplicationVerifier().verify(
             schematizedFiles: [file], mutants: fileMutants, sandbox: sandbox, projectPath: input.projectPath

@@ -14,6 +14,7 @@ struct SchemaInstaller: Sendable {
 
         for file in files {
             let path = try sandboxPath(of: canonicalPath(of: file.originalPath))
+            try? FileManager.default.removeItem(atPath: path)
             try LintSuppression.wrapping(file.schematizedContent).write(toFile: path, atomically: true, encoding: .utf8)
         }
     }
