@@ -19,4 +19,11 @@ struct HelpTextTests {
         #expect(line.contains("repeatable"))
         #expect(line.contains("Xcode only"))
     }
+
+    @Test("Given the help, when the timing option is described, then it says the time is split by phase")
+    func timingIsDescribed() throws {
+        let line = try #require(HelpText.usage.split(separator: "\n").first { $0.contains("--timing") })
+
+        #expect(line.contains("phases"))
+    }
 }

@@ -1503,4 +1503,33 @@ struct MutantExecutorTests {
         let build = try #require(await launcher.recorded(commandStartingWith: "build-for-testing"))
         #expect(build.arguments.suffix(2) == ["-workspace", "Apps/App.xcworkspace"])
     }
+
+    @Test("Given timings in the environment, when a mutant runs, then every phase of the run is recorded in order")
+    func recordsThePhasesOfTheRun() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let sourceFile = dir.appendingPathComponent("Foo.swift")
+        try "let x = true".write(to: sourceFile, atomically: true, encoding: .utf8)
+        let timings = PhaseTimings()
+
+        _ = try await MutantExecutor(
+            configuration: makeRunnerConfiguration(projectPath: dir.path),
+            launcher: UnmutatedBuildPassingLauncher(base: MockProcessLauncher(exitCode: 1)),
+            environment: MutantExecutor.Environment(timings: timings)
+        ).execute(
+            makeRunnerInput(
+                projectPath: dir.path,
+                schematizedFiles: [SchematizedFile(originalPath: sourceFile.path, schematizedContent: "let x = false")],
+                mutants: [
+                    makeMutantDescriptor(
+                        id: "m0", filePath: sourceFile.path, originalText: "true", mutatedText: "false",
+                        isSchematizable: true, sourceContentHash: "test-hash"
+                    )
+                ]
+            )
+        )
+
+        let phases = await timings.entries.map(\.phase)
+        #expect(phases == [.sandbox, .schemaBuild, .unmutatedBuildCheck, .workers, .fallbackBuilds, .teardown, .teardown])
+    }
 }

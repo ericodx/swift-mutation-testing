@@ -16,6 +16,7 @@ func makeRunnerConfiguration(
     markdownOutput: String? = nil,
     keepLogsPath: String? = nil,
     quiet: Bool = true,
+    timing: Bool = false,
     excludePatterns: [String] = [],
     operators: [String] = []
 ) -> RunnerConfiguration {
@@ -35,7 +36,8 @@ func makeRunnerConfiguration(
                 .json: output, .html: htmlOutput, .sonar: sonarOutput, .sarif: sarifOutput, .markdown: markdownOutput,
             ].compactMapValues { $0 },
             keepLogsPath: keepLogsPath,
-            quiet: quiet
+            quiet: quiet,
+            timing: timing
         ),
         filter: .init(excludePatterns: excludePatterns, operators: operators)
     )

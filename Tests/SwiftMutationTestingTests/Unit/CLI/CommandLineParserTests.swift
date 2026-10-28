@@ -137,12 +137,22 @@ struct CommandLineParserTests {
         #expect(result.build.buildTimeout == 240)
     }
 
-    @Test("Given --no-cache and --quiet flags, when parsed, then noCache and quiet are true")
+    @Test("Given --no-cache, --quiet and --timing flags, when parsed, then noCache, quiet and timing are true")
     func parsesBooleanFlags() throws {
-        let result = try parser.parse(["run", "--scheme", "App", "--destination", "d", "--no-cache", "--quiet"])
+        let result = try parser.parse([
+            "run", "--scheme", "App", "--destination", "d", "--no-cache", "--quiet", "--timing",
+        ])
 
         #expect(result.build.noCache)
         #expect(result.reporting.quiet)
+        #expect(result.reporting.timing)
+    }
+
+    @Test("Given no --timing flag, when parsed, then timing is off")
+    func timingIsOffByDefault() throws {
+        let result = try parser.parse(["run", "--scheme", "App", "--destination", "d"])
+
+        #expect(!result.reporting.timing)
     }
 
     @Test("Given optional string flags, when parsed, then all string values are set")

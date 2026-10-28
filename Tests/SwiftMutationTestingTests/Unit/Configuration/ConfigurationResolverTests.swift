@@ -198,6 +198,26 @@ struct ConfigurationResolverTests {
         #expect(result.reporting.quiet)
     }
 
+    @Test("Given timing true in file, when resolved, then timing is on")
+    func timingFromFile() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
+            fileValues: ["timing": "true"]
+        )
+
+        #expect(result.reporting.timing)
+    }
+
+    @Test("Given neither flag nor file key, when resolved, then timing is off")
+    func timingIsOffByDefault() throws {
+        let result = try resolver.resolve(
+            cliArguments: ParsedArguments(build: .init(scheme: "App", destination: "d")),
+            fileValues: [:]
+        )
+
+        #expect(!result.reporting.timing)
+    }
+
     @Test("Given concurrency of zero, when resolved, then throws UsageError")
     func throwsWhenConcurrencyLessThanOne() {
         #expect(throws: UsageError.self) {
