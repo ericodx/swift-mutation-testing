@@ -100,7 +100,7 @@ To address a survivor, add or strengthen a test that is sensitive to the origina
 
 ### Timeout ⏱
 
-**What it means:** the test process was still running when the per-mutant timeout expired — and it was still running when the mutant was run again on its own. A mutant that times out while the other workers are busy is not given this verdict straight away. The parallel pass allows twice the configured `--timeout`, and once it is over every mutant still unsettled is run once more with at most a quarter of the workers, under the configured `--timeout`; only that second timeout is reported. That second run has no contention to blame, so the verdict describes the mutation rather than the machine. The process was killed and the mutant counts as detected in the score.
+**What it means:** the test process was still running when the per-mutant timeout expired — and it was still running when the mutant was run again on its own. A mutant that times out while the other workers are busy is not given this verdict straight away. The parallel pass allows twice the configured `--timeout`, and once it is over every mutant still unsettled is run once more on at most half the machine's cores, under the configured `--timeout`; only that second timeout is reported. That second run has no contention to blame, so the verdict describes the mutation rather than the machine. The process was killed and the mutant counts as detected in the score.
 
 **What causes it:** the mutation introduced an infinite loop or a significantly longer execution path. Common sources:
 
