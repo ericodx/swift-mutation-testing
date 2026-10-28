@@ -1,6 +1,7 @@
 struct RunnerSummary: Sendable {
     let results: [ExecutionResult]
     let totalDuration: Double
+    let phases: [PhaseTiming]
 
     let killed: [ExecutionResult]
     let survived: [ExecutionResult]
@@ -13,9 +14,10 @@ struct RunnerSummary: Sendable {
     let integrityWarnings: [ExecutionResult]
     let activationNotMeasured: [ExecutionResult]
 
-    init(results: [ExecutionResult], totalDuration: Double) {
+    init(results: [ExecutionResult], totalDuration: Double, phases: [PhaseTiming] = []) {
         self.results = results
         self.totalDuration = totalDuration
+        self.phases = phases
 
         var killed: [ExecutionResult] = []
         var survived: [ExecutionResult] = []

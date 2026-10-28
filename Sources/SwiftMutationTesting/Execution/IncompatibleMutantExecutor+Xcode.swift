@@ -8,7 +8,9 @@ extension IncompatibleMutantExecutor {
         pool: SimulatorPool
     ) async throws -> [ExecutionResult] {
         guard !configuration.build.reproducing else {
-            return try await runXcodeCold(mutants, scheme: scheme, configuration: configuration, pool: pool)
+            return try await PhaseTimings.measure(.incompatible, in: deps.timings) {
+                try await runXcodeCold(mutants, scheme: scheme, configuration: configuration, pool: pool)
+            }
         }
 
         var results: [Int: ExecutionResult] = [:]
@@ -28,11 +30,14 @@ extension IncompatibleMutantExecutor {
             let width = Self.xcodeWidth(
                 concurrency: configuration.build.concurrency, poolSize: pool.size, mutantCount: viable.count
             )
-            let workers = try await warmXcodeWorkers(
-                count: width, scheme: scheme, configuration: configuration, pool: pool
-            )
+            let workers = try await PhaseTimings.measure(.warmSandboxes, in: deps.timings) {
+                try await warmXcodeWorkers(count: width, scheme: scheme, configuration: configuration, pool: pool)
+            }
             do {
-                for (index, result) in try await runXcodeWarm(viable, on: workers, configuration: configuration) {
+                let warm = try await PhaseTimings.measure(.incompatible, in: deps.timings) {
+                    try await runXcodeWarm(viable, on: workers, configuration: configuration)
+                }
+                for (index, result) in warm {
                     results[index] = result
                 }
             } catch {

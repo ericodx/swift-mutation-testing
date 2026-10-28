@@ -83,7 +83,7 @@ mutators:
 
 For a package the file has no container, scheme, destination, testing framework or concurrency, and its timeout is `30`. When detection could not choose a container, the file says why and lists every candidate commented out.
 
-The keys the tool knows are `ConfigurationResolver.fileKeys`, all kebab-case: `scheme`, `destination`, `workspace`, `project`, `xcodebuild-args`, `test-target`, `timeout`, `build-timeout`, `concurrency`, `no-cache`, `testing-framework`, `keep-logs`, `quiet`, `sources-path`, `exclude` (or `exclude-patterns`), `operators`, `disabled-mutators`, `operator-tier`, `min-score`, `max-score-drop`, `max-new-survivors`, `max-integrity-warnings`, `baseline`, and one per report format (`ReportFormat.fileKey`: `output`, `html-output`, `sonar-output`, `sarif-output`, `markdown-output`). `--write-baseline` is a command-line option only.
+The keys the tool knows are `ConfigurationResolver.fileKeys`, all kebab-case: `scheme`, `destination`, `workspace`, `project`, `xcodebuild-args`, `test-target`, `timeout`, `build-timeout`, `concurrency`, `no-cache`, `testing-framework`, `keep-logs`, `quiet`, `timing`, `sources-path`, `exclude` (or `exclude-patterns`), `operators`, `disabled-mutators`, `operator-tier`, `min-score`, `max-score-drop`, `max-new-survivors`, `max-integrity-warnings`, `baseline`, and one per report format (`ReportFormat.fileKey`: `output`, `html-output`, `sonar-output`, `sarif-output`, `markdown-output`). `--write-baseline` is a command-line option only.
 
 **Parsing and validation.** A `#` that starts a line or follows whitespace, outside quotes, starts a comment, so `timeout: 60 # seconds` reads `60`; surrounding quotes are stripped from values and list items. Every value is then checked as the matching flag would be, and a value that does not parse is a `UsageError` naming the key and the file:
 
@@ -91,7 +91,7 @@ The keys the tool knows are `ConfigurationResolver.fileKeys`, all kebab-case: `s
 |---|---|
 | `timeout`, `build-timeout` | a positive number |
 | `concurrency` | an integer, at least 1 |
-| `no-cache`, `quiet` | `true`/`false`, `yes`/`no` or `on`/`off`, in any case |
+| `no-cache`, `quiet`, `timing` | `true`/`false`, `yes`/`no` or `on`/`off`, in any case |
 | `testing-framework` | `xctest` or `swift-testing` |
 | `operator-tier` | `conservative`, `default` or `experimental` |
 | `min-score` | a number from 0 to 100 |
@@ -129,7 +129,8 @@ RunnerConfiguration
 ├── reporting: ReportingOptions
 │   ├── outputs           — report path per ReportFormat (JSON, HTML, Sonar, SARIF, Markdown)
 │   ├── keepLogsPath      — where each mutant's test output is written (optional)
-│   └── quiet             — suppress progress output (default: false)
+│   ├── quiet             — suppress progress output (default: false)
+│   └── timing            — print the time by phase after the summary (default: false)
 ├── filter: FilterOptions
 │   ├── sourcesPath       — root directory (or file) for source discovery (default: projectPath)
 │   ├── excludePatterns   — globs or path fragments for files to exclude
@@ -222,6 +223,7 @@ OPTIONS:
   --markdown-output <md-path>   Write a Markdown summary, for CI job summaries, to path
   --keep-logs <directory>       Write each mutant's captured test output to <directory>
   --quiet                       Suppress progress output
+  --timing                      Print how the run's time splits between its phases
   --sources-path <path>         Root directory to discover Swift source files (default: project path)
   --exclude <pattern>           Leave out files matching a glob (**/Generated/**) or containing a
                                 path fragment (/Generated/) (repeatable)

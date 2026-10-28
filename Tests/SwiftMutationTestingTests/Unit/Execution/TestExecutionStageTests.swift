@@ -556,4 +556,19 @@ struct TestExecutionStageTests {
         #expect(results.first { $0.descriptor.id == "m0" }?.status == .survived)
         #expect(await launcher.attemptCount(for: "m0") == 0)
     }
+
+    @Test("Given mutants, when execute called, then the three passes are recorded, each once")
+    func recordsTheThreePasses() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+
+        let (stage, context) = makeTestExecutionFixture(in: dir, exitCode: 0)
+        try await context.pool.setUp()
+        let mutant = makeMutantDescriptor(id: "m0", originalText: "a + b", mutatedText: "a - b", isSchematizable: true)
+
+        _ = try await stage.execute(mutants: [mutant], in: context)
+
+        let phases = await stage.deps.timings.entries.map(\.phase)
+        #expect(phases == [.mutants, .stragglers, .unactivatedKills])
+    }
 }

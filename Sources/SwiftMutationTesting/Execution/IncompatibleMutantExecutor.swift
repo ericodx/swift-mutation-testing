@@ -56,7 +56,9 @@ struct IncompatibleMutantExecutor: Sendable {
 
         let share = TestExecutionStage.retryWorkerShare
         let workerCount = max(1, min(configuration.build.concurrency / share, viable.count))
-        let workers = try await warmSandboxes(count: workerCount, configuration: configuration)
+        let workers = try await PhaseTimings.measure(.warmSandboxes, in: deps.timings) {
+            try await warmSandboxes(count: workerCount, configuration: configuration)
+        }
         defer {
             for worker in workers { worker.sandbox.release(keepingFor: configuration.build.reproduction) }
         }
@@ -78,7 +80,9 @@ struct IncompatibleMutantExecutor: Sendable {
             return results
         }
 
-        results += try await runRoundRobin(viable, over: ready, configuration: configuration)
+        results += try await PhaseTimings.measure(.incompatible, in: deps.timings) {
+            try await runRoundRobin(viable, over: ready, configuration: configuration)
+        }
         return results
     }
 

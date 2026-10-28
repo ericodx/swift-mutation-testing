@@ -216,6 +216,9 @@ struct CommandLineParser: Sendable {
         case "--quiet":
             values.reporting.quiet = true
 
+        case "--timing":
+            values.reporting.timing = true
+
         default:
             return false
         }
