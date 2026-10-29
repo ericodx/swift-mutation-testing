@@ -436,6 +436,32 @@ struct TestExecutionStageTests {
         (0 ..< 4).map { makeMutantDescriptor(id: "m\($0)", isSchematizable: true) }
     }
 
+    @Test("Given durations known for some mutants, when the pass runs, then the unknown go first and the longest next")
+    func thePassRunsTheSlowestKnownMutantsFirst() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let launcher = TimeoutUnderLoadLauncher(timesOutFirst: [])
+        let (stage, context, deps) = try await makeLoadFixture(
+            in: dir, launcher: launcher, reporter: MockProgressReporter(), concurrency: 1
+        )
+        let mutants = [
+            makeMutantDescriptor(id: "m0", utf8Offset: 0, isSchematizable: true),
+            makeMutantDescriptor(id: "m1", utf8Offset: 1, isSchematizable: true),
+            makeMutantDescriptor(
+                id: "m2", utf8Offset: 2, operatorIdentifier: "NegateConditional", isSchematizable: true,
+                isInLoopCondition: true
+            ),
+            makeMutantDescriptor(id: "m3", utf8Offset: 3, isSchematizable: true),
+        ]
+        await deps.cacheStore.store(status: .timeout, for: MutantCacheKey.make(for: mutants[1]), duration: 60)
+        await deps.cacheStore.store(status: .timeout, for: MutantCacheKey.make(for: mutants[3]), duration: 10)
+
+        let results = try await stage.execute(mutants: mutants, in: context)
+
+        #expect(results.count == 4)
+        #expect(await launcher.sequence.map(\.id) == ["m2", "m0", "m1", "m3"])
+    }
+
     @Test("Given a mutant that times out under load, when the pass ends, then it runs again alone for its real verdict")
     func timedOutMutantIsRetriedAloneAndTakesItsRealVerdict() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

@@ -14,7 +14,8 @@ func makeMutantDescriptor(
     isSchematizable: Bool = false,
     mutatedSourceContent: String? = nil,
     sourceContentHash: String = "source-hash",
-    fingerprint: String = "fingerprint"
+    fingerprint: String = "fingerprint",
+    isInLoopCondition: Bool = false
 ) -> MutantDescriptor {
     MutantDescriptor(
         id: id,
@@ -30,6 +31,7 @@ func makeMutantDescriptor(
         isSchematizable: isSchematizable,
         mutatedSourceContent: mutatedSourceContent,
         sourceContentHash: sourceContentHash,
-        fingerprint: fingerprint
+        fingerprint: fingerprint,
+        isInLoopCondition: isInLoopCondition
     )
 }
