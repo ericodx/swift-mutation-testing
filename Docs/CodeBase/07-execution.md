@@ -421,7 +421,7 @@ struct TestExecutionStage: Sendable {
 }
 ```
 
-Runs each mutant's tests in parallel — `xcodebuild test-without-building` on the Xcode path (the artifact has a plist), the test bundles directly on the SPM one. The three passes below are three calls of one private `forEach(_:concurrency:run:collect:)`: a `withThrowingTaskGroup` that starts `concurrency` tasks and starts the next element as each finishes, and hands every outcome to `collect` on the calling task, so the results and the two retry lists are plain local arrays. `classify` turns a survivor whose activation marker was not written into `.noCoverage`; `IncompatibleMutantExecutor` classifies with it too.
+Runs each mutant's tests in parallel — `xcodebuild test-without-building` on the Xcode path (the artifact has a plist), the test bundles directly on the SPM one. The first pass takes the mutants in the order `SlowestFirst` gives them from the cache's last known durations (`CacheStore.durations(for:)`), not in source order; only the order changes, the passes and their limits are as below. The three passes below are three calls of one private `forEach(_:concurrency:run:collect:)`: a `withThrowingTaskGroup` that starts `concurrency` tasks and starts the next element as each finishes, and hands every outcome to `collect` on the calling task, so the results and the two retry lists are plain local arrays. `classify` turns a survivor whose activation marker was not written into `.noCoverage`; `IncompatibleMutantExecutor` classifies with it too.
 
 A mutant whose run times out during that parallel pass is not recorded yet. Once the group has drained, every such mutant is run once more on half the machine's cores (`stragglerConcurrency`: `processorCount / 2`, never more than `concurrency`, never fewer than one), under the configured `--timeout`, and that second outcome is the one reported and cached. The parallel pass itself allows twice the configured timeout (`loadedTimeoutFactor`): a verdict that settles under load is the same verdict the mutant would get alone, so the wider limit only spares the second run, while a mutant that is still running at twice the limit is handed to the quieter pass, whose limit is the one the user asked for.
 
@@ -490,6 +490,20 @@ flowchart TD
     RELEASE --> STORE["ResultRecorder.record<br>log, cache, progress"]
     STORE --> REPORT2["ExecutionResult"]
 ```
+
+## Execution/SlowestFirst.swift
+
+```swift
+enum SlowestFirst {
+    static let loopingOperators: Set<String>
+    static func order(_ mutants: [MutantDescriptor], durations: [Double?]) -> [MutantDescriptor]
+    static func isLikelyToLoop(_ mutant: MutantDescriptor) -> Bool
+}
+```
+
+The order of the first pass: the mutants with no known duration first — among them, a `NegateConditional` or `RelationalOperatorReplacement` in a loop condition (`isLikelyToLoop`, from `MutantDescriptor.isInLoopCondition`) before the rest — then the known ones, longest first; ties keep the source order. A known duration beats the heuristic, so a loop that finished in a second on the last run is not started early again. Scheduling the longest jobs first shortens the tail of a parallel pass: measured on `swift-cpd` with 15 workers, pass 1 took 154 s and ended the moment the last of its 18 looping mutants reached the limit — they sat in the middle of the source order, started around 150 s in and held a worker each until the end, while every other mutant was long done. The durations come from the cache (`CacheStore.durations(for:)`), where a timeout's is kept even though its verdict is not, and are all `nil` under `--no-cache` and on a first run, where the heuristic alone decides.
+
+---
 
 ## Execution/TestExecutionContext.swift
 

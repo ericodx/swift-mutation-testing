@@ -206,7 +206,7 @@ struct MutantIndexingStage: Sendable {
 }
 ```
 
-Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset, with `MutationPoint.inSourceOrder` — the order `MutantDiscoveryStage` already returns them in, so the stage checks the order in one pass and sorts only points that come out of it) and classifies them as schematizable or incompatible with the file's `functionScopes` (`FunctionBodyScopes.isSchematizable(utf8Offset:)`; a point of a file not among the sources is incompatible). The index becomes the mutant ID, `MutantID.make(index:)`.
+Assigns a globally unique sequential index to each mutation point (sorted by file path, then UTF-8 offset, with `MutationPoint.inSourceOrder` — the order `MutantDiscoveryStage` already returns them in, so the stage checks the order in one pass and sorts only points that come out of it) and classifies them as schematizable or incompatible with the file's `functionScopes` (`FunctionBodyScopes.isSchematizable(utf8Offset:)`; a point of a file not among the sources is incompatible). It also marks the points that sit in a `while` or `repeat` condition (`ParsedSource.loopConditions`), which `SlowestFirst` uses to start the mutants most likely to loop before the others on a run with no history. The index becomes the mutant ID, `MutantID.make(index:)`.
 
 It also computes each mutant's `MutantFingerprint`, from the path relative to the project — one `ProjectRelativePath.Resolver` for the whole run, so the project root's symlinks are resolved once — and the `DeclarationPath` at the offset. The index is renumbered by any mutant added earlier in any file, so it cannot identify a mutant across runs of different code; the fingerprint can. Among mutants that share a file, declaration, operator and change, the ordinal is their position in offset order.
 
@@ -286,6 +286,7 @@ struct IndexedMutationPoint: Sendable {
     let mutation: MutationPoint
     let isSchematizable: Bool
     let fingerprint: String
+    var isInLoopCondition = false
 
     var mutantID: String { get }
     func toDescriptor(mutatedContent: String?, sourceContentHash: String) -> MutantDescriptor
@@ -299,6 +300,7 @@ struct IndexedMutationPoint: Sendable {
 | `mutantID` | `MutantID.make(index:)`, `"swift-mutation-testing_<index>"` — unique per run, and the value `__swiftMutationTestingID_<hash>` is compared against in the schema |
 | `isSchematizable` | `true` if the mutation falls inside a function body (`ParsedSource.functionScopes`, collected by `TypeScopeVisitor`) |
 | `fingerprint` | The mutant's `MutantFingerprint`, stable across runs |
+| `isInLoopCondition` | `true` if the mutation falls inside the condition of a `while` or `repeat` loop (`ParsedSource.loopConditions`); `false` by default, so a point made without a source is not one |
 
 ---
 
@@ -362,6 +364,7 @@ struct ParsedSource: Sendable {
     let syntax: SourceFileSyntax
     let locationConverter: SourceLocationConverter
     let functionScopes: FunctionBodyScopes
+    let loopConditions: LoopConditions
     init(file: SourceFile, syntax: SourceFileSyntax)
 }
 ```
@@ -372,8 +375,23 @@ struct ParsedSource: Sendable {
 | `syntax` | SwiftSyntax AST root node |
 | `locationConverter` | The file's offset-to-line converter, named after its path |
 | `functionScopes` | Every function, initializer, deinitializer and accessor body (`TypeScopeVisitor`), as `FunctionBodyScopes` — see [05 — Schematization](05-schematization.md#discoveryschematizationtypescopevisitorswift) |
+| `loopConditions` | The ranges of every `while` and `repeat` condition in the file, as `LoopConditions` |
 
-`init` builds the last two once per file. Each of the seven operator visitors used to build its own `SourceLocationConverter` over the whole file, and the suppression filter an eighth; `MutantIndexingStage` and `SchemataGenerator` each walked the file again with `TypeScopeVisitor`. They all read these now. The seven operators still walk the file once each.
+`init` builds the last three once per file. Each of the seven operator visitors used to build its own `SourceLocationConverter` over the whole file, and the suppression filter an eighth; `MutantIndexingStage` and `SchemataGenerator` each walked the file again with `TypeScopeVisitor`. They all read these now. The seven operators still walk the file once each.
+
+---
+
+## Discovery/Pipeline/LoopConditions.swift
+
+```swift
+struct LoopConditions: Sendable {
+    let ranges: [Range<AbsolutePosition>]
+    init(in syntax: SourceFileSyntax)
+    func contains(utf8Offset: Int) -> Bool
+}
+```
+
+The ranges of every `while` condition list and `repeat … while` condition in a file, collected by one private `SyntaxVisitor` walk, and a lookup by offset. A `for … in` and an `if` are not loop conditions: the first ends with its sequence, the second does not loop. `InfiniteLoopFilter` is the other side of the same concern — it takes out the risky mutations of loop *bodies* — while this one only labels the ones in the *condition*, where a `<` turned `<=` or a negated test is what makes a loop never end; those are kept and run, early.
 
 ---
 
@@ -429,6 +447,7 @@ struct MutantDescriptor: Sendable, Codable {
     var mutatedSourceContent: String?
     let sourceContentHash: String
     let fingerprint: String
+    var isInLoopCondition = false
 }
 ```
 
@@ -440,6 +459,7 @@ The canonical representation of a mutant carried through the execution pipeline 
 | `isSchematizable` | `true` if the mutation falls inside a function body |
 | `mutatedSourceContent` | Complete source file with the mutation applied; `nil` for schematizable mutants. A `var`, so the executor's fallback can hand a schematizable mutant its rewritten file on a copy |
 | `fingerprint` | Stable identity across runs — see `MutantFingerprint` |
+| `isInLoopCondition` | `true` when the mutation sits in a `while` or `repeat` condition, from `IndexedMutationPoint`; a descriptor rebuilt from a plan without its sources (`PlanMaterializer.descriptor`) leaves it `false`, and such a descriptor never runs |
 
 All position fields (`line`, `column`, `utf8Offset`) match those in the originating `MutationPoint`.
 

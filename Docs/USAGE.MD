@@ -584,6 +584,8 @@ A package's mutants run the compiled test bundles directly, not through `swift t
 
 Two passes use fewer workers: mutants that timed out in the parallel pass are run again on half the machine's cores (never more than `--concurrency`, at least 1), and incompatible mutants are built and tested on a quarter of the workers, each worker with a sandbox of its own that it builds once and then rebuilds incrementally — see [Mutation Results](MUTATION-RESULTS.md#performance-implications).
 
+The parallel pass starts with the mutants the cache remembers as slowest, so a mutant that looped last time does not hold a worker at the end of the pass while the rest sit idle. On a first run, or under `--no-cache`, the mutants of a `while` or `repeat` condition go first instead, since those are the ones that loop.
+
 ---
 
 ## Output Formats
@@ -774,7 +776,7 @@ cat mutation-summary.md >> "$GITHUB_STEP_SUMMARY"
 
 ### Caching
 
-Results are cached at `<project>/.swift-mutation-testing-cache/results.json`, keyed by SHA256 of the source and test file contents, together with whether the mutated code ran. On subsequent runs, cached mutants skip the build and test cycle entirely.
+Results are cached at `<project>/.swift-mutation-testing-cache/results.json`, keyed by SHA256 of the source and test file contents, together with whether the mutated code ran and how long its tests took. On subsequent runs, cached mutants skip the build and test cycle entirely. A timeout is not a cached verdict — the mutant runs again next time — but its duration is kept, so the next run starts it early.
 
 The cache format is versioned. A cache written by an older version is discarded once, with a warning, and the run tests every mutant again; the next run writes a cache in the current format.
 
