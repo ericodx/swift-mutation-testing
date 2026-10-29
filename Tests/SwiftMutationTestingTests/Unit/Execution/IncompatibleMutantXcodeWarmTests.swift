@@ -124,6 +124,21 @@ struct IncompatibleMutantXcodeWarmTests {
         #expect([first, second].count == 2, "both slots went back to the pool")
     }
 
+    @Test("Given the first worker's warm build is slow, when executed, then the other one starts before it ends")
+    func theQuickWorkerStartsWhileTheSlowOneStillBuilds() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let launcher = FirstWarmBuildIsSlow()
+
+        let results = try await run(mutants: 4, concurrency: 8, poolSize: 4, launcher: launcher, in: dir)
+
+        #expect(results.map(\.descriptor.id) == (0 ..< 4).map { "m\($0)" })
+        #expect(await launcher.testRunsByRoot.values.reduce(0, +) == 4)
+        let firstTest = try #require(await launcher.firstTestStartedAt)
+        let slowBuildEnd = try #require(await launcher.slowBuildFinishedAt)
+        #expect(firstTest < slowBuildEnd, "the slow build was still running when the first mutant started")
+    }
+
     // MARK: - Private
 
     private func run(
@@ -165,5 +180,38 @@ private actor SecondWarmBuildThrows: ProcessLaunching {
         guard builds == 2 else { return (0, "") }
         try await Task.sleep(for: .milliseconds(300))
         throw CocoaError(.fileReadNoSuchFile)
+    }
+}
+
+private actor FirstWarmBuildIsSlow: ProcessLaunching {
+    private var warmRoots: [String] = []
+    private(set) var testRunsByRoot: [String: Int] = [:]
+    private(set) var firstTestStartedAt: Date?
+    private(set) var slowBuildFinishedAt: Date?
+
+    func launch(
+        executableURL: URL, arguments: [String], workingDirectoryURL: URL, timeout: Double
+    ) async throws -> Int32 {
+        0
+    }
+
+    func launchCapturing(_ request: ProcessRequest) async throws -> (exitCode: Int32, output: String) {
+        let root = request.workingDirectoryURL.path
+        switch request.arguments.first {
+        case "build-for-testing" where !warmRoots.contains(root):
+            warmRoots.append(root)
+            guard warmRoots.count == 1 else { return (0, "") }
+            let deadline = Date().addingTimeInterval(3)
+            while firstTestStartedAt == nil, Date() < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            slowBuildFinishedAt = Date()
+        case "test-without-building":
+            if firstTestStartedAt == nil { firstTestStartedAt = Date() }
+            testRunsByRoot[root, default: 0] += 1
+        default:
+            break
+        }
+        return (0, "")
     }
 }

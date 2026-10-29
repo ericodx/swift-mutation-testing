@@ -14,156 +14,82 @@ extension IncompatibleMutantExecutor {
             }
         }
 
-        var results: [Int: ExecutionResult] = [:]
-        var viable: [WarmMutant] = []
-        for (index, mutant) in mutants.enumerated() {
-            guard let content = mutant.mutatedSourceContent else {
-                results[index] = await storeAndReport(
-                    mutant: mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
-                    buildOutput: "The mutation could not be applied to the source file."
-                )
-                continue
-            }
-            viable.append(WarmMutant(index: index, mutant: mutant, content: content))
-        }
+        let (unviable, viable) = await separateViable(mutants, configuration: configuration)
+        var results = unviable
 
         if !viable.isEmpty {
             let width = Self.xcodeWidth(
                 concurrency: configuration.build.concurrency, poolSize: pool.size, mutantCount: viable.count
             )
-            let workers = try await PhaseTimings.measure(.warmSandboxes, in: deps.timings) {
-                try await warmXcodeWorkers(
-                    count: width, reusing: sandbox, scheme: scheme, configuration: configuration, pool: pool
-                )
+            let warmup = XcodeWarmup(reused: sandbox, scheme: scheme, configuration: configuration, pool: pool)
+            let warm = try await runOnWarmSandboxes(viable, width: width, configuration: configuration) {
+                try await warmXcodeWorker(index: $0, queue: $1, warmup: warmup)
             }
-            do {
-                let warm = try await PhaseTimings.measure(.incompatible, in: deps.timings) {
-                    try await runXcodeWarm(viable, on: workers, configuration: configuration)
-                }
-                for (index, result) in warm {
-                    results[index] = result
-                }
-            } catch {
-                await release(workers, to: pool)
-                throw error
+            for (index, result) in warm {
+                results[index] = result
             }
-            await release(workers, to: pool)
         }
 
         return mutants.indices.compactMap { results[$0] }
-    }
-
-    struct WarmMutant: Sendable {
-        let index: Int
-        let mutant: MutantDescriptor
-        let content: String
     }
 
     struct XcodeWorker: Sendable {
         let sandbox: Sandbox
         let slot: SimulatorSlot
         let scheme: String
-        let build: (exitCode: Int32, output: String)
-        var reused = false
     }
 
-    private func warmXcodeWorkers(
-        count: Int, reusing reused: Sandbox?, scheme: String, configuration: RunnerConfiguration, pool: SimulatorPool
-    ) async throws -> [XcodeWorker] {
-        try await withThrowingTaskGroup(of: (Int, XcodeWorker).self) { group in
-            for index in 0 ..< count {
-                group.addTask {
-                    let slot = try await pool.acquire()
-                    do {
-                        let sandbox: Sandbox
-                        if index == 0, let reused {
-                            sandbox = reused
-                        } else {
-                            sandbox = try await sandboxFactory.createClean(
-                                projectPath: configuration.projectPath, disablingSwiftLint: true
-                            )
-                        }
-                        let build = try await deps.launcher.launchCapturing(
-                            ToolRequests.buildForTesting(
-                                in: sandbox, scheme: scheme, destination: slot.destination,
-                                arguments: configuration.build.xcodeArguments,
-                                timeout: configuration.build.buildTimeout
-                            )
-                        )
-                        return (
-                            index,
-                            XcodeWorker(
-                                sandbox: sandbox, slot: slot, scheme: scheme, build: build,
-                                reused: index == 0 && reused != nil
-                            )
-                        )
-                    } catch {
-                        await pool.release(slot)
-                        throw error
-                    }
-                }
-            }
+    private struct XcodeWarmup: Sendable {
+        let reused: Sandbox?
+        let scheme: String
+        let configuration: RunnerConfiguration
+        let pool: SimulatorPool
+    }
 
-            var warmed: [(Int, XcodeWorker)] = []
-            do {
-                for try await worker in group { warmed.append(worker) }
-            } catch {
-                await release(warmed.map(\.1), to: pool)
-                throw error
-            }
-            return warmed.sorted { $0.0 < $1.0 }.map(\.1)
+    private func warmXcodeWorker(index: Int, queue: MutantQueue, warmup: XcodeWarmup) async throws -> WarmOutcome {
+        let slot = try await warmup.pool.acquire()
+        do {
+            let outcome = try await warmXcodeSandbox(index: index, slot: slot, queue: queue, warmup: warmup)
+            await warmup.pool.release(slot)
+            return outcome
+        } catch {
+            await warmup.pool.release(slot)
+            throw error
         }
     }
 
-    private func release(_ workers: [XcodeWorker], to pool: SimulatorPool) async {
-        for worker in workers {
-            if !worker.reused { worker.sandbox.release(keepingFor: nil) }
-            await pool.release(worker.slot)
+    private func warmXcodeSandbox(
+        index: Int, slot: SimulatorSlot, queue: MutantQueue, warmup: XcodeWarmup
+    ) async throws -> WarmOutcome {
+        let configuration = warmup.configuration
+        let reusing = index == 0 && warmup.reused != nil
+        let sandbox: Sandbox
+        if reusing, let reused = warmup.reused {
+            sandbox = reused
+        } else {
+            sandbox = try await sandboxFactory.createClean(
+                projectPath: configuration.projectPath, disablingSwiftLint: true
+            )
         }
-    }
-
-    private func runXcodeWarm(
-        _ mutants: [WarmMutant],
-        on workers: [XcodeWorker],
-        configuration: RunnerConfiguration
-    ) async throws -> [(Int, ExecutionResult)] {
-        let ready = workers.filter { $0.build.exitCode == 0 }
-
-        guard !ready.isEmpty else {
-            let failed = workers[0].build
-            try rejectTimedOut(failed, configuration: configuration)
-            var results: [(Int, ExecutionResult)] = []
-            for warm in mutants {
-                results.append(
-                    (
-                        warm.index,
-                        await storeAndReport(
-                            mutant: warm.mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
-                            buildOutput: failed.output
-                        )
-                    )
-                )
-            }
-            return results
+        defer {
+            if !reusing { sandbox.release(keepingFor: nil) }
         }
 
-        let numbered = Array(mutants.enumerated())
-        return try await withThrowingTaskGroup(of: [(Int, ExecutionResult)].self) { group in
-            for (slot, worker) in ready.enumerated() {
-                let mine = numbered.filter { $0.offset % ready.count == slot }.map(\.element)
-                group.addTask {
-                    var done: [(Int, ExecutionResult)] = []
-                    for warm in mine {
-                        done.append((warm.index, try await runWarm(warm, on: worker, configuration: configuration)))
-                    }
-                    return done
-                }
-            }
+        let build = try await deps.launcher.launchCapturing(
+            ToolRequests.buildForTesting(
+                in: sandbox, scheme: warmup.scheme, destination: slot.destination,
+                arguments: configuration.build.xcodeArguments,
+                timeout: configuration.build.buildTimeout
+            )
+        )
+        guard build.exitCode == 0 else { return WarmOutcome(slot: index, build: build, readyAt: nil, results: []) }
 
-            var all: [(Int, ExecutionResult)] = []
-            for try await part in group { all += part }
-            return all
+        let readyAt = Date()
+        let worker = XcodeWorker(sandbox: sandbox, slot: slot, scheme: warmup.scheme)
+        let results = try await drain(queue) { warm in
+            try await runWarm(warm, on: worker, configuration: configuration)
         }
+        return WarmOutcome(slot: index, build: build, readyAt: readyAt, results: results)
     }
 
     private func runWarm(

@@ -746,6 +746,32 @@ struct IncompatibleMutantExecutor: Sendable {
     ) async -> ExecutionResult
     func rejectTimedOut(_ build: (exitCode: Int32, output: String), configuration: RunnerConfiguration) throws
 
+    struct WarmMutant: Sendable {
+        let index: Int
+        let mutant: MutantDescriptor
+        let content: String
+    }
+
+    struct WarmOutcome: Sendable {
+        let slot: Int
+        let build: (exitCode: Int32, output: String)
+        let readyAt: Date?
+        let results: [(Int, ExecutionResult)]
+    }
+
+    func separateViable(
+        _ mutants: [MutantDescriptor], configuration: RunnerConfiguration
+    ) async -> ([Int: ExecutionResult], [WarmMutant])
+    func runOnWarmSandboxes(
+        _ viable: [WarmMutant],
+        width: Int,
+        configuration: RunnerConfiguration,
+        worker: @escaping @Sendable (Int, MutantQueue) async throws -> WarmOutcome
+    ) async throws -> [(Int, ExecutionResult)]
+    func drain(
+        _ queue: MutantQueue, running run: (WarmMutant) async throws -> ExecutionResult
+    ) async throws -> [(Int, ExecutionResult)]
+
     struct Verdict {
         let status: ExecutionStatus
         let output: String
@@ -774,7 +800,7 @@ flowchart TD
     PT -- ".xcode, reproducing" --> COLD["runXcodeCold<br>a sandbox and a cold build per attempt<br>xcodeWidth at a time"]
     PT -- ".xcode" --> XWARM["xcodeWidth XcodeWorkers<br>pool slot + the reused sandbox or createClean(disablingSwiftLint: true)<br>one build-for-testing each"]
     XWARM -- "none built" --> XUNVIABLE["every mutant unviable<br>with that build's output<br>a timed-out build stops the run"]
-    XWARM --> XDEAL["deal WarmMutants round-robin<br>over the workers that built"]
+    XWARM --> XDEAL["each worker that built takes<br>the next WarmMutant from the MutantQueue"]
     XDEAL --> XWRITE["write instrumented copy over the link<br>incremental build-for-testing"]
     XWRITE -- built --> LAUNCH["test-without-building<br>-collect-test-diagnostics never"]
     XWRITE -- "build failed" --> XPLAIN["write plain copy<br>incremental build, test, unmeasured"]
@@ -783,7 +809,7 @@ flowchart TD
     PARSE --> XRESTORE["SandboxLink.restore<br>remove .xcresult"]
     PT -- ".spm" --> WARM["warmSandboxes<br>concurrency ÷ 4: the reused sandbox, then createClean ones<br>swift build --build-tests in parallel"]
     WARM -- "none built" --> ALLUNVIABLE["every mutant unviable<br>with that build's output<br>a timed-out build stops the run"]
-    WARM --> DEAL["deal mutants round-robin<br>over the sandboxes that built"]
+    WARM --> DEAL["each sandbox that built takes<br>the next WarmMutant from the MutantQueue"]
     DEAL --> WRITE["write instrumented copy<br>incremental swift build --build-tests"]
     WRITE -- built --> TESTS["targeted suite, then swift test<br>each stopped at the first failure"]
     WRITE -- "build failed, not a timeout" --> SPLAIN["write plain copy<br>rebuild, unmeasured"]
@@ -795,9 +821,25 @@ flowchart TD
     COLD --> STORE
 ```
 
-**SPM path:** Uses warm sandboxes — the reused one first, then clean ones from `SandboxFactory.createClean(projectPath:)` — each built once with `swift build --build-tests` (`ToolRequests.swiftBuildTests`) so that every mutant after the first costs an incremental rebuild rather than a cold one; the reused sandbox's first build is incremental too. For each mutant, writes the mutated source content, wrapped by `LintSuppression.wrapping`, directly into its sandbox — over the sandbox's symlink to the file, removing `.build/manifests` before each build — rebuilds, runs the tests, and restores the original file — the sandbox's symlink to it — through `SandboxLink.restore(at:to:)`. The tests run the way a schematized mutant's do: the file's own suite first (`TargetedSuites`, handed down by `MutantExecutor` as `targetedSuites`), then — when that kills nothing — `swift test` over the test target, each run stopped at its first failing test (`OutputStopRule.firstTestFailure`). A reproduction skips the targeted run and lets the whole suite finish. The incompatible path used to run the whole suite to its end for every mutant, killed or not. The restore used to be a `try?` in a `defer`: when re-linking failed, the file was simply gone from the sandbox and every later mutant of that worker failed to build and was cached `unviable`. A failed restore now throws `IntegrityError.sourceNotRestored` and ends the run. The warm sandboxes this executor created are released through `release(keepingFor:)` at the end, so a reproduction keeps them; the reused one (`WarmSandbox.reused`) is not, since `MutantExecutor` owns it.
+**SPM path:** Uses warm sandboxes — the reused one first, then clean ones from `SandboxFactory.createClean(projectPath:)` — each built once with `swift build --build-tests` (`ToolRequests.swiftBuildTests`) so that every mutant after the first costs an incremental rebuild rather than a cold one; the reused sandbox's first build is incremental too. For each mutant, writes the mutated source content, wrapped by `LintSuppression.wrapping`, directly into its sandbox — over the sandbox's symlink to the file, removing `.build/manifests` before each build — rebuilds, runs the tests, and restores the original file — the sandbox's symlink to it — through `SandboxLink.restore(at:to:)`. The tests run the way a schematized mutant's do: the file's own suite first (`TargetedSuites`, handed down by `MutantExecutor` as `targetedSuites`), then — when that kills nothing — `swift test` over the test target, each run stopped at its first failing test (`OutputStopRule.firstTestFailure`). A reproduction skips the targeted run and lets the whole suite finish. The incompatible path used to run the whole suite to its end for every mutant, killed or not. The restore used to be a `try?` in a `defer`: when re-linking failed, the file was simply gone from the sandbox and every later mutant of that worker failed to build and was cached `unviable`. A failed restore now throws `IntegrityError.sourceNotRestored` and ends the run. Each warm sandbox this executor created is released through `release(keepingFor:)` when its worker is done, so a reproduction keeps them; the reused one is not, since `MutantExecutor` owns it.
 
-The number of sandboxes is a quarter of `--concurrency` (`warmSandboxShare`, never fewer than one, never more than there are mutants): a rebuild and a test run each spread over several cores, so four of them is a load the machine notices and eight is not worth it. Mutants are dealt round-robin over the sandboxes that built; a sandbox whose warm build failed is left out, and only when none built are the mutants reported unviable with that build's output. Results come back in input order whatever the completion order. Measured on `swift-cpd`, nine incompatible mutants took 118s of a 176s subset run when they ran one after another in a single sandbox — the first 26s for the cold build, then 9s each — which is what made this worth parallelising.
+The number of sandboxes is a quarter of `--concurrency` (`warmSandboxShare`, never fewer than one, never more than there are mutants): a rebuild and a test run each spread over several cores, so four of them is a load the machine notices and eight is not worth it. Both paths share the shape: `separateViable` reports the mutants without content unviable and turns the rest into `WarmMutant`s with their input index; `runOnWarmSandboxes` puts them in a `MutantQueue`, starts one worker task per sandbox and settles the outcomes. A worker creates or reuses its sandbox, builds it, and — the build having passed — `drain`s the queue, running one mutant at a time until it is empty; its `WarmOutcome` carries the build, the instant it was ready and what it ran. A worker whose warm build failed never takes a mutant, and only when none built, the queue still full, are the mutants reported unviable with the first worker's build output — a timed-out one stops the run. The mutants used to be dealt round-robin after every warm build had finished, which left the reused sandbox, ready in seconds, idle for the half minute the cold ones needed, and left a worker that drew the slow mutants finishing last; now the first sandbox ready starts at once and the others join as they finish building. Results come back in input order whatever the completion order.
+
+The timing follows the overlap: `warmSandboxes` runs from the start to the instant the first sandbox was ready, `incompatible` from there to the end, the slower warm builds counted under the latter, so the two still add up; when no sandbox built, only `warmSandboxes` is recorded. Measured on `swift-cpd`, nine incompatible mutants took 118s of a 176s subset run when they ran one after another in a single sandbox — the first 26s for the cold build, then 9s each — which is what made this worth parallelising.
+
+---
+
+## Execution/MutantQueue.swift
+
+```swift
+actor MutantQueue {
+    init(_ mutants: [IncompatibleMutantExecutor.WarmMutant])
+    func next() -> IncompatibleMutantExecutor.WarmMutant?
+    func drain() -> [IncompatibleMutantExecutor.WarmMutant]
+}
+```
+
+The queue the warm sandboxes take incompatible mutants from. `next` hands out the mutants in input order, one per call, and `nil` once they are gone; `drain` hands out whatever is left at once and empties the queue, which is how the executor reports every mutant unviable when no sandbox built. Being an actor, two workers never get the same mutant. See `IncompatibleMutantExecutor` above for who takes from it and when.
 
 ---
 
@@ -824,23 +866,15 @@ extension IncompatibleMutantExecutor {
 
     static func xcodeWidth(concurrency: Int, poolSize: Int, mutantCount: Int) -> Int
 
-    struct WarmMutant: Sendable {
-        let index: Int
-        let mutant: MutantDescriptor
-        let content: String
-    }
-
     struct XcodeWorker: Sendable {
         let sandbox: Sandbox
         let slot: SimulatorSlot
         let scheme: String
-        let build: (exitCode: Int32, output: String)
-        var reused = false
     }
 }
 ```
 
-The Xcode path: warm sandboxes, as on the SPM path. `xcodeWidth(concurrency:poolSize:mutantCount:)` workers — a quarter of `--concurrency` (`warmSandboxShare`), never more than the pool has slots nor than there are mutants, never fewer than one — are made in parallel: each `XcodeWorker` takes a pool slot for the whole pass and runs one `build-for-testing` for that slot's destination — the first worker in the sandbox given to reuse, the schema sandbox restored, incrementally; the others in a clean sandbox each with its SwiftLint phases off (`SandboxFactory.createClean(projectPath:disablingSwiftLint:)`), cold. Each mutant with content becomes a `WarmMutant` carrying its input index. The mutants are dealt round-robin over the workers whose warm build passed; for each, the worker writes the instrumented copy, wrapped by `LintSuppression.wrapping`, over the sandbox's link to the file, rebuilds incrementally and runs `test-without-building` (with `-only-testing` when `--target` is set and `-parallel-testing-enabled NO`), and on a failed build writes the plain copy and builds again; then it puts the link back with `SandboxLink.restore` and removes the result bundles. When no warm build passes, every mutant is unviable with that build's output, as on SPM. Results come back in input order, by the `WarmMutant` index. Once the pass ends, or throws, every worker's slot is released and every sandbox but the reused one removed; a worker that fails while warming releases its own slot, and the ones already warmed are released before the error is rethrown.
+The Xcode path: warm sandboxes, as on the SPM path. `xcodeWidth(concurrency:poolSize:mutantCount:)` workers — a quarter of `--concurrency` (`warmSandboxShare`), never more than the pool has slots nor than there are mutants, never fewer than one — are made in parallel through `runOnWarmSandboxes`: each worker takes a pool slot for as long as it runs and runs one `build-for-testing` for that slot's destination — the first worker in the sandbox given to reuse, the schema sandbox restored, incrementally; the others in a clean sandbox each with its SwiftLint phases off (`SandboxFactory.createClean(projectPath:disablingSwiftLint:)`), cold. A worker whose warm build passed becomes an `XcodeWorker` and drains the `MutantQueue` from that moment, while the others may still be building; for each mutant, the worker writes the instrumented copy, wrapped by `LintSuppression.wrapping`, over the sandbox's link to the file, rebuilds incrementally and runs `test-without-building` (with `-only-testing` when `--target` is set and `-parallel-testing-enabled NO`), and on a failed build writes the plain copy and builds again; then it puts the link back with `SandboxLink.restore` and removes the result bundles. When no warm build passes, every mutant is unviable with that build's output, as on SPM. Results come back in input order, by the `WarmMutant` index. A worker releases its slot and removes its sandbox — unless it is the reused one — when the queue is empty, or when it fails, warming or running a mutant, before the error ends the pass and the other workers with it.
 
 Restoring the link is what makes reuse correct, and it was checked before relying on it: Xcode's build system notices that the path now resolves to an older file and recompiles it, so the next mutant — in that file or another — does not run against the previous mutant's object. `XcodeWarmSandboxIntegrationTests` pins it on `CalcApp`: a killed mutant of `Calculator.swift`, then a mutant of `Validator.swift` that survives only if `Calculator.swift` is back to the original, then another killed one; without the restore the second is killed.
 

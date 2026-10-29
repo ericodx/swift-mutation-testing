@@ -38,118 +38,142 @@ struct IncompatibleMutantExecutor: Sendable {
         return results
     }
 
+    struct WarmMutant: Sendable {
+        let index: Int
+        let mutant: MutantDescriptor
+        let content: String
+    }
+
+    struct WarmOutcome: Sendable {
+        let slot: Int
+        let build: (exitCode: Int32, output: String)
+        let readyAt: Date?
+        let results: [(Int, ExecutionResult)]
+    }
+
     private func runSPMShared(
         mutants: [MutantDescriptor],
         configuration: RunnerConfiguration,
         reusing sandbox: Sandbox?
     ) async throws -> [ExecutionResult] {
-        var results: [ExecutionResult] = []
+        let (unviable, viable) = await separateViable(mutants, configuration: configuration)
+        var results = unviable
 
-        let viable = mutants.compactMap { mutant in mutant.mutatedSourceContent.map { (mutant, $0) } }
-
-        for mutant in mutants where mutant.mutatedSourceContent == nil {
-            results.append(
-                await storeAndReport(
-                    mutant: mutant, sandbox: nil,
-                    keepLogsPath: configuration.reporting.keepLogsPath,
-                    buildOutput: "The mutation could not be applied to the source file."
-                )
-            )
-        }
-
-        guard !viable.isEmpty else { return results }
-
-        let workerCount = max(1, min(configuration.build.concurrency / Self.warmSandboxShare, viable.count))
-        let workers = try await PhaseTimings.measure(.warmSandboxes, in: deps.timings) {
-            try await warmSandboxes(count: workerCount, reusing: sandbox, configuration: configuration)
-        }
-        defer {
-            for worker in workers where !worker.reused {
-                worker.sandbox.release(keepingFor: configuration.build.reproduction)
+        if !viable.isEmpty {
+            let width = max(1, min(configuration.build.concurrency / Self.warmSandboxShare, viable.count))
+            let warm = try await runOnWarmSandboxes(viable, width: width, configuration: configuration) { slot, queue in
+                try await warmSPMWorker(slot: slot, queue: queue, reusing: sandbox, configuration: configuration)
+            }
+            for (index, result) in warm {
+                results[index] = result
             }
         }
 
-        let ready = workers.filter { $0.build.exitCode == 0 }
+        return mutants.indices.compactMap { results[$0] }
+    }
 
-        guard !ready.isEmpty else {
-            let failed = workers[0].build
+    private func warmSPMWorker(
+        slot: Int, queue: MutantQueue, reusing reused: Sandbox?, configuration: RunnerConfiguration
+    ) async throws -> WarmOutcome {
+        let reusing = slot == 0 && reused != nil
+        let sandbox: Sandbox
+        if reusing, let reused {
+            sandbox = reused
+        } else {
+            sandbox = try await sandboxFactory.createClean(projectPath: configuration.projectPath)
+        }
+        defer {
+            if !reusing { sandbox.release(keepingFor: configuration.build.reproduction) }
+        }
+
+        let build = try await deps.launcher.launchCapturing(
+            ToolRequests.swiftBuildTests(in: sandbox, timeout: configuration.build.buildTimeout)
+        )
+        guard build.exitCode == 0 else { return WarmOutcome(slot: slot, build: build, readyAt: nil, results: []) }
+
+        let readyAt = Date()
+        let results = try await drain(queue) { warm in
+            try await runInSharedSandbox(
+                mutant: warm.mutant, content: warm.content, configuration: configuration, sandbox: sandbox
+            )
+        }
+        return WarmOutcome(slot: slot, build: build, readyAt: readyAt, results: results)
+    }
+
+    func separateViable(
+        _ mutants: [MutantDescriptor], configuration: RunnerConfiguration
+    ) async -> ([Int: ExecutionResult], [WarmMutant]) {
+        var results: [Int: ExecutionResult] = [:]
+        var viable: [WarmMutant] = []
+        for (index, mutant) in mutants.enumerated() {
+            guard let content = mutant.mutatedSourceContent else {
+                results[index] = await storeAndReport(
+                    mutant: mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
+                    buildOutput: "The mutation could not be applied to the source file."
+                )
+                continue
+            }
+            viable.append(WarmMutant(index: index, mutant: mutant, content: content))
+        }
+        return (results, viable)
+    }
+
+    func runOnWarmSandboxes(
+        _ viable: [WarmMutant],
+        width: Int,
+        configuration: RunnerConfiguration,
+        worker: @escaping @Sendable (Int, MutantQueue) async throws -> WarmOutcome
+    ) async throws -> [(Int, ExecutionResult)] {
+        let queue = MutantQueue(viable)
+        let start = Date()
+        let outcomes = try await withThrowingTaskGroup(of: WarmOutcome.self) { group in
+            for slot in 0 ..< width {
+                group.addTask { try await worker(slot, queue) }
+            }
+            var outcomes: [WarmOutcome] = []
+            for try await outcome in group { outcomes.append(outcome) }
+            return outcomes
+        }
+        return try await settle(outcomes, queue: queue, start: start, configuration: configuration)
+    }
+
+    func drain(
+        _ queue: MutantQueue, running run: (WarmMutant) async throws -> ExecutionResult
+    ) async throws -> [(Int, ExecutionResult)] {
+        var done: [(Int, ExecutionResult)] = []
+        while let warm = await queue.next() {
+            done.append((warm.index, try await run(warm)))
+        }
+        return done
+    }
+
+    private func settle(
+        _ outcomes: [WarmOutcome], queue: MutantQueue, start: Date, configuration: RunnerConfiguration
+    ) async throws -> [(Int, ExecutionResult)] {
+        let ordered = outcomes.sorted { $0.slot < $1.slot }
+        var results = ordered.flatMap(\.results)
+
+        guard let firstReady = ordered.compactMap(\.readyAt).min() else {
+            await deps.timings.record(.warmSandboxes, start: start)
+            let failed = ordered[0].build
             try rejectTimedOut(failed, configuration: configuration)
-            for (mutant, _) in viable {
+            for warm in await queue.drain() {
                 results.append(
-                    await storeAndReport(
-                        mutant: mutant, sandbox: nil,
-                        keepLogsPath: configuration.reporting.keepLogsPath,
-                        buildOutput: failed.output
+                    (
+                        warm.index,
+                        await storeAndReport(
+                            mutant: warm.mutant, sandbox: nil, keepLogsPath: configuration.reporting.keepLogsPath,
+                            buildOutput: failed.output
+                        )
                     )
                 )
             }
             return results
         }
 
-        results += try await PhaseTimings.measure(.incompatible, in: deps.timings) {
-            try await runRoundRobin(viable, over: ready, configuration: configuration)
-        }
+        await deps.timings.record(.warmSandboxes, start: start, end: firstReady)
+        await deps.timings.record(.incompatible, start: firstReady)
         return results
-    }
-
-    private func runRoundRobin(
-        _ mutants: [(MutantDescriptor, String)],
-        over ready: [WarmSandbox],
-        configuration: RunnerConfiguration
-    ) async throws -> [ExecutionResult] {
-        let numbered = Array(mutants.enumerated())
-        let finished = try await withThrowingTaskGroup(of: [(Int, ExecutionResult)].self) { group in
-            for (slot, worker) in ready.enumerated() {
-                let mine = numbered.filter { $0.offset % ready.count == slot }
-                group.addTask {
-                    var done: [(Int, ExecutionResult)] = []
-                    for (offset, (mutant, content)) in mine {
-                        let result = try await runInSharedSandbox(
-                            mutant: mutant, content: content, configuration: configuration, sandbox: worker.sandbox
-                        )
-                        done.append((offset, result))
-                    }
-                    return done
-                }
-            }
-
-            var all: [(Int, ExecutionResult)] = []
-            for try await part in group { all += part }
-            return all
-        }
-
-        return finished.sorted { $0.0 < $1.0 }.map(\.1)
-    }
-
-    private struct WarmSandbox: Sendable {
-        let sandbox: Sandbox
-        let build: (exitCode: Int32, output: String)
-        let reused: Bool
-    }
-
-    private func warmSandboxes(
-        count: Int, reusing reused: Sandbox?, configuration: RunnerConfiguration
-    ) async throws -> [WarmSandbox] {
-        try await withThrowingTaskGroup(of: (Int, WarmSandbox).self) { group in
-            for slot in 0 ..< count {
-                group.addTask {
-                    let sandbox: Sandbox
-                    if slot == 0, let reused {
-                        sandbox = reused
-                    } else {
-                        sandbox = try await sandboxFactory.createClean(projectPath: configuration.projectPath)
-                    }
-                    let build = try await deps.launcher.launchCapturing(
-                        ToolRequests.swiftBuildTests(in: sandbox, timeout: configuration.build.buildTimeout)
-                    )
-                    return (slot, WarmSandbox(sandbox: sandbox, build: build, reused: slot == 0 && reused != nil))
-                }
-            }
-
-            var warmed: [(Int, WarmSandbox)] = []
-            for try await entry in group { warmed.append(entry) }
-            return warmed.sorted { $0.0 < $1.0 }.map(\.1)
-        }
     }
 
     private func runInSharedSandbox(
