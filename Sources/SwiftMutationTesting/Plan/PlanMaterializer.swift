@@ -47,7 +47,8 @@ struct PlanMaterializer: Sendable {
                     description: mutant.description
                 ),
                 isSchematizable: mutant.schematizable,
-                fingerprint: mutant.fingerprint
+                fingerprint: mutant.fingerprint,
+                isInLoopCondition: source.loopConditions.contains(utf8Offset: mutant.utf8Start)
             )
         }
 

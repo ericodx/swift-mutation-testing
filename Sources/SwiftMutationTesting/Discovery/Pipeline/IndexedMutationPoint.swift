@@ -3,6 +3,7 @@ struct IndexedMutationPoint: Sendable {
     let mutation: MutationPoint
     let isSchematizable: Bool
     let fingerprint: String
+    var isInLoopCondition = false
 
     var mutantID: String {
         MutantID.make(index: index)
@@ -23,7 +24,8 @@ struct IndexedMutationPoint: Sendable {
             isSchematizable: isSchematizable,
             mutatedSourceContent: mutatedContent,
             sourceContentHash: sourceContentHash,
-            fingerprint: fingerprint
+            fingerprint: fingerprint,
+            isInLoopCondition: isInLoopCondition
         )
     }
 }

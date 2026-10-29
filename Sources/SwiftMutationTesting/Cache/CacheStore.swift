@@ -17,10 +17,11 @@ actor CacheStore {
         self.entries = [:]
         self.killerTestFiles = [:]
         self.activations = [:]
+        self.durations = [:]
     }
 
     static let directoryName = ".swift-mutation-testing-cache"
-    static let formatVersion = 4
+    static let formatVersion = 5
     static let journalName = "journal.jsonl"
 
     private let storePath: String
@@ -31,6 +32,7 @@ actor CacheStore {
     private var entries: [MutantCacheKey: ExecutionStatus]
     private var killerTestFiles: [MutantCacheKey: String]
     private var activations: [MutantCacheKey: Bool]
+    private var durations: [MutantCacheKey: Double]
 
     private var metadataPath: String {
         let url = URL(fileURLWithPath: storePath)
@@ -44,9 +46,10 @@ actor CacheStore {
 
     private struct CacheEntry: Codable {
         let key: MutantCacheKey
-        let status: ExecutionStatus
+        let status: ExecutionStatus?
         let killerTestFile: String?
         let activated: Bool?
+        let duration: Double?
     }
 
     struct CacheMetadata: Codable, Sendable {
@@ -78,6 +81,10 @@ actor CacheStore {
         noCache ? nil : activations[key]
     }
 
+    func durations(for mutants: [MutantDescriptor]) -> [Double?] {
+        mutants.map { noCache ? nil : durations[MutantCacheKey.make(for: $0)] }
+    }
+
     func cachedResult(for mutant: MutantDescriptor) -> ExecutionResult? {
         let key = MutantCacheKey.make(for: mutant)
         guard let status = result(for: key) else { return nil }
@@ -99,17 +106,12 @@ actor CacheStore {
         )
 
         guard !noCache else { return }
-        guard status != .timeout else { return }
 
-        entries[key] = status
-        if let killerTestFile {
-            killerTestFiles[key] = killerTestFile
-        }
-        if let activated {
-            activations[key] = activated
-        }
-
-        journal(CacheEntry(key: key, status: status, killerTestFile: killerTestFile, activated: activated))
+        let entry = CacheEntry(
+            key: key, status: status, killerTestFile: killerTestFile, activated: activated, duration: duration
+        )
+        apply([entry])
+        journal(entry)
     }
 
     func load() throws {
@@ -129,15 +131,17 @@ actor CacheStore {
             discardUnreadable()
             return
         }
-        entries = [:]
-        killerTestFiles = [:]
-        activations = [:]
+        forgetEverything()
         apply(loaded + journaledEntries())
     }
 
     private func apply(_ loaded: [CacheEntry]) {
         for entry in loaded {
-            entries[entry.key] = entry.status
+            if let duration = entry.duration {
+                durations[entry.key] = duration
+            }
+            guard let status = entry.status, status != .timeout else { continue }
+            entries[entry.key] = status
             if let file = entry.killerTestFile {
                 killerTestFiles[entry.key] = file
             }
@@ -162,12 +166,16 @@ actor CacheStore {
     func persist() throws {
         guard !noCache else { return }
 
-        let cacheEntries = entries.map {
+        let verdicts = entries.map {
             CacheEntry(
-                key: $0.key, status: $0.value, killerTestFile: killerTestFiles[$0.key], activated: activations[$0.key]
+                key: $0.key, status: $0.value, killerTestFile: killerTestFiles[$0.key], activated: activations[$0.key],
+                duration: durations[$0.key]
             )
         }
-        let data = try JSONEncoder().encode(cacheEntries)
+        let durationsAlone = durations.filter { entries[$0.key] == nil }.map {
+            CacheEntry(key: $0.key, status: nil, killerTestFile: nil, activated: nil, duration: $0.value)
+        }
+        let data = try JSONEncoder().encode(verdicts + durationsAlone)
         let url = URL(fileURLWithPath: storePath)
         try fileSystem.createDirectory(url.deletingLastPathComponent())
         try data.write(to: url, options: .atomic)
@@ -234,9 +242,7 @@ actor CacheStore {
             return false
         }
 
-        entries = [:]
-        killerTestFiles = [:]
-        activations = [:]
+        forgetEverything()
         fileSystem.removeItem(journalPath)
         return true
     }
@@ -266,10 +272,15 @@ actor CacheStore {
 
     // MARK: - Private
 
-    private func discardUnreadable() {
+    private func forgetEverything() {
         entries = [:]
         killerTestFiles = [:]
         activations = [:]
+        durations = [:]
+    }
+
+    private func discardUnreadable() {
+        forgetEverything()
         let directory = URL(fileURLWithPath: storePath).deletingLastPathComponent().path
         StandardError.write(
             "Warning: ignoring the cache at '\(directory)', which this version cannot read; "
