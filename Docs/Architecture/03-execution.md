@@ -212,7 +212,7 @@ For each schematized file, `FallbackExecutor` installs that file's schematizatio
 
 ## IncompatibleMutantExecutor
 
-Handles mutants that cannot be schematized — mutations outside function bodies (e.g. in stored property initializers or global scope) — and the mutants `SchemaNarrower` took out of the schema. Each incompatible mutant requires its own rebuild before its tests can run, which makes these the most expensive mutants in a run. Both project types therefore run them in **warm sandboxes**: unmutated copies of the project, each built once up front, so that every mutant after the first costs an incremental rebuild rather than a cold one. The first warm sandbox is the schema sandbox, its files linked back to the originals and rebuilt incrementally; the others are clean copies built cold.
+Handles mutants that cannot be schematized — mutations outside function bodies (e.g. in stored property initializers or global scope) — and the mutants `SchemaNarrower` took out of the schema. Each incompatible mutant requires its own rebuild before its tests can run, which makes these the most expensive mutants in a run. Both project types therefore run them in **warm sandboxes**: unmutated copies of the project, each built once up front, so that every mutant after the first costs an incremental rebuild rather than a cold one. The first warm sandbox is the schema sandbox, its files linked back to the originals and rebuilt incrementally; the others are clean copies built cold. The mutants wait in a queue (`MutantQueue`), and each sandbox starts taking from it the moment its own warm build succeeds, so the schema sandbox runs the first mutants while the clean ones are still building, and a sandbox that drew a slow mutant simply takes fewer.
 
 ```mermaid
 flowchart TD
@@ -225,7 +225,7 @@ flowchart TD
     PT -- .spm --> SW["warm sandboxes\nconcurrency ÷ 4, swift build --build-tests\nthe schema sandbox first, then createClean"]
     XW -- none built --> UNVIABLE[".unviable\nwith the warm build's output\n(a timed-out build stops the run)"]
     SW -- none built --> UNVIABLE
-    XW --> DEAL["mutants dealt round-robin\nover the sandboxes that built"]
+    XW --> DEAL["each sandbox that built takes\nthe next mutant from the MutantQueue"]
     SW --> DEAL
     DEAL --> WRITE["write mutated file\nincremental rebuild → tests → restore"]
     COLD --> REC
@@ -237,11 +237,11 @@ Cache hits and every verdict — a mutation that could not be applied and a fail
 
 **Activation:** each mutant is first built with a call that records when its mutated code runs, and tested with the activation marker, so an unreached survivor is `noCoverage` and a kill without activation is run once more, as on the schematized path. If that copy does not build, the plain mutant is built and tested unmeasured. See [Activation Marker](05-schematization.md#activation-marker).
 
-**Xcode path:** `xcodeWidth` workers — a quarter of `--concurrency`, never more than the pool's slots or the mutants, never fewer than one. Each worker acquires a pool slot and runs `build-for-testing` for the slot's destination, the workers in parallel: the first in the schema sandbox `MutantExecutor` hands over restored, incrementally, the others in a clean sandbox each (`createClean`, SwiftLint disabled), cold. Mutants are dealt round-robin over the workers whose warm build succeeded; for each, the mutated source is written into the worker's sandbox, `build-for-testing` rebuilds incrementally, `xcodebuild test-without-building` runs with `-parallel-testing-enabled NO` and `-collect-test-diagnostics never`, and the original file is restored and the `.xcresult` bundles removed. The slots go back to the pool when every mutant is done, and the clean sandboxes are removed; the schema sandbox stays for `MutantExecutor` to release. Under `reproduce`, each attempt instead builds in a cold sandbox of its own (`SandboxFactory.create(projectPath:mutatedFilePath:mutatedContent:)`), which the reproduction keeps.
+**Xcode path:** `xcodeWidth` workers — a quarter of `--concurrency`, never more than the pool's slots or the mutants, never fewer than one. Each worker acquires a pool slot and runs `build-for-testing` for the slot's destination, the workers in parallel: the first in the schema sandbox `MutantExecutor` hands over restored, incrementally, the others in a clean sandbox each (`createClean`, SwiftLint disabled), cold. A worker whose warm build succeeded takes mutants from the queue, one at a time, until it is empty, starting as soon as its own build is done; for each, the mutated source is written into the worker's sandbox, `build-for-testing` rebuilds incrementally, `xcodebuild test-without-building` runs with `-parallel-testing-enabled NO` and `-collect-test-diagnostics never`, and the original file is restored and the `.xcresult` bundles removed. Each worker gives its slot back to the pool and removes its clean sandbox when the queue is empty; the schema sandbox stays for `MutantExecutor` to release. Under `reproduce`, each attempt instead builds in a cold sandbox of its own (`SandboxFactory.create(projectPath:mutatedFilePath:mutatedContent:)`), which the reproduction keeps.
 
-**SPM path:** a quarter of `--concurrency` warm sandboxes, never fewer than one and never more than there are mutants, built in parallel: the schema sandbox restored, then clean ones (`SandboxFactory.createClean(projectPath:)`) for the rest. Mutants are dealt round-robin over the sandboxes that built; for each, the mutated source is written into its sandbox, the package is rebuilt, and `swift test --skip-build` runs the file's own suite first — `FooTests` for `Foo.swift`, as on the schematized path — then, unless that one killed the mutant or timed out, the whole suite, each stopping at the first failing test; the original file is then restored.
+**SPM path:** a quarter of `--concurrency` warm sandboxes, never fewer than one and never more than there are mutants, built in parallel: the schema sandbox restored, then clean ones (`SandboxFactory.createClean(projectPath:)`) for the rest. Each sandbox that built takes mutants from the queue as soon as its own build is done; for each, the mutated source is written into its sandbox, the package is rebuilt, and `swift test --skip-build` runs the file's own suite first — `FooTests` for `Foo.swift`, as on the schematized path — then, unless that one killed the mutant or timed out, the whole suite, each stopping at the first failing test; the original file is then restored.
 
-On both paths a sandbox whose warm build failed is left out, and only when none built are the mutants reported unviable (or timed out) with that build's output.
+On both paths a sandbox whose warm build failed never takes a mutant, and only when none built are the mutants reported unviable (or timed out) with that build's output. Results come back in input order whatever the order the sandboxes finished them in.
 
 ## TestResultResolver
 
@@ -339,9 +339,9 @@ Every verdict, whichever path reached it, goes through `ResultRecorder.record(..
 | `baseline` | `MutantExecutor.baselineContext` — the probe, or the Xcode baseline |
 | `mutants`, `stragglers`, `unactivatedKills` | `TestExecutionStage.execute` — its three passes, wherever it is called from |
 | `fallbackBuilds` | `FallbackExecutor` — each file's install, check and build; its tests are the three passes above |
-| `warmSandboxes`, `incompatible` | `IncompatibleMutantExecutor` — the warm builds, the restored schema sandbox's incremental one included, then the mutants; a reproduction's cold Xcode builds count as `incompatible` |
+| `warmSandboxes`, `incompatible` | `IncompatibleMutantExecutor` — the warm builds until the first sandbox is ready, the restored schema sandbox's incremental one included, then the mutants, the other warm builds overlapping them; when no sandbox builds the whole wait is `warmSandboxes`; a reproduction's cold Xcode builds count as `incompatible` |
 
-The phases are disjoint, so they add up: `TimingReporter` sums each phase's entries, lists them in `RunPhase` order with the count of entries when there is more than one, and closes with `Other`, the part of `RunnerSummary.totalDuration` no phase accounts for. Discovery is listed first but left out of `Other`, since `totalDuration` starts after it. `timing.json` holds the total and every entry.
+The phases are disjoint, so they add up — the warm builds that outlast the first ready sandbox are counted under `incompatible`, not twice: `TimingReporter` sums each phase's entries, lists them in `RunPhase` order with the count of entries when there is more than one, and closes with `Other`, the part of `RunnerSummary.totalDuration` no phase accounts for. Discovery is listed first but left out of `Other`, since `totalDuration` starts after it. `timing.json` holds the total and every entry.
 
 **Score formula:**
 

@@ -125,7 +125,7 @@ flowchart LR
         RETRY -- rebuilt --> POOL
         RETRY -- gave up --> FBP["FallbackExecutor\none file at a time"]
         BS -- "Xcode build failed" --> FBP
-        IME["IncompatibleMutantExecutor\nschema sandbox + warm sandboxes"]
+        IME["IncompatibleMutantExecutor\nschema sandbox + warm sandboxes\nmutants from a queue"]
         RETRY -- excluded mutants --> IME
     end
     SS -- RunnerInput --> SF
