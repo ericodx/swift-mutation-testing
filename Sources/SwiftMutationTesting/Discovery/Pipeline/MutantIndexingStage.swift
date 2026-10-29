@@ -33,7 +33,8 @@ struct MutantIndexingStage: Sendable {
                     declarationPath: declarationPath,
                     mutation: mutation,
                     ordinal: ordinal
-                )
+                ),
+                isInLoopCondition: source?.loopConditions.contains(utf8Offset: mutation.utf8Offset) ?? false
             )
         }
     }

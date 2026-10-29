@@ -5,6 +5,7 @@ struct ParsedSource: Sendable {
     let syntax: SourceFileSyntax
     let locationConverter: SourceLocationConverter
     let functionScopes: FunctionBodyScopes
+    let loopConditions: LoopConditions
 
     init(file: SourceFile, syntax: SourceFileSyntax) {
         self.file = file
@@ -13,5 +14,6 @@ struct ParsedSource: Sendable {
         let visitor = TypeScopeVisitor()
         visitor.walk(syntax)
         functionScopes = visitor.functionScopes
+        loopConditions = LoopConditions(in: syntax)
     }
 }

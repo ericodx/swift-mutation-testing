@@ -19,10 +19,11 @@ struct TestExecutionStage: Sendable {
         var results: [ExecutionResult] = []
         var timedOut: [MutantDescriptor] = []
         var killedUnactivated: [MutantDescriptor] = []
+        let ordered = SlowestFirst.order(mutants, durations: await deps.cacheStore.durations(for: mutants))
 
         try await PhaseTimings.measure(.mutants, in: deps.timings) {
             try await forEach(
-                mutants, concurrency: concurrency,
+                ordered, concurrency: concurrency,
                 run: { mutant in
                     try await self.attempt(mutant, in: context, timeout: timeout * Self.loadedTimeoutFactor)
                 },
@@ -55,7 +56,8 @@ struct TestExecutionStage: Sendable {
             )
         }
 
-        return results
+        let position = Dictionary(mutants.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return results.sorted { position[$0.descriptor.id, default: .max] < position[$1.descriptor.id, default: .max] }
     }
 
     private func forEach<Element, Outcome: Sendable>(

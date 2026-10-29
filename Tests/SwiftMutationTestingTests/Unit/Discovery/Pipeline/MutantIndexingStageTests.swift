@@ -21,6 +21,21 @@ struct MutantIndexingStageTests {
         #expect(result.allSatisfy { $0.isSchematizable })
     }
 
+    @Test("Given a mutation in a while condition and one in its body, when run, then only the first is flagged")
+    func aMutationInAWhileConditionIsFlagged() {
+        let source = makeParsedSource("func f(_ n: Int) { var i = 0; while i < n { i = i + 1 } }", path: "a.swift")
+        let relational = RelationalOperatorReplacement().mutations(in: source)
+        let points = relational + ArithmeticOperatorReplacement().mutations(in: source)
+        let result = stage.run(mutationPoints: points, sources: [source], projectPath: "/tmp")
+        let flagged = result.filter(\.isInLoopCondition)
+        let unflagged = result.filter { !$0.isInLoopCondition }
+        #expect(!flagged.isEmpty)
+        #expect(flagged.allSatisfy { $0.mutation.operatorIdentifier == "RelationalOperatorReplacement" })
+        #expect(unflagged.contains { $0.mutation.operatorIdentifier == "ArithmeticOperatorReplacement" })
+        let descriptors = result.map { $0.toDescriptor(mutatedContent: nil, sourceContentHash: "h") }
+        #expect(result.map(\.isInLoopCondition) == descriptors.map(\.isInLoopCondition))
+    }
+
     @Test("Given mutation at file scope, when run, then isSchematizable is false")
     func mutationAtFileScopeIsNotSchematizable() {
         let source = makeParsedSource("let x = true", path: "a.swift")

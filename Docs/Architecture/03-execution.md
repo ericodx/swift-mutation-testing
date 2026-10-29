@@ -142,7 +142,7 @@ The run continues only if that suite passes, or if it fails only against the sch
 
 ## TestExecutionStage
 
-Runs each mutant's tests in parallel via `withThrowingTaskGroup` — `xcodebuild test-without-building` on the Xcode path, the test bundles directly on the SPM one — in three passes.
+Runs each mutant's tests in parallel via `withThrowingTaskGroup` — `xcodebuild test-without-building` on the Xcode path, the test bundles directly on the SPM one — in three passes. The first pass starts with the mutants the cache remembers as slowest (`SlowestFirst`): the ones never tested first — a conditional mutated in a `while` or `repeat` condition before the rest, since that is what loops — then the rest by their last known duration, longest first. The longest jobs first shortens the tail of the pass; nothing else about the passes changes.
 
 ```mermaid
 flowchart TD
@@ -290,7 +290,7 @@ MutantCacheKey
 └── mutatedText        — token after mutation
 ```
 
-Cache is stored at `<project>/.swift-mutation-testing-cache/results.json`, with its metadata (`metadata.json`: test file hashes, test selection, format version) beside it. A cached result is used only if `noCache` is false; under `--no-cache` nothing is read or written. A timeout is never cached: it says as much about the machine as about the mutant.
+Cache is stored at `<project>/.swift-mutation-testing-cache/results.json`, with its metadata (`metadata.json`: test file hashes, test selection, format version) beside it. A cached result is used only if `noCache` is false; under `--no-cache` nothing is read or written. A timeout is never cached as a verdict: it says as much about the machine as about the mutant. Its duration is kept, like every verdict's, for the next run to start it early.
 
 **Granular invalidation:** Instead of invalidating the entire cache when any test file changes, `CacheStore` tracks which test file killed each mutant via `killerTestFile` metadata. On each run, `MutantExecutor.prepareCacheStore` takes one snapshot of the test files (`TestFilesHasher.snapshot`: their paths, contents and per-file hashes) — the same snapshot later feeds `KillerTestFileResolver` and `TargetedSuites`, so no test file is read twice — compares the hashes against the stored ones via `changedTestFiles(current:)` to produce a `TestFileDiff`, and calls `invalidate(diff:)` with status-aware rules:
 

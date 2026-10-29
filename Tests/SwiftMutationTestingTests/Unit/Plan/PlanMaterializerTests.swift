@@ -32,6 +32,29 @@ struct PlanMaterializerTests {
         #expect(materialized.projectType == direct.projectType)
     }
 
+    @Test("Given a plan with a mutant in a while condition, when materialized, then it is flagged as when discovered")
+    func theLoopConditionFlagIsRecomputedFromTheSources() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let sources = dir.appendingPathComponent("Sources")
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        try "func c(_ n: Int) -> Int { var i = 0; while i < n { i += 1 }; return i > 0 ? i : 0 }\n".write(
+            to: sources.appendingPathComponent("C.swift"), atomically: true, encoding: .utf8
+        )
+        let input = makeDiscoveryInput(
+            projectPath: dir.path, sourcesPath: sources.path, operators: ["RelationalOperatorReplacement"]
+        )
+
+        let direct = try await DiscoveryPipeline().run(input: input)
+        let materialized = try await PlanMaterializer().materialize(
+            plan: try await Planner().plan(input: input).plan, projectPath: dir.path, execution: Self.execution
+        )
+
+        #expect(direct.mutants.contains { $0.isInLoopCondition })
+        #expect(direct.mutants.contains { !$0.isInLoopCondition })
+        #expect(materialized.mutants.map(\.isInLoopCondition) == direct.mutants.map(\.isInLoopCondition))
+    }
+
     @Test("Given a file edited after the plan, when materialized, then the plan is stale")
     func anEditedFileMakesThePlanStale() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

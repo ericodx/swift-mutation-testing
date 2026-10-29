@@ -758,8 +758,8 @@ struct CacheStoreTests {
         #expect(await store.activated(for: key) == nil)
     }
 
-    @Test("Given verdicts made while SwiftLint plugins linted generated code, when checked, then the version is 4")
-    func formatVersionIsFour() {
-        #expect(CacheStore.formatVersion == 4)
+    @Test("Given timeouts kept for their durations without a verdict, when checked, then the version is 5")
+    func formatVersionIsFive() {
+        #expect(CacheStore.formatVersion == 5)
     }
 }
