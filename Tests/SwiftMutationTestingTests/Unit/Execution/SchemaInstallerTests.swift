@@ -40,6 +40,20 @@ struct SchemaInstallerTests {
         )
     }
 
+    @Test("Given a sandbox copy that links to the original, when installed over, then the original is untouched")
+    func installingOverALinkLeavesTheOriginalAlone() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+
+        try fixture.installer.install(
+            [SchematizedFile(originalPath: fixture.foo.path, schematizedContent: "foo schema")], replacing: []
+        )
+
+        #expect(try String(contentsOf: fixture.foo, encoding: .utf8) == "let foo = 1")
+        let copy = fixture.sandboxCopy(of: fixture.foo)
+        #expect(try copy.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false)
+    }
+
     @Test("Given a file outside the project, when installed, then it throws that the schema was not applied")
     func aFileOutsideTheProjectThrows() throws {
         let fixture = try Fixture()

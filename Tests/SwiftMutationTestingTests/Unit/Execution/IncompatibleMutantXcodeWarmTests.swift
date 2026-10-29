@@ -22,6 +22,25 @@ struct IncompatibleMutantXcodeWarmTests {
         #expect(tests.allSatisfy { $0.arguments.contains("-collect-test-diagnostics") })
     }
 
+    @Test("Given a sandbox to reuse and room for two workers, when executed, then it is one of the two and survives")
+    func aReusedSandboxIsOneOfTheWorkers() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let launcher = CountingLauncher(wrapping: MockProcessLauncher(exitCode: 0))
+        let reused = try await SandboxFactory().createClean(projectPath: dir.path, disablingSwiftLint: true)
+        defer { try? reused.cleanup() }
+
+        let results = try await run(
+            mutants: 6, concurrency: 8, poolSize: 4, launcher: launcher, in: dir, reusing: reused
+        )
+
+        let builds = await launcher.requests.filter { $0.arguments.first == "build-for-testing" }
+        #expect(results.map(\.descriptor.id) == (0 ..< 6).map { "m\($0)" })
+        #expect(Set(builds.map(\.workingDirectoryURL)).count == 2)
+        #expect(builds.map(\.workingDirectoryURL).contains(reused.rootURL))
+        #expect(FileManager.default.fileExists(atPath: reused.rootURL.path))
+    }
+
     @Test("Given a project whose clean build fails, when executed, then every mutant is unviable with that output")
     func aFailedWarmBuildMakesEveryMutantUnviable() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
@@ -109,7 +128,7 @@ struct IncompatibleMutantXcodeWarmTests {
 
     private func run(
         mutants count: Int, concurrency: Int, poolSize: Int, launcher: any ProcessLaunching, in dir: URL,
-        reproduction: Reproduction? = nil
+        reproduction: Reproduction? = nil, reusing reused: Sandbox? = nil
     ) async throws -> [ExecutionResult] {
         let executor = IncompatibleMutantExecutor(
             deps: makeExecutionDeps(launcher: launcher, cacheStorePath: dir.appendingPathComponent("c.json").path),
@@ -127,7 +146,7 @@ struct IncompatibleMutantXcodeWarmTests {
             )
         }
 
-        return try await executor.execute(mutants, configuration: configuration, pool: pool)
+        return try await executor.execute(mutants, configuration: configuration, pool: pool, reusing: reused)
     }
 }
 

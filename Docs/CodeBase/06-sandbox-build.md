@@ -42,8 +42,8 @@ Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<
 
 | Method | Used by | Description |
 |---|---|---|
-| `create(projectPath:schematizedFiles:)` | `MutantExecutor` for the schematizable path, `FallbackExecutor` with one file per sandbox | Embeds the schematized files; disables SwiftLint phases |
-| `createClean(projectPath:disablingSwiftLint:)` | `IncompatibleMutantExecutor` warm sandboxes, SPM and Xcode; `UnmutatedBuildCheck` | Clean sandbox without mutations; mutated files are written directly later. The Xcode workers pass `disablingSwiftLint: true`; the SPM ones keep the default `false` |
+| `create(projectPath:schematizedFiles:)` | `MutantExecutor`, for the schema sandbox every path of a run shares through `SchemaSandbox` | Embeds the schematized files; disables SwiftLint phases |
+| `createClean(projectPath:disablingSwiftLint:)` | `IncompatibleMutantExecutor` warm sandboxes after the first, SPM and Xcode | Clean sandbox without mutations; mutated files are written directly later. The Xcode workers pass `disablingSwiftLint: true`; the SPM ones keep the default `false` |
 | `create(projectPath:mutatedFilePath:mutatedContent:)` | `IncompatibleMutantExecutor.runXcodeCold`, for an Xcode reproduction | Writes a single mutated file; SwiftLint phases are left as they are |
 
 **Copy strategy:**
@@ -124,7 +124,7 @@ enum SandboxLink {
 }
 ```
 
-Puts a sandbox file back as a symlink to the project's original, removing whatever is at the path first — a mutated copy, a schema, or nothing. Throws `IntegrityError.sourceNotRestored` when the link cannot be created, since a sandbox missing that file would fail every later build and have its mutants cached as unviable. `IncompatibleMutantExecutor` restores with it after each mutant in a warm sandbox, SPM and Xcode — when the mutant's run throws, the restore is attempted with `try?` and the original error rethrown — and `SchemaNarrower` when it gives up on a file's schema.
+Puts a sandbox file back as a symlink to the project's original, removing whatever is at the path first — a mutated copy, a schema, or nothing. Throws `IntegrityError.sourceNotRestored` when the link cannot be created, since a sandbox missing that file would fail every later build and have its mutants cached as unviable. `IncompatibleMutantExecutor` restores with it after each mutant in a warm sandbox, SPM and Xcode — when the mutant's run throws, the restore is attempted with `try?` and the original error rethrown — `SchemaInstaller` for every file a batch leaves out, which is how `SchemaSandbox.restore` puts the whole sandbox back, and `SchemaNarrower` when it gives up on a file's schema.
 
 ---
 

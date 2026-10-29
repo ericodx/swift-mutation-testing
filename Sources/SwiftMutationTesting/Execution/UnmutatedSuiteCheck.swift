@@ -3,12 +3,8 @@ import Foundation
 struct UnmutatedSuiteCheck: Sendable {
     let configuration: RunnerConfiguration
     let deps: ExecutionDeps
-    let sandboxFactory: SandboxFactory
 
-    func verify(projectPath: String, pool: SimulatorPool) async throws {
-        let sandbox = try await sandboxFactory.createClean(projectPath: projectPath, disablingSwiftLint: true)
-        defer { sandbox.release(keepingFor: nil) }
-
+    func verify(in sandbox: Sandbox, pool: SimulatorPool) async throws {
         let stage = BuildStage(launcher: deps.launcher)
         let artifact: BuildArtifact
         do {

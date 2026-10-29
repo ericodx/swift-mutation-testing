@@ -3,12 +3,8 @@ import Foundation
 struct UnmutatedBuildCheck: Sendable {
     let configuration: RunnerConfiguration
     let stage: BuildStage
-    let sandboxFactory: SandboxFactory
 
-    func verify(projectPath: String) async throws {
-        let sandbox = try await sandboxFactory.createClean(projectPath: projectPath, disablingSwiftLint: true)
-        defer { sandbox.release(keepingFor: nil) }
-
+    func verify(in sandbox: Sandbox) async throws {
         do {
             try await build(sandbox)
         } catch BuildError.compilationFailed(let output) {

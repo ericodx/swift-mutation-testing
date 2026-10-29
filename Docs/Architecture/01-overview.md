@@ -123,9 +123,9 @@ flowchart LR
         POOL -- Xcode --> TES
         BS -- "SPM build failed" --> RETRY[SchemaNarrower.narrow]
         RETRY -- rebuilt --> POOL
-        RETRY -- gave up --> FBP["FallbackExecutor\nper-file rebuild"]
+        RETRY -- gave up --> FBP["FallbackExecutor\none file at a time"]
         BS -- "Xcode build failed" --> FBP
-        IME["IncompatibleMutantExecutor\nwarm sandboxes"]
+        IME["IncompatibleMutantExecutor\nschema sandbox + warm sandboxes"]
         RETRY -- excluded mutants --> IME
     end
     SS -- RunnerInput --> SF
@@ -147,8 +147,8 @@ flowchart LR
 | `BuildStage` | `Sandbox` | `BuildArtifact` |
 | `BaselineProbe` | `Sandbox` (SPM) | `[TestBundle]` + test filter, or `BaselineError` |
 | `TestExecutionStage` | `TestExecutionContext` + mutants | `[ExecutionResult]` |
-| `FallbackExecutor` | `RunnerInput` + `SimulatorPool` | `[ExecutionResult]` |
-| `IncompatibleMutantExecutor` | incompatible mutants + `SimulatorPool` | `[ExecutionResult]` |
+| `FallbackExecutor` | `RunnerInput` + `SimulatorPool` + `SchemaSandbox` | `[ExecutionResult]` |
+| `IncompatibleMutantExecutor` | incompatible mutants + `SimulatorPool` + the restored schema sandbox | `[ExecutionResult]` |
 | `TestResultResolver` | `TestLaunchResult` + `ProjectType` | `TestRunOutcome` |
 
 ## Invariants
