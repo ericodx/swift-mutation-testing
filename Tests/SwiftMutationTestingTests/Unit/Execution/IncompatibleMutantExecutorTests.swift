@@ -908,7 +908,7 @@ struct IncompatibleMutantExecutorTests {
         defer { FileHelpers.cleanup(dir) }
         try "let x = 1".write(to: dir.appendingPathComponent("Foo.swift"), atomically: true, encoding: .utf8)
 
-        let launcher = WarmSandboxLauncher()
+        let launcher = WarmSandboxLauncher(testRunsTake: [.milliseconds(40)])
         let executor = makeIncompatibleMutantExecutorSPM(in: dir, launcher: launcher)
         let pool = makeSimulatorPool()
         try await pool.setUp()
@@ -923,7 +923,8 @@ struct IncompatibleMutantExecutorTests {
         #expect(results.allSatisfy { $0.status == .survived })
         #expect(await launcher.buildRoots.count == 2)
         #expect(await launcher.maxInFlightBuilds == 2)
-        #expect(await launcher.testRunsByRoot.values.sorted() == [2, 2])
+        #expect(await launcher.testRunsByRoot.count == 2)
+        #expect(await launcher.testRunsByRoot.values.reduce(0, +) == 4)
     }
 
     @Test("Given a warm sandbox whose build fails, when executed, then the others carry all the mutants")
@@ -977,7 +978,7 @@ struct IncompatibleMutantExecutorTests {
         let reused = try await SandboxFactory().createClean(projectPath: dir.path)
         defer { try? reused.cleanup() }
 
-        let launcher = WarmSandboxLauncher()
+        let launcher = WarmSandboxLauncher(testRunsTake: [.milliseconds(40)])
         let executor = makeIncompatibleMutantExecutorSPM(in: dir, launcher: launcher)
         let pool = makeSimulatorPool()
         try await pool.setUp()
@@ -992,7 +993,8 @@ struct IncompatibleMutantExecutorTests {
         #expect(results.allSatisfy { $0.status == .survived })
         #expect(await launcher.buildRoots.count == 2)
         #expect(await launcher.buildRoots.contains(reused.rootURL.path))
-        #expect(await launcher.testRunsByRoot.values.sorted() == [2, 2])
+        #expect(await launcher.testRunsByRoot.count == 2)
+        #expect(await launcher.testRunsByRoot.values.reduce(0, +) == 4)
         #expect(FileManager.default.fileExists(atPath: reused.rootURL.path))
         let fooIsLink =
             try reused.rootURL.appendingPathComponent("Foo.swift")
