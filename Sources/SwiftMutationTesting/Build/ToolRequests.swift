@@ -3,9 +3,10 @@ import Foundation
 enum ToolRequests {
     static let noTestDiagnostics = ["-collect-test-diagnostics", "never"]
     static let skipPackageValidation = ["-skipPackagePluginValidation", "-skipMacroValidation"]
+    static let noIndexStore = ["COMPILER_INDEX_STORE_ENABLE=NO"]
 
     static func swiftBuildTests(in sandbox: Sandbox, timeout: Double) -> ProcessRequest {
-        request("/usr/bin/swift", ["build", "--build-tests"], in: sandbox, timeout: timeout)
+        request("/usr/bin/swift", ["build", "--build-tests", "--disable-index-store"], in: sandbox, timeout: timeout)
     }
 
     static func swiftTest(
@@ -27,7 +28,7 @@ enum ToolRequests {
                 "-scheme", scheme,
                 "-destination", destination,
                 "-derivedDataPath", derivedDataPath(in: sandbox),
-            ] + skipPackageValidation
+            ] + skipPackageValidation + noIndexStore
         return xcodebuild(arguments + extraArguments, in: sandbox, timeout: timeout)
     }
 
