@@ -285,7 +285,7 @@ flowchart TD
 
 Passes the resolved container as `-workspace <path>` or `-project <path>`, relative to the sandbox root; with none, `xcodebuild` is given no container. It no longer scans the sandbox for one: the first `.xcworkspace` of a directory listing is not a decision.
 
-**SPM path (`buildSPM`):** Runs `swift build --build-tests` in the sandbox directory. Returns a `BuildArtifact` whose `derivedDataPath` is `<sandbox>/.build`, with no `.xctestrun` and no plist.
+**SPM path (`buildSPM`):** Runs `swift build --build-tests --disable-index-store` in the sandbox directory. Returns a `BuildArtifact` whose `derivedDataPath` is `<sandbox>/.build`, with no `.xctestrun` and no plist.
 
 On both paths the timeout exit code (`SPMResultParser.timedOutExitCode`) becomes `BuildError.timedOut(seconds:output:)` and any other non-zero exit `BuildError.compilationFailed(output:)`, each carrying the build output.
 
@@ -317,9 +317,9 @@ Every `swift` and `xcodebuild` invocation a run builds and tests a sandbox with,
 
 | Method | Invocation | Used by |
 |---|---|---|
-| `swiftBuildTests` | `swift build --build-tests` | `BuildStage.buildSPM`, `IncompatibleMutantExecutor` (warm and per-mutant SPM builds) |
+| `swiftBuildTests` | `swift build --build-tests --disable-index-store` | `BuildStage.buildSPM`, `IncompatibleMutantExecutor` (warm and per-mutant SPM builds) |
 | `swiftTest` | `swift test --skip-build [--filter <filter>]` | `TestExecutionStage` (SPM without bundles), `IncompatibleMutantExecutor` (SPM tests), `BaselineProbe` |
-| `buildForTesting` | `xcodebuild build-for-testing -scheme -destination -derivedDataPath -skipPackagePluginValidation -skipMacroValidation`, then the given arguments — `BuildOptions.xcodeArguments`, the container's and the user's `--xcodebuild-arg` ones | `BuildStage.build` (the schematized build, `FallbackExecutor`'s and `UnmutatedBuildCheck`'s), `IncompatibleMutantExecutor` (the Xcode workers' warm builds, each mutant's incremental build, and a reproduction's cold ones) |
+| `buildForTesting` | `xcodebuild build-for-testing -scheme -destination -derivedDataPath -skipPackagePluginValidation -skipMacroValidation COMPILER_INDEX_STORE_ENABLE=NO`, then the given arguments — `BuildOptions.xcodeArguments`, the container's and the user's `--xcodebuild-arg` ones, so a user's repeated setting wins (`xcodebuild` takes the last) | `BuildStage.build` (the schematized build, `FallbackExecutor`'s and `UnmutatedBuildCheck`'s), `IncompatibleMutantExecutor` (the Xcode workers' warm builds, each mutant's incremental build, and a reproduction's cold ones) |
 | `xcodebuild` | `xcodebuild` with the given arguments | `TestExecutionStage` (`test-without-building`), `IncompatibleMutantExecutor.testXcode` |
 | `derivedDataPath` | `<sandbox>/.xmr-derived-data` | every Xcode build and test |
 | `skipPackageValidation` | `-skipPackagePluginValidation -skipMacroValidation` | appended to every `build-for-testing`: a package's build tool plugins (SwiftLint's, `swift-openapi-generator`'s) and macros need a trust prompt that a headless build cannot answer, so without them every build of such a project fails at `Validate plug-in` |
