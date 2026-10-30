@@ -72,7 +72,7 @@ Every project of the workspace is schematized in the one build, whichever projec
 
 ### Extra xcodebuild arguments
 
-A project that needs more than the tool passes — signing updates, an `.xcconfig`, a build setting — gets it with `--xcodebuild-arg`, once per argument, or with the `xcodebuild-args` list in the configuration file. The command line replaces the file's list as a whole. Each argument is appended, in order, to every `xcodebuild` call of the run: the shared `build-for-testing`, the per-file and per-mutant builds, and every `test-without-building`.
+A project that needs more than the tool passes — signing updates, an `.xcconfig`, a build setting — gets it with `--xcodebuild-arg`, once per argument, or with the `xcodebuild-args` list in the configuration file. The command line replaces the file's list as a whole. Each argument is appended, in order, to every `xcodebuild` call of the run: the shared `build-for-testing`, the per-file and per-mutant builds, and every `test-without-building`. They come after the settings the tool passes itself, such as `COMPILER_INDEX_STORE_ENABLE=NO` on every build, and `xcodebuild` takes the last value of a repeated setting, so an argument of yours wins.
 
 ```bash
 swift-mutation-testing --scheme App --destination "platform=macOS" \

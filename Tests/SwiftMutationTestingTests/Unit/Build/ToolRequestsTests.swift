@@ -44,6 +44,28 @@ struct ToolRequestsTests {
 
         #expect(request.arguments.first == "build-for-testing")
         #expect(request.arguments.last == "-allowProvisioningUpdates")
-        #expect(request.arguments.dropLast().suffix(2) == ["-skipPackagePluginValidation", "-skipMacroValidation"])
+        #expect(request.arguments.dropLast().suffix(2) == ["-skipMacroValidation", "COMPILER_INDEX_STORE_ENABLE=NO"])
+    }
+
+    @Test("Given an SPM build, when requested, then the index store is off")
+    func swiftBuildTestsTurnsTheIndexStoreOff() {
+        let request = ToolRequests.swiftBuildTests(
+            in: Sandbox(rootURL: URL(fileURLWithPath: "/tmp/sandbox")), timeout: 60
+        )
+
+        #expect(request.arguments == ["build", "--build-tests", "--disable-index-store"])
+    }
+
+    @Test("Given an Xcode build, when requested, then the index store is off, before the given arguments")
+    func buildForTestingTurnsTheIndexStoreOffBeforeTheArguments() {
+        let request = ToolRequests.buildForTesting(
+            in: Sandbox(rootURL: URL(fileURLWithPath: "/tmp/sandbox")),
+            scheme: "App",
+            destination: "platform=macOS",
+            arguments: ["COMPILER_INDEX_STORE_ENABLE=YES"],
+            timeout: 60
+        )
+
+        #expect(request.arguments.suffix(2) == ["COMPILER_INDEX_STORE_ENABLE=NO", "COMPILER_INDEX_STORE_ENABLE=YES"])
     }
 }
