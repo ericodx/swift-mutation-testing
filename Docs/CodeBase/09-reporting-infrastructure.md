@@ -766,6 +766,7 @@ struct ProcessRequest: Sendable {
     var timeout: Double
     var stopRule: OutputStopRule?
     var discardsStandardError: Bool = false
+    var outputURL: URL?
 
     func withTimeout(_ timeout: Double) -> ProcessRequest
     func stopping(at rule: OutputStopRule) -> ProcessRequest
@@ -783,6 +784,7 @@ struct ProcessRequest: Sendable {
 | `timeout` | Maximum execution time in seconds |
 | `stopRule` | When set, the runner ends the process as soon as a line of its output is what the rule stops at, and reports the rule's exit code instead of the process's own |
 | `discardsStandardError` | When set, `launchCapturing` sends stderr to `/dev/null`, so the output is stdout alone |
+| `outputURL` | When set (`capturingOutput(at:)`), `launchCapturing` captures the output in that file instead of a temporary one, so the process — and any process it spawns — can be told its path: the baseline's coverage collection names it in `__SWIFT_MUTATION_TESTING_COVERAGE_FILE` and the schema appends its records there, between the test library's own lines |
 
 `withTimeout(_:)`, `stopping(at:)` and `discardingStandardError()` return a copy with that one field changed.
 
@@ -830,7 +832,7 @@ This is what makes a killed mutant cheap. A mutant is killed by its *first* fail
 
 **Post-termination cleanup:** `postTerminationCleanup` is called after every process termination (success or failure), used by `SPMProcessLauncher` to kill the process group.
 
-`launchCapturing` writes output to a temporary file (UUID-named) and reads it in the `terminationHandler` to avoid pipe buffer limits.
+`launchCapturing` writes output to a temporary file (UUID-named, or the request's `outputURL`), opened with `O_APPEND` so that every write by the process, and by anything else appending to the file by name, goes to its end in time order, and reads it in the `terminationHandler` to avoid pipe buffer limits.
 
 **Process groups:** Foundation's `Process` starts every child as the leader of a process group of its own, which is what lets `kill(-pid, …)` reach a whole test tree. The runner used to call `setpgid(pid, pid)` after `process.run()`, but by then the child has exec'd and the call always fails with `EACCES`. `checkOwnGroup(_:groupOf:warning:)` instead reads `getpgid(pid)` and, if a live process does not lead its own group, warns once on stderr through an `OnceWarning` that a timeout or an interrupt may leave its children running.
 
