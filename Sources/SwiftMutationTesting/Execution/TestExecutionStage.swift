@@ -100,6 +100,12 @@ struct TestExecutionStage: Sendable {
             return .settled(cached)
         }
 
+        if context.artifact.plist == nil, context.coverage?.reach(of: mutant) == .unreached {
+            return .settled(
+                await recorder(in: context).record(mutant, status: .noCoverage, activated: false)
+            )
+        }
+
         let (outcome, launched) = try await measure(mutant, in: context, timeout: timeout)
 
         if case .timedOut = outcome {
@@ -191,6 +197,17 @@ struct TestExecutionStage: Sendable {
     ) async throws -> (TestRunOutcome, TestLaunchResult) {
         var activated = false
 
+        if !context.configuration.build.reproducing, let reaching = context.coverage.reaching(mutant) {
+            let marker = ActivationMarker(for: mutant.id, in: context.sandbox)
+            var launched = try await launchSPM(
+                mutant: mutant, in: context, timeout: timeout,
+                run: SPMRun(filter: nil, bundles: context.bundles, activationFile: marker.path, reaching: reaching)
+            )
+            let outcome = SPMResultParser().parse(exitCode: launched.exitCode, output: launched.output)
+            launched.activated = marker.wasWritten()
+            return (outcome, launched)
+        }
+
         if !context.configuration.build.reproducing,
             let suite = TargetedSuites.suite(for: mutant.filePath, among: context.targetedSuites)
         {
@@ -242,6 +259,7 @@ struct TestExecutionStage: Sendable {
         let filter: String?
         let bundles: [TestBundle]
         let activationFile: String
+        var reaching: [TestReference]?
     }
 
     private func launchSPM(
@@ -307,7 +325,8 @@ struct TestExecutionStage: Sendable {
                         timeout: timeout,
                         libraries: bundle.libraries,
                         stoppingAtFirstFailure: !configuration.build.reproducing,
-                        activationFile: run.activationFile
+                        activationFile: run.activationFile,
+                        reaching: run.reaching.map { tests in tests.filter { $0.module == bundle.name } }
                     )
             }
         }

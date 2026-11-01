@@ -29,7 +29,8 @@ extension RunnerInput {
             noCache: noCache,
             schematizedFiles: files,
             mutants: kept,
-            importStyle: importStyle
+            importStyle: importStyle,
+            sourceHashes: sourceHashes
         )
     }
 
@@ -42,7 +43,8 @@ extension RunnerInput {
             noCache: noCache,
             schematizedFiles: schematizedFiles,
             mutants: kept,
-            importStyle: importStyle
+            importStyle: importStyle,
+            sourceHashes: sourceHashes
         )
     }
 }

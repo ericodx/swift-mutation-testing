@@ -200,8 +200,11 @@ struct MutantExecutor: Sendable {
         let testFiles = environment.testFilesHasher.snapshot(projectPath: input.projectPath)
         let diff = try await cacheStore.changedTestFiles(current: testFiles.hashes)
         await cacheStore.invalidate(diff: diff)
+        try await cacheStore.adoptCoverage(unless: diff, sourceHashes: input.sourceHashes)
 
-        let metadata = CacheStore.CacheMetadata(testFileHashes: testFiles.hashes, testSelection: selection)
+        let metadata = CacheStore.CacheMetadata(
+            testFileHashes: testFiles.hashes, testSelection: selection, sourceHashes: input.sourceHashes
+        )
         return (cacheStore, metadata, testFiles)
     }
 
@@ -260,7 +263,7 @@ struct MutantExecutor: Sendable {
         let testableSchematizable = schematizable.filter { !excludedIDs.contains($0.id) }
 
         if let artifact {
-            if let context = try await baselineContext(artifact: artifact, schema: schema, pool: pool, deps: deps) {
+            if let context = try await baselineContext(artifact: artifact, in: context) {
                 results += try await runNormal(deps: deps, context: context, schematizable: testableSchematizable)
             } else {
                 let remaining = input.excluding(excludedIDs).keeping(testableSchematizable)
@@ -288,25 +291,20 @@ struct MutantExecutor: Sendable {
 
     private func baselineContext(
         artifact: BuildArtifact,
-        schema: SchemaSandbox,
-        pool: SimulatorPool,
-        deps: ExecutionDeps
+        in run: MutantRunContext
     ) async throws -> TestExecutionContext? {
+        let (schema, pool, deps) = (run.schema, run.pool, run.deps)
         let sandbox = schema.sandbox
         let start = Date()
         do {
-            var bundles: [TestBundle] = []
-            var testFilter = configuration.build.testTarget
-            if case .spm = configuration.build.projectType {
-                (bundles, testFilter) = try await BaselineProbe(configuration: configuration, launcher: deps.launcher)
-                    .probeTestBundles(in: sandbox)
-            }
+            let probed = try await probeBaseline(in: sandbox, deps: deps, collects: run.splitsOnSuiteFailure)
             let context = TestExecutionContext(
                 artifact: artifact, sandbox: sandbox, pool: pool,
                 configuration: configuration,
-                bundles: bundles,
-                testFilter: testFilter,
-                targetedSuites: deps.targetedSuites
+                bundles: probed.bundles,
+                testFilter: probed.filter,
+                targetedSuites: deps.targetedSuites,
+                coverage: await deps.cacheStore.coverage
             )
             if case .xcode = configuration.build.projectType {
                 try await TestExecutionStage(deps: deps).requireXcodeBaselineToPass(in: context)
@@ -321,6 +319,22 @@ struct MutantExecutor: Sendable {
             }
             return nil
         }
+    }
+
+    private func probeBaseline(
+        in sandbox: Sandbox, deps: ExecutionDeps, collects: Bool
+    ) async throws -> BaselineProbe.Probed {
+        guard case .spm = configuration.build.projectType else {
+            return BaselineProbe.Probed(filter: configuration.build.testTarget)
+        }
+        let known = await deps.cacheStore.coverage
+        let collecting = collects && !configuration.build.noCache && known == nil
+        let probed = try await BaselineProbe(configuration: configuration, launcher: deps.launcher)
+            .probeTestBundles(in: sandbox, collectingCoverage: collecting)
+        if let coverage = probed.coverage, !coverage.isEmpty {
+            await deps.cacheStore.storeCoverage(coverage)
+        }
+        return probed
     }
 
     static func requireObservedActivation(in results: [ExecutionResult]) throws {

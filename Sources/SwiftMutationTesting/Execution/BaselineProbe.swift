@@ -4,7 +4,13 @@ struct BaselineProbe: Sendable {
     let configuration: RunnerConfiguration
     let launcher: any ProcessLaunching
 
-    func probeTestBundles(in sandbox: Sandbox) async throws -> (bundles: [TestBundle], filter: String?) {
+    struct Probed: Sendable {
+        var bundles: [TestBundle] = []
+        var filter: String?
+        var coverage: TestCoverage?
+    }
+
+    func probeTestBundles(in sandbox: Sandbox, collectingCoverage: Bool = false) async throws -> Probed {
         let selection = TestTargetSelection.make(
             target: configuration.build.testTarget, bundleURLs: TestBundleInvocation.bundleURLs(in: sandbox)
         )
@@ -12,26 +18,31 @@ struct BaselineProbe: Sendable {
 
         guard !urls.isEmpty else {
             try await validateBaseline(running: swiftTestRequest(in: sandbox))
-            return ([], selection.filter)
+            return Probed(filter: selection.filter)
         }
 
-        var bundles: [TestBundle] = []
+        var probed = Probed(filter: selection.filter, coverage: collectingCoverage ? TestCoverage() : nil)
 
         for url in urls {
-            let libraries = try await probeLibraries(of: url, in: sandbox, filter: selection.filter)
+            let libraries = try await probeLibraries(
+                of: url, in: sandbox, filter: selection.filter, coverage: &probed.coverage
+            )
             if !libraries.isEmpty {
-                bundles.append(TestBundle(url: url, libraries: libraries))
+                probed.bundles.append(TestBundle(url: url, libraries: libraries))
             }
         }
 
-        let probed = bundles.isEmpty ? urls.map { TestBundle(url: $0, libraries: TestBundle.allLibraries) } : bundles
-        return (probed, selection.filter)
+        if probed.bundles.isEmpty {
+            probed.bundles = urls.map { TestBundle(url: $0, libraries: TestBundle.allLibraries) }
+        }
+        return probed
     }
 
     private func probeLibraries(
         of bundleURL: URL,
         in sandbox: Sandbox,
-        filter: String?
+        filter: String?,
+        coverage: inout TestCoverage?
     ) async throws -> Set<TestingFramework> {
         let invocation = TestBundleInvocation(bundleURL: bundleURL, framework: configuration.build.testingFramework)
         var present: Set<TestingFramework> = []
@@ -43,7 +54,8 @@ struct BaselineProbe: Sendable {
                 workingDirectory: sandbox.rootURL,
                 timeout: configuration.build.timeout,
                 libraries: [library],
-                stoppingAtFirstFailure: false
+                stoppingAtFirstFailure: false,
+                coverageDirectory: coverage == nil ? nil : FileManager.default.temporaryDirectory
             )
 
             for request in requests {
@@ -54,6 +66,7 @@ struct BaselineProbe: Sendable {
 
                 try requireBaselineToPass(exitCode: captured.exitCode, output: captured.output)
                 present.insert(library)
+                coverage?.merge(CoverageOutputParser().parse(captured.output))
             }
         }
 

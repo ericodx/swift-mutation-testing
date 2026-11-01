@@ -4,11 +4,12 @@ struct ProcessRequest: Sendable {
     let executableURL: URL
     let arguments: [String]
     let environment: [String: String]?
-    let additionalEnvironment: [String: String]
+    var additionalEnvironment: [String: String]
     let workingDirectoryURL: URL
     var timeout: Double
     var stopRule: OutputStopRule?
     var discardsStandardError = false
+    var outputURL: URL?
 
     func withTimeout(_ timeout: Double) -> ProcessRequest {
         var copy = self
@@ -25,6 +26,12 @@ struct ProcessRequest: Sendable {
     func discardingStandardError() -> ProcessRequest {
         var copy = self
         copy.discardsStandardError = true
+        return copy
+    }
+
+    func capturingOutput(at url: URL) -> ProcessRequest {
+        var copy = self
+        copy.outputURL = url
         return copy
     }
 }
