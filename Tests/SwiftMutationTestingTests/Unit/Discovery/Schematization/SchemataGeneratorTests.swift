@@ -216,7 +216,20 @@ struct SchemataGeneratorTests {
         #expect(caseLines.count == 2)
         let activation = SupportDeclarations.activationCall(for: source.file.path)
         #expect(caseLines.allSatisfy { lines[$0 + 1] == "let _ = " + activation })
-        #expect(!result.contains("default:\nlet _ ="))
+        let reached = { SupportDeclarations.reachedCall(for: source.file.path, site: $0) }
+        #expect(result.contains("default:\nlet _ = \(reached(9))\nlet x = true \n"))
+        #expect(result.contains("default:\nlet _ = \(reached(35))\nlet y = false \n"))
+    }
+
+    @Test("Given a body, when generated, then the default records the site keyed by the body's start")
+    func theDefaultRecordsTheSite() {
+        let source = makeParsedSource("struct S {\n    func f() { let x = true }\n}")
+        let mutations = mutationsWithIndices(source)
+        let result = generator.generate(source: source, mutations: mutations).content
+
+        let reached = SupportDeclarations.reachedCall(for: source.file.path, site: 24)
+        #expect(result.contains("default:\nlet _ = \(reached)\n"))
+        #expect(!result.contains("case \"swift-mutation-testing_0\":\nlet _ = \(SupportDeclarations.reachedMarker)"))
     }
 
     @Test("Given a body that is one expression, when generated, then the case stays one expression")
@@ -229,7 +242,8 @@ struct SchemataGeneratorTests {
 
         let activation = SupportDeclarations.activationCall(for: source.file.path)
         #expect(result.contains("case \"swift-mutation-testing_0\":\n(\(activation), a - b \n).1\n"))
-        #expect(result.contains("default:\na + b \n"))
+        let reached = SupportDeclarations.reachedCall(for: source.file.path, site: 36)
+        #expect(result.contains("default:\n(\(reached), a + b \n).1\n"))
         #expect(!result.contains("let _ ="))
     }
 
@@ -259,7 +273,8 @@ struct SchemataGeneratorTests {
 
         let activation = SupportDeclarations.activationCall(for: source.file.path)
         #expect(result.contains("let _ = \(activation)\nreturn if !(c) { 1 } else { 2 } \n"))
-        #expect(result.contains("default:\nreturn if c { 1 } else { 2 } \n"))
+        let reached = SupportDeclarations.reachedCall(for: source.file.path, site: 25)
+        #expect(result.contains("default:\nlet _ = \(reached)\nreturn if c { 1 } else { 2 } \n"))
     }
 
     @Test("Given a body that is one if statement returning nothing, when generated, then no branch returns")
