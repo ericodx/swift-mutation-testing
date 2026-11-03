@@ -137,7 +137,10 @@ struct SchemaNarrower: Sendable {
 
         let kept = mutantsInFile.filter { !problematicIDs.contains($0.id) }
 
-        guard let narrowed = regeneratedSchema(originalPath: originalPath, keeping: kept, importStyle: importStyle)
+        guard
+            let narrowed = regeneratedSchema(
+                originalPath: mutantsInFile[0].filePath, keeping: kept, importStyle: importStyle
+            )
         else {
             try SandboxLink.restore(at: sandboxPath, to: originalPath)
             return mutantsInFile

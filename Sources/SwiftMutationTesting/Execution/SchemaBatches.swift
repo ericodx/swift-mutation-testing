@@ -59,7 +59,8 @@ struct SchemaBatches: Sendable {
                     noCache: input.noCache,
                     schematizedFiles: files,
                     mutants: mutants,
-                    importStyle: input.importStyle
+                    importStyle: input.importStyle,
+                    sourceHashes: input.sourceHashes
                 )
             )
         }

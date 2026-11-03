@@ -98,7 +98,8 @@ struct SchemataGenerator: Sendable {
         guard !cases.isEmpty else { return (nil, discarded) }
 
         let switchBody = buildSwitchBody(
-            cases: cases, defaultStatements: originalStatements, shape: scope.shape, path: path
+            cases: cases, defaultStatements: originalStatements, shape: scope.shape, path: path,
+            site: scope.bodyStartOffset
         )
         return (switchBody, discarded)
     }
@@ -140,7 +141,8 @@ struct SchemataGenerator: Sendable {
         cases: [(id: String, statements: String)],
         defaultStatements: String,
         shape: FunctionBodyShape,
-        path: String
+        path: String,
+        site: Int
     ) -> String {
         var result = "{\n"
         result += "switch \(SupportDeclarations.identifier(for: path)) {\n"
@@ -149,7 +151,7 @@ struct SchemataGenerator: Sendable {
             result += "case \"\(id)\":\n\(caseBody(statements, shape: shape, path: path))\n"
         }
 
-        result += "default:\n\(defaultBody(defaultStatements, shape: shape))\n"
+        result += "default:\n\(defaultBody(defaultStatements, shape: shape, path: path, site: site))\n"
         result += "}\n}"
 
         return result
@@ -169,7 +171,17 @@ struct SchemataGenerator: Sendable {
         }
     }
 
-    private func defaultBody(_ statements: String, shape: FunctionBodyShape) -> String {
-        shape == .conditional(returnsValue: true) ? "return \(statements)" : statements
+    private func defaultBody(_ statements: String, shape: FunctionBodyShape, path: String, site: Int) -> String {
+        let reached = SupportDeclarations.reachedCall(for: path, site: site)
+        let isBlank = statements.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        switch shape {
+        case .expression where !isBlank:
+            return "(\(reached), \(statements)\n).1"
+        case .conditional(returnsValue: true):
+            return "let _ = \(reached)\nreturn \(statements)"
+        case .expression, .conditional, .statements:
+            return "let _ = \(reached)\n\(statements)"
+        }
     }
 }

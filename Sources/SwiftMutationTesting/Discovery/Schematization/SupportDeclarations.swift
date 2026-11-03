@@ -21,6 +21,13 @@ enum SupportDeclarations {
         "__SwiftMutationTesting_\(suffix(for: path)).activating"
     }
 
+    static let coverageEnvironmentVariable = "__SWIFT_MUTATION_TESTING_COVERAGE_FILE"
+    static let reachedMarker = "__swiftMutationTestingReached"
+
+    static func reachedCall(for path: String, site: Int) -> String {
+        "__SwiftMutationTesting_\(suffix(for: path)).reached(\(site))"
+    }
+
     static func importLine(_ style: ImportStyle) -> String {
         switch style {
         case .implicit: "import Foundation"
@@ -58,11 +65,41 @@ enum SupportDeclarations {
                     activated()
                     return value
                 }
+            \(coverageSupport(suffix: suffix))
             }
 
             @usableFromInline nonisolated internal var __swiftMutationTestingID_\(suffix): String {
                 __SwiftMutationTesting_\(suffix).id
             }
             """
+    }
+
+    private static func coverageSupport(suffix: String) -> String {
+        """
+
+                nonisolated static let coverageDescriptor: Int32 =
+                    ProcessInfo.processInfo.environment["\(coverageEnvironmentVariable)"]
+                    .map { open($0, O_WRONLY | O_APPEND) } ?? -1
+                nonisolated(unsafe) static var reachedSites: Set<Int> = []
+                nonisolated(unsafe) static var reachedSize: off_t = -1
+                nonisolated static let reachedLock = NSLock()
+
+                nonisolated static func coverageSize() -> off_t {
+                    var status = stat()
+                    return fstat(coverageDescriptor, &status) == 0 ? status.st_size : -1
+                }
+
+                @usableFromInline nonisolated static func reached(_ site: Int) {
+                    guard coverageDescriptor >= 0 else { return }
+                    reachedLock.lock()
+                    defer { reachedLock.unlock() }
+                    if coverageSize() != reachedSize { reachedSites.removeAll(keepingCapacity: true) }
+                    if reachedSites.insert(site).inserted {
+                        let line = "\(reachedMarker) \(suffix):\\(site)\\n"
+                        line.withCString { _ = write(coverageDescriptor, $0, strlen($0)) }
+                    }
+                    reachedSize = coverageSize()
+                }
+        """
     }
 }

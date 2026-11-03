@@ -55,6 +55,28 @@ struct PlanMaterializerTests {
         #expect(materialized.mutants.map(\.isInLoopCondition) == direct.mutants.map(\.isInLoopCondition))
     }
 
+    @Test("Given a plan, when materialized, then every mutant carries its function body start and the source hashes")
+    func materializedMutantsCarryTheBodyStartAndTheSourceHashes() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let sources = dir.appendingPathComponent("Sources")
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        let content = "func c(_ n: Int) -> Bool { n > 0 }\n"
+        try content.write(to: sources.appendingPathComponent("C.swift"), atomically: true, encoding: .utf8)
+        let input = makeDiscoveryInput(
+            projectPath: dir.path, sourcesPath: sources.path, operators: ["RelationalOperatorReplacement"]
+        )
+        let plan = try await Planner().plan(input: input).plan
+
+        let materialized = try await PlanMaterializer().materialize(
+            plan: plan, projectPath: dir.path, execution: Self.execution
+        )
+
+        #expect(!materialized.mutants.isEmpty)
+        #expect(materialized.mutants.allSatisfy { $0.functionBodyStart == 25 })
+        #expect(materialized.sourceHashes == ["Sources/C.swift": MutantCacheKey.hash(of: content)])
+    }
+
     @Test("Given a file edited after the plan, when materialized, then the plan is stale")
     func anEditedFileMakesThePlanStale() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

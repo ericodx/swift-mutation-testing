@@ -28,6 +28,18 @@ struct ProcessRunnerTests {
         #expect(result.output == "hello\n")
     }
 
+    @Test("Given an output URL holding text, when the process ends, then its output follows it and the file goes")
+    func aGivenOutputFileIsAppendedToAndRemoved() async throws {
+        let runner = ProcessRunner(onTimeout: { _ in })
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("capture-\(UUID().uuidString).log")
+        try "before\n".write(to: url, atomically: true, encoding: .utf8)
+
+        let result = try await runner.launchCapturing(echo("hello").capturingOutput(at: url))
+
+        #expect(result.output == "before\nhello\n")
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
     @Test("Given output cut in the middle of a character, when the process ends, then everything before it is kept")
     func anOutputCutMidCharacterIsKept() async throws {
         let runner = ProcessRunner(onTimeout: { _ in })

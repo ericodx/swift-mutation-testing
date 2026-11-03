@@ -15,4 +15,5 @@ struct MutantDescriptor: Sendable, Codable {
     let sourceContentHash: String
     let fingerprint: String
     var isInLoopCondition = false
+    var functionBodyStart: Int?
 }

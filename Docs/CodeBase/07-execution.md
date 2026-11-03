@@ -29,7 +29,7 @@ Entry point for the execution pipeline. Orchestrates sandbox creation, build, si
 
 `Environment` holds the collaborators a run works through, each the real one unless a test hands in another. With no `reporter`, progress goes to a `ConsoleProgressReporter`, or a `SilentProgressReporter` under `--quiet`. The `sandboxFactory` is also the one `IncompatibleMutantExecutor` is given. `timings` is the `PhaseTimings` every phase of the run records into, handed on through `ExecutionDeps`; `RunCommand` passes its own so it can read the entries back for the summary.
 
-The work that used to live inline here is split across types of its own: `SchemaNarrower` retries a schematized SPM build that does not compile, `UnmutatedBuildCheck` builds the unmutated project when the schema leaves no artifact, `BaselineProbe` runs the unmutated suite, `SimulatorPool.make(for:launcher:)` picks the pool, and every verdict goes through `ResultRecorder`. `execute` itself only prepares the cache, returns early when every mutant is cached, builds the `ExecutionDeps` — `TargetedSuites.declared(in:read:)` over the test files the cache snapshot already read — creates and registers the sandbox, wraps it in a `SchemaSandbox` that knows which schemas it holds, and persists the cache; the private `run(_:in:deps:reporter:)` verifies the sandbox, builds and runs every mutant against the whole schema through `runBatch`, then runs each schema batch that run asked for — installing its schemas in the sandbox (`SchemaSandbox.install`) first — the same way; the pool is set up once, on the first build that needs it, and activation is checked over every batch's results, the pool torn down whether it throws or not. The sandbox is released through `release(keepingFor:)`, which keeps it for a reproduction — timed as `teardown` when the run returns, untimed when it throws; the `defer` only deregisters it from `SandboxCleaner`.
+The work that used to live inline here is split across types of its own: `SchemaNarrower` retries a schematized SPM build that does not compile, `UnmutatedBuildCheck` builds the unmutated project when the schema leaves no artifact, `BaselineProbe` runs the unmutated suite, `SimulatorPool.make(for:launcher:)` picks the pool, and every verdict goes through `ResultRecorder`. `execute` itself only prepares the cache, returns early when every mutant is cached, builds the `ExecutionDeps` — `TargetedSuites.declared(in:read:)` over the test files the cache snapshot already read — creates and registers the sandbox, wraps it in a `SchemaSandbox` that knows which schemas it holds, and persists the cache; the private `run(_:in:deps:reporter:)` verifies the sandbox, builds and runs every mutant against the whole schema through `runBatch`, then runs each schema batch that run asked for — installing its schemas in the sandbox (`SchemaSandbox.install`) first — the same way; the pool is set up once, on the first build that needs it, and activation is checked over every batch's results, the pool torn down whether it throws or not. The sandbox is released through `release(keepingFor:)`, which keeps it for a reproduction — timed as `teardown` when the run returns, untimed when it throws; the `defer` only deregisters it from `SandboxCleaner`. `prepareCacheStore` also adopts the coverage map `metadata.json` holds when no test file changed and `RunnerInput.sourceHashes` match (`CacheStore.adoptCoverage`), and `probeBaseline`, called by `baselineContext` on the SPM path, asks `BaselineProbe` to collect one when the store has none and the run is not `--no-cache` — only for the whole schema's run (`MutantRunContext.splitsOnSuiteFailure`), never for a batch, whose schema holds only some of the dispatches — and stores what it got unless it is empty; the context then carries `CacheStore.coverage`, whichever way it came.
 
 ```mermaid
 flowchart TD
@@ -124,7 +124,7 @@ struct SchemaNarrower: Sendable {
 }
 ```
 
-Narrows a schematized SPM build that does not compile. `narrow` reads the sandbox files the compiler blamed (`<sandbox>/….swift:<line>:`), and for each one that maps back to a project file holding schematizable mutants — the mutants indexed by canonical path once per round, not resolved again for every blamed file — calls `excludeProblematicMutants`: from every error line it walks up to the nearest `case "<mutant id>":` and takes those mutants out. Only errors count: a line labelled `warning:`, `note:` or `remark:`, before its path or after its line and column, with or without colour codes, blames no mutant. A warning such as an unused value is common in a mutant's `case` and does not stop the build, and blaming it sent mutants that compile to a build of their own: on swift-cpd, 38 of the 48 mutants narrowing took out. Which warnings appear also depends on which compile jobs ran before the build stopped, so the excluded set changed from run to run. Only the dispatch's own lines count, the unindented `switch __swiftMutationTestingID_<suffix> {` and `default:`: a `switch` or `default:` in the user's code, copied into each mutant's `case`, is passed over, so an error on or under one is still blamed on its mutant. A local function inside a mutated function has a dispatch of its own, nested in every `case` of the enclosing one; going up, its `default:` opens a dispatch to skip and its `switch` closes it, and a `case` in between is not the one around the error. A dispatch's `switch` reached with none open ends the walk, since the error then sits above the dispatch's first `case`. An error under the outermost `default:` therefore blames no mutant. Stopping at the first `switch` or `default:`, as the walk once did, blamed no mutant for any of these errors and excluded the whole file. `regeneratedSchema` rebuilds the file's schema from the original source with the mutants kept (reading each one's index with `MutantID.index(of:)`) and writes it over the sandbox copy, wrapped by `LintSuppression.wrapping`. A schema whose generation discarded a kept mutant counts as one that cannot be regenerated: `ApplicationVerifier` does not run again on a narrowed file, and that mutant would be tested against a build without its `case` and reported `NoCoverage`. When no error line lands in a mutant's `case`, or the schema cannot be regenerated, the sandbox file goes back to a symlink to the original (`SandboxLink.restore`) and every mutant of the file is excluded. A link that cannot be restored throws `IntegrityError.sourceNotRestored`, and a narrowed schema that cannot be written throws its write error: both used to be ignored, leaving the broken schema in the sandbox to fail every later build. It then reports `.schemaNarrowed`, builds again and recurses with what it has excluded so far, until a build compiles or no new mutant is blamed — then it answers no artifact, and `MutantExecutor` falls back to `FallbackExecutor`.
+Narrows a schematized SPM build that does not compile. `narrow` reads the sandbox files the compiler blamed (`<sandbox>/….swift:<line>:`), and for each one that maps back to a project file holding schematizable mutants — the mutants indexed by canonical path once per round, not resolved again for every blamed file — calls `excludeProblematicMutants`: from every error line it walks up to the nearest `case "<mutant id>":` and takes those mutants out. Only errors count: a line labelled `warning:`, `note:` or `remark:`, before its path or after its line and column, with or without colour codes, blames no mutant. A warning such as an unused value is common in a mutant's `case` and does not stop the build, and blaming it sent mutants that compile to a build of their own: on swift-cpd, 38 of the 48 mutants narrowing took out. Which warnings appear also depends on which compile jobs ran before the build stopped, so the excluded set changed from run to run. Only the dispatch's own lines count, the unindented `switch __swiftMutationTestingID_<suffix> {` and `default:`: a `switch` or `default:` in the user's code, copied into each mutant's `case`, is passed over, so an error on or under one is still blamed on its mutant. A local function inside a mutated function has a dispatch of its own, nested in every `case` of the enclosing one; going up, its `default:` opens a dispatch to skip and its `switch` closes it, and a `case` in between is not the one around the error. A dispatch's `switch` reached with none open ends the walk, since the error then sits above the dispatch's first `case`. An error under the outermost `default:` therefore blames no mutant. Stopping at the first `switch` or `default:`, as the walk once did, blamed no mutant for any of these errors and excluded the whole file. `regeneratedSchema` rebuilds the file's schema from the original source with the mutants kept (reading each one's index with `MutantID.index(of:)`) and writes it over the sandbox copy, wrapped by `LintSuppression.wrapping`. It is given the mutants' own `filePath`, not the symlink-resolved path `narrow` matched the error against: the support block's suffix is a hash of the path the schema was generated for, and the coverage map's keys are made from the descriptors' paths, so a narrowed file regenerated under `/private/tmp/…` where the first schema said `/tmp/…` would record its reaches under a suffix no mutant has — on swift-cpd that made every mutant of the narrowed files `noCoverage`. A schema whose generation discarded a kept mutant counts as one that cannot be regenerated: `ApplicationVerifier` does not run again on a narrowed file, and that mutant would be tested against a build without its `case` and reported `NoCoverage`. When no error line lands in a mutant's `case`, or the schema cannot be regenerated, the sandbox file goes back to a symlink to the original (`SandboxLink.restore`) and every mutant of the file is excluded. A link that cannot be restored throws `IntegrityError.sourceNotRestored`, and a narrowed schema that cannot be written throws its write error: both used to be ignored, leaving the broken schema in the sandbox to fail every later build. It then reports `.schemaNarrowed`, builds again and recurses with what it has excluded so far, until a build compiles or no new mutant is blamed — then it answers no artifact, and `MutantExecutor` falls back to `FallbackExecutor`.
 
 ---
 
@@ -221,13 +221,14 @@ struct BaselineProbe: Sendable {
     let configuration: RunnerConfiguration
     let launcher: any ProcessLaunching
 
-    func probeTestBundles(in sandbox: Sandbox) async throws -> (bundles: [TestBundle], filter: String?)
+    struct Probed: Sendable { var bundles: [TestBundle]; var filter: String?; var coverage: TestCoverage? }
+    func probeTestBundles(in sandbox: Sandbox, collectingCoverage: Bool = false) async throws -> Probed
 
     func requirePassing(_ outcome: TestRunOutcome, output: String) throws
 }
 ```
 
-Runs the unmutated suite on the SPM path before any mutant: each test bundle with each testing library, or `swift test --skip-build` (`ToolRequests.swiftTest`) when the build left no bundle. A library that reports no tests is dropped from the bundle; one that has tests must pass them, or the run ends with a `BaselineError` (the output goes to the logs directory when `--keep-logs` is set). Returns the probed bundles and the filter `TestTargetSelection` settled on; when no bundle reported any test, every bundle is kept with both libraries. See the probe under `TestExecutionStage` below for why it exists.
+Runs the unmutated suite on the SPM path before any mutant: each test bundle with each testing library, or `swift test --skip-build` (`ToolRequests.swiftTest`) when the build left no bundle. A library that reports no tests is dropped from the bundle; one that has tests must pass them, or the run ends with a `BaselineError` (the output goes to the logs directory when `--keep-logs` is set). Returns the probed bundles and the filter `TestTargetSelection` settled on; when no bundle reported any test, every bundle is kept with both libraries. With `collectingCoverage` every request is built with a `coverageDirectory` (the temporary directory) — its output captured in the file the coverage variable names, Swift Testing serialized with its event stream on stderr — and each passing output is parsed by `CoverageOutputParser` and merged into `Probed.coverage`; the `swift test` fallback collects nothing. See the probe under `TestExecutionStage` below for why it exists.
 
 `requirePassing` is the rule both paths apply to the unmutated run: a passing outcome returns; a timeout throws `didNotFinish`; anything else writes the output as `baseline.log` under `--keep-logs` and throws `testsFailed` with the tests the output names — or, when it names none, the test a `testsFailed` outcome carries, which on Xcode comes from the `.xcresult` bundle — and `runFailed` with the output when there is no name at all.
 
@@ -421,7 +422,7 @@ struct TestExecutionStage: Sendable {
 }
 ```
 
-Runs each mutant's tests in parallel — `xcodebuild test-without-building` on the Xcode path (the artifact has a plist), the test bundles directly on the SPM one. The first pass takes the mutants in the order `SlowestFirst` gives them from the cache's last known durations (`CacheStore.durations(for:)`), not in source order; only the order changes, the passes and their limits are as below. The three passes below are three calls of one private `forEach(_:concurrency:run:collect:)`: a `withThrowingTaskGroup` that starts `concurrency` tasks and starts the next element as each finishes, and hands every outcome to `collect` on the calling task, so the results and the two retry lists are plain local arrays. `classify` turns a survivor whose activation marker was not written into `.noCoverage`; `IncompatibleMutantExecutor` classifies with it too.
+Runs each mutant's tests in parallel — `xcodebuild test-without-building` on the Xcode path (the artifact has a plist), the test bundles directly on the SPM one. On the SPM path with a map in the context, `attempt` settles a mutant whose body no test reached (`TestCoverage.reach(of:)` is `.unreached`) as `noCoverage`, not activated, before any slot is taken, and `measureSPMTargetedFirst` runs a mutant with reaching tests against those alone — `SPMRun.reaching`, each bundle given the tests of its module — instead of the targeted suite and the whole suite; a mutant reached outside every test (`.unknown`) and a mutant with no body start take the two-step path as before. The first pass takes the mutants in the order `SlowestFirst` gives them from the cache's last known durations (`CacheStore.durations(for:)`), not in source order; only the order changes, the passes and their limits are as below. The three passes below are three calls of one private `forEach(_:concurrency:run:collect:)`: a `withThrowingTaskGroup` that starts `concurrency` tasks and starts the next element as each finishes, and hands every outcome to `collect` on the calling task, so the results and the two retry lists are plain local arrays. `classify` turns a survivor whose activation marker was not written into `.noCoverage`; `IncompatibleMutantExecutor` classifies with it too.
 
 A mutant whose run times out during that parallel pass is not recorded yet. Once the group has drained, every such mutant is run once more on half the machine's cores (`stragglerConcurrency`: `processorCount / 2`, never more than `concurrency`, never fewer than one), under the configured `--timeout`, and that second outcome is the one reported and cached. The parallel pass itself allows twice the configured timeout (`loadedTimeoutFactor`): a verdict that settles under load is the same verdict the mutant would get alone, so the wider limit only spares the second run, while a mutant that is still running at twice the limit is handed to the quieter pass, whose limit is the one the user asked for.
 
@@ -516,6 +517,7 @@ struct TestExecutionContext: Sendable {
     var bundles: [TestBundle] = []
     var testFilter: String?
     var targetedSuites: [String: TargetedSuite] = [:]
+    var coverage: TestCoverage?
 
     func bundles(declaring suite: TargetedSuite) -> [TestBundle]
 }
@@ -532,6 +534,7 @@ Bundles the execution-time dependencies required by `TestExecutionStage` and the
 | `bundles` | The test bundles a mutant's run invokes, each with the libraries the probe found tests in. Empty when the package produced no bundle, in which case `swift test --skip-build` runs instead |
 | `testFilter` | The filter of the SPM full run, as `TestTargetSelection` left it — `nil` when `--target` named a bundle. The Xcode path reads `--target` from `configuration` instead, as `-only-testing` |
 | `targetedSuites` | The test suites that exist and are named after a source file, by name, each with the test target that declares it, so a mutant in `Foo.swift` can run `FooTests` first |
+| `coverage` | The coverage map of the run, from `CacheStore.coverage` — adopted from `metadata.json` or collected by this run's baseline — or `nil`, under `--no-cache`, for a batch of a run whose whole-schema baseline failed, or on Xcode |
 
 `bundles(declaring:)` picks the bundle named after the suite's test target, and every bundle when the target is unknown or no bundle matches.
 
@@ -580,12 +583,20 @@ struct TestBundleInvocation: Sendable {
         timeout: Double,
         libraries: Set<TestingFramework> = [.xctest, .swiftTesting],
         stoppingAtFirstFailure: Bool = true,
-        activationFile: String? = nil
+        activationFile: String? = nil,
+        reaching: [TestReference]? = nil,
+        coverageDirectory: URL? = nil
     ) -> [ProcessRequest]
 
     static func environment(mutantID: String, activationFile: String?) -> [String: String]
+    static let coverageEventStreamArguments: [String]
+    static func tests(of library: TestingFramework, in reaching: [TestReference]) -> [String]
+    static func swiftTestingFilter(for id: String) -> String
+    static func collecting(_ request: ProcessRequest, in directory: URL) -> ProcessRequest
 }
 ```
+
+With `reaching`, the given tests replace `filter`: the XCTest ones go to `xctest` as one comma-separated `-XCTest` list, the Swift Testing ones to the helper as one `--filter` each, `^` + the id escaped (`NSRegularExpression.escapedPattern`) + `/`, so `Suite/test()` does not also match `Suite/test2()` or a test case's location suffix; a library with no reaching test gets no request, and no reaching test at all means no request. With a `coverageDirectory`, every request is made `collecting`: its output is captured at a fresh `coverage-<UUID>.log` there (`ProcessRequest.outputURL`), `__SWIFT_MUTATION_TESTING_COVERAGE_FILE` names that same file, and the Swift Testing one gets `coverageEventStreamArguments` — `--no-parallel --event-stream-output-path /dev/fd/2 --event-stream-version 0` — so its `testStarted`/`testEnded` events, the schema's records and `xctest`'s own serial `Test Case` lines all land in the one file, in order.
 
 Builds the process requests that run a package's test bundle directly, skipping `swift test`'s own build check. Two requests per mutant at most, ordered so the configured `--testing-framework` goes first:
 
@@ -618,6 +629,34 @@ enum DeveloperToolchain {
 ```
 
 `resolveDeveloperPath` takes the executable to run so a test can point it at something that fails or prints bytes that are not text; both return `""`, and the paths built from it simply do not resolve.
+
+---
+
+## Execution/TestCoverage.swift
+
+```swift
+struct TestReference: Hashable, Sendable, Codable { let library: TestingFramework; let id: String; var module: String? }
+
+struct TestCoverage: Sendable, Codable, Equatable {
+    var sites: [String: [TestReference]]
+    var outside: Set<String>
+    var isEmpty: Bool
+    static func key(for mutant: MutantDescriptor) -> String?
+    static func key(suffix: String, site: Int) -> String
+    enum Reach { case unreached, unknown, tests([TestReference]) }
+    func reach(of mutant: MutantDescriptor) -> Reach
+    mutating func merge(_ other: TestCoverage)
+}
+
+struct CoverageOutputParser: Sendable {
+    func parse(_ output: String) -> TestCoverage
+    static func testID(withoutLocation id: String) -> String?
+}
+```
+
+The map a baseline run made: for each site — a function body, keyed `<file suffix>:<body start>` as the schema's `reached` call writes it — the tests that reached it, in the order they ran, as `TestReference`s whose `id` is what the library's filter takes (`Module.Suite/test` for XCTest, `Module.Suite/test()` for Swift Testing, its `module` the part before the first dot, which names the bundle). `outside` holds the sites reached before the first test started or after the last ended — a global initializer run at load, a tear-down — and `reach(of:)` answers `.unknown` for them, as for a mutant with no `functionBodyStart`, so the mutant runs as it would without a map; `.unreached` for a site the map has no entry for; `.tests` otherwise. `isEmpty` marks a collection that recorded nothing — a mock, a schema that never ran — and `MutantExecutor` neither stores nor uses such a map. `merge` joins the maps of several bundles and libraries.
+
+`CoverageOutputParser` walks the captured output line by line: a `Test Case '-[Module.Suite test]' started.` line opens an XCTest window and its `passed`/`failed` line closes it; a `{"kind":"event",…}` line of the Swift Testing event stream with `"kind":"testStarted"` and a `testID` holding a `/` opens a window for that test — the id without its trailing `/File.swift:line:column` — and `testEnded` closes it; a suite's events, with no `/`, are passed over. A `__swiftMutationTestingReached <key>` line inside a window adds the window's test to the key once; outside every window it adds the key to `outside`. Order is all it needs: both libraries write to stderr unbuffered, stderr is the capture file, and the schema appends to that file by name, from the test process and from any child that inherited the variable.
 
 ---
 
@@ -1063,6 +1102,7 @@ struct RunnerInput: Sendable {
     let schematizedFiles: [SchematizedFile]
     let mutants: [MutantDescriptor]
     var importStyle: ImportStyle = .implicit
+    var sourceHashes: [String: String] = [:]
 }
 ```
 
@@ -1072,6 +1112,7 @@ The value produced by `DiscoveryPipeline` and consumed by `MutantExecutor`.
 |---|---|
 | `schematizedFiles` | One entry per source file containing schematizable mutations, each ending with its own support declarations |
 | `mutants` | All mutants, sorted by global index; `isSchematizable` distinguishes the two populations |
+| `sourceHashes` | Project-relative path → SHA-256 of every source file of the plan (`PlanMaterializer` fills it from `plan.files`); `CacheStore.adoptCoverage` compares them with the ones the stored coverage map was made against, and `excluding`, `keeping` and `SchemaBatches.split` carry them along |
 
 ### Execution/RunnerInput+Excluding.swift
 

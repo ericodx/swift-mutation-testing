@@ -36,6 +36,16 @@ struct MutantIndexingStageTests {
         #expect(result.map(\.isInLoopCondition) == descriptors.map(\.isInLoopCondition))
     }
 
+    @Test("Given mutations in a function body, when run, then each carries the body's start and the descriptor too")
+    func aMutationInAFunctionBodyCarriesTheBodyStart() {
+        let source = makeParsedSource("let a = true\nfunc f() -> Bool { true }", path: "a.swift")
+        let points = BooleanLiteralReplacement().mutations(in: source)
+        let result = stage.run(mutationPoints: points, sources: [source], projectPath: "/tmp")
+        #expect(result.map(\.functionBodyStart) == [nil, 30])
+        let descriptors = result.map { $0.toDescriptor(mutatedContent: nil, sourceContentHash: "h") }
+        #expect(descriptors.map(\.functionBodyStart) == [nil, 30])
+    }
+
     @Test("Given mutation at file scope, when run, then isSchematizable is false")
     func mutationAtFileScopeIsNotSchematizable() {
         let source = makeParsedSource("let x = true", path: "a.swift")

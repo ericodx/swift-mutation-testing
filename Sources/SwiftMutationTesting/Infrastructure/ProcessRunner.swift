@@ -81,10 +81,11 @@ struct ProcessRunner: Sendable {
             process.environment = env
         }
 
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        FileManager.default.createFile(atPath: tempURL.path, contents: nil)
-        let fileHandle = try FileHandle(forWritingTo: tempURL)
+        let tempURL =
+            request.outputURL ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let descriptor = open(tempURL.path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
+        guard descriptor >= 0 else { throw CocoaError(.fileWriteUnknown) }
+        let fileHandle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         process.standardOutput = fileHandle
         process.standardError = request.discardsStandardError ? FileHandle.nullDevice : fileHandle
 

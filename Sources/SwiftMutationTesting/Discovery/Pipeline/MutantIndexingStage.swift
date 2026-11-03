@@ -34,7 +34,9 @@ struct MutantIndexingStage: Sendable {
                     mutation: mutation,
                     ordinal: ordinal
                 ),
-                isInLoopCondition: source?.loopConditions.contains(utf8Offset: mutation.utf8Offset) ?? false
+                isInLoopCondition: source?.loopConditions.contains(utf8Offset: mutation.utf8Offset) ?? false,
+                functionBodyStart: source?.functionScopes.innermostScope(containing: mutation.utf8Offset)?
+                    .bodyStartOffset
             )
         }
     }

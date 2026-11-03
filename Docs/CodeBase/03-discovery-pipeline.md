@@ -287,6 +287,7 @@ struct IndexedMutationPoint: Sendable {
     let isSchematizable: Bool
     let fingerprint: String
     var isInLoopCondition = false
+    var functionBodyStart: Int?
 
     var mutantID: String { get }
     func toDescriptor(mutatedContent: String?, sourceContentHash: String) -> MutantDescriptor
@@ -300,6 +301,7 @@ struct IndexedMutationPoint: Sendable {
 | `mutantID` | `MutantID.make(index:)`, `"swift-mutation-testing_<index>"` — unique per run, and the value `__swiftMutationTestingID_<hash>` is compared against in the schema |
 | `isSchematizable` | `true` if the mutation falls inside a function body (`ParsedSource.functionScopes`, collected by `TypeScopeVisitor`) |
 | `fingerprint` | The mutant's `MutantFingerprint`, stable across runs |
+| `functionBodyStart` | The `bodyStartOffset` of the innermost function body holding the mutation (`ParsedSource.functionScopes.innermostScope(containing:)`), the site the schema's `reached` call records and the coverage map is keyed by; `nil` for a point outside every body or made without a source |
 | `isInLoopCondition` | `true` if the mutation falls inside the condition of a `while` or `repeat` loop (`ParsedSource.loopConditions`); `false` by default, so a point made without a source is not one |
 
 ---
@@ -448,6 +450,7 @@ struct MutantDescriptor: Sendable, Codable {
     let sourceContentHash: String
     let fingerprint: String
     var isInLoopCondition = false
+    var functionBodyStart: Int?
 }
 ```
 
@@ -459,6 +462,7 @@ The canonical representation of a mutant carried through the execution pipeline 
 | `isSchematizable` | `true` if the mutation falls inside a function body |
 | `mutatedSourceContent` | Complete source file with the mutation applied; `nil` for schematizable mutants. A `var`, so the executor's fallback can hand a schematizable mutant its rewritten file on a copy |
 | `fingerprint` | Stable identity across runs — see `MutantFingerprint` |
+| `functionBodyStart` | The innermost function body's start offset, from `IndexedMutationPoint`; `TestCoverage.key(for:)` makes the map key from it and the file path, and a descriptor without one is run as if no map existed |
 | `isInLoopCondition` | `true` when the mutation sits in a `while` or `repeat` condition, from `IndexedMutationPoint`; a descriptor rebuilt from a plan without its sources (`PlanMaterializer.descriptor`) leaves it `false`, and such a descriptor never runs |
 
 All position fields (`line`, `column`, `utf8Offset`) match those in the originating `MutationPoint`.

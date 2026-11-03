@@ -203,9 +203,15 @@ actor CacheStore {
         let formatVersion: Int
         let testFileHashes: [String: String]
         let testSelection: CacheTestSelection?
+        let sourceHashes: [String: String]?
+        var coverage: TestCoverage?
         init(testFileHashes: [String: String], testSelection: CacheTestSelection? = nil,
+             sourceHashes: [String: String]? = nil, coverage: TestCoverage? = nil,
              formatVersion: Int = CacheStore.formatVersion)
     }
+    private(set) var coverage: TestCoverage?
+    func adoptCoverage(unless diff: TestFileDiff, sourceHashes: [String: String]) throws
+    func storeCoverage(_ coverage: TestCoverage)
 
     init(
         storePath: String,
@@ -241,7 +247,7 @@ Persists execution results across runs with granular per-file invalidation. All 
 | `journalName` | `"journal.jsonl"` |
 | `formatVersion` | `5` — bump whenever the shape of `results.json` or `metadata.json` changes, or the meaning of what it holds. `2` added `activated`, so caches written before the activation marker existed are discarded once; `3` discards caches whose incompatible mutants were stored before their activation was measured, which would otherwise keep reporting them as not measured; `4` discards caches holding `unviable` verdicts recorded while a SwiftLint build tool plugin failed the build on generated code — an `unviable` verdict is only retested when its file changes, so it would never have been corrected; `5` lets an entry carry a `duration` and no `status` at all, and lets a `timeout` entry stand in the file for its duration alone — a version that did not know that would replay the timeout as a verdict |
 
-Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of the private `CacheEntry` values (key + status + killerTestFile + activated + duration), with `metadata.json` and the journal in the same directory. A `.timeout` is never cached as a verdict: `store` records it in the `PlanJournal`, if any, keeps only its duration, and the mutant is tested again on the next run.
+Cache is stored at `<project>/.swift-mutation-testing-cache/results.json` as a JSON array of the private `CacheEntry` values (key + status + killerTestFile + activated + duration), with `metadata.json` and the journal in the same directory. `metadata.json` also carries the run's coverage map (`coverage`, a `TestCoverage`) and the project-relative path → SHA-256 of every source file of the plan it was made against (`sourceHashes`, from `RunnerInput.sourceHashes`): `persistMetadata` writes the store's `coverage` into whatever metadata it is given, `storeCoverage` sets it unless `noCache`, and `adoptCoverage(unless:sourceHashes:)` takes the stored map only when the test file diff is empty and the stored source hashes equal the current ones — any other change means a test may reach code it did not, so the map is made again by the next baseline. Both fields are optional, so a metadata file from before them still decodes and simply has no map. A `.timeout` is never cached as a verdict: `store` records it in the `PlanJournal`, if any, keeps only its duration, and the mutant is tested again on the next run.
 
 **Durations.** Every verdict's test duration is kept beside it, keyed like the verdict, and `durations(for:)` answers the last known one per mutant — `nil` for a mutant never tested, and for everything under `noCache`. `TestExecutionStage` orders its first pass by them, longest first (`SlowestFirst`), which is why a timeout's duration is worth keeping when its verdict is not: the mutants that loop are exactly the ones to start early. `apply` takes the duration of every entry and the verdict only of those with a status other than `.timeout`; `invalidate(diff:)` forgets verdicts and keeps durations, since a changed test does not make the last duration a worse guess than none; `discard(unlessMadeWith:)` and an unreadable cache drop both. `persist()` writes a verdict's entry with its duration and, for a key that has a duration and no verdict — a timeout, or a kill forgotten for its test — an entry with the duration and no status.
 

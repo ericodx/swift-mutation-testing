@@ -29,24 +29,40 @@ struct TestBundleInvocation: Sendable {
         timeout: Double,
         libraries: Set<TestingFramework> = [.xctest, .swiftTesting],
         stoppingAtFirstFailure: Bool = true,
-        activationFile: String? = nil
+        activationFile: String? = nil,
+        reaching: [TestReference]? = nil,
+        coverageDirectory: URL? = nil
     ) -> [ProcessRequest] {
         let environment = Self.environment(mutantID: mutantID, activationFile: activationFile)
         let xctest = xctestRequest(
-            filter: filter, environment: environment, workingDirectory: workingDirectory, timeout: timeout
+            filter: filter, tests: reaching.map { Self.tests(of: .xctest, in: $0) },
+            environment: environment, workingDirectory: workingDirectory, timeout: timeout
         )
         let swiftTesting = swiftTestingRequest(
-            filter: filter, environment: environment, workingDirectory: workingDirectory, timeout: timeout
+            filter: filter, tests: reaching.map { Self.tests(of: .swiftTesting, in: $0) },
+            environment: environment, workingDirectory: workingDirectory, timeout: timeout,
+            collectingCoverage: coverageDirectory != nil
         )
 
-        let ordered: [(TestingFramework, ProcessRequest)] =
+        let ordered: [(TestingFramework, ProcessRequest?)] =
             framework == .xctest
             ? [(.xctest, xctest), (.swiftTesting, swiftTesting)]
             : [(.swiftTesting, swiftTesting), (.xctest, xctest)]
 
-        return ordered.filter { libraries.contains($0.0) }.map { entry in
-            stoppingAtFirstFailure ? entry.1.stopping(at: .firstTestFailure) : entry.1
+        return ordered.filter { libraries.contains($0.0) }.compactMap { entry in
+            guard var request = entry.1 else { return nil }
+            if let coverageDirectory {
+                request = Self.collecting(request, in: coverageDirectory)
+            }
+            return stoppingAtFirstFailure ? request.stopping(at: .firstTestFailure) : request
         }
+    }
+
+    static func collecting(_ request: ProcessRequest, in directory: URL) -> ProcessRequest {
+        let url = directory.appendingPathComponent("coverage-\(UUID().uuidString).log")
+        var collecting = request.capturingOutput(at: url)
+        collecting.additionalEnvironment[SupportDeclarations.coverageEnvironmentVariable] = url.path
+        return collecting
     }
 
     static func environment(mutantID: String, activationFile: String?) -> [String: String] {
@@ -55,6 +71,18 @@ struct TestBundleInvocation: Sendable {
             environment[ActivationMarker.environmentVariable] = activationFile
         }
         return environment
+    }
+
+    static let coverageEventStreamArguments = [
+        "--no-parallel", "--event-stream-output-path", "/dev/fd/2", "--event-stream-version", "0",
+    ]
+
+    static func tests(of library: TestingFramework, in reaching: [TestReference]) -> [String] {
+        reaching.filter { $0.library == library }.map(\.id)
+    }
+
+    static func swiftTestingFilter(for id: String) -> String {
+        "^" + NSRegularExpression.escapedPattern(for: id) + "/"
     }
 
     // MARK: - Private
@@ -67,12 +95,18 @@ struct TestBundleInvocation: Sendable {
 
     private func xctestRequest(
         filter: String?,
+        tests: [String]?,
         environment: [String: String],
         workingDirectory: URL,
         timeout: Double
-    ) -> ProcessRequest {
+    ) -> ProcessRequest? {
         var arguments: [String] = []
-        if let filter { arguments += ["-XCTest", filter] }
+        if let tests {
+            guard !tests.isEmpty else { return nil }
+            arguments += ["-XCTest", tests.joined(separator: ",")]
+        } else if let filter {
+            arguments += ["-XCTest", filter]
+        }
         arguments.append(bundleURL.path)
 
         return ProcessRequest(
@@ -87,16 +121,24 @@ struct TestBundleInvocation: Sendable {
 
     private func swiftTestingRequest(
         filter: String?,
+        tests: [String]?,
         environment: [String: String],
         workingDirectory: URL,
-        timeout: Double
-    ) -> ProcessRequest {
+        timeout: Double,
+        collectingCoverage: Bool = false
+    ) -> ProcessRequest? {
         var arguments = [
             "--test-bundle-path", executableURL.path,
             executableURL.path,
             "--testing-library", "swift-testing",
         ]
-        if let filter { arguments += ["--filter", filter] }
+        if let tests {
+            guard !tests.isEmpty else { return nil }
+            arguments += tests.flatMap { ["--filter", Self.swiftTestingFilter(for: $0)] }
+        } else if let filter {
+            arguments += ["--filter", filter]
+        }
+        if collectingCoverage { arguments += Self.coverageEventStreamArguments }
 
         return ProcessRequest(
             executableURL: URL(fileURLWithPath: DeveloperToolchain.testingHelperPath),

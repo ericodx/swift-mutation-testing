@@ -7,4 +7,5 @@ struct RunnerInput: Sendable {
     let schematizedFiles: [SchematizedFile]
     let mutants: [MutantDescriptor]
     var importStyle: ImportStyle = .implicit
+    var sourceHashes: [String: String] = [:]
 }

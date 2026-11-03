@@ -32,6 +32,48 @@ struct SchemaNarrowerExclusionTests {
         #expect(try String(contentsOf: sandboxCopy, encoding: .utf8) == "let x = true")
     }
 
+    @Test("Given the original path resolved through a symlink, when the schema is narrowed, then its suffix is kept")
+    func aNarrowedSchemaKeepsTheFilesSuffix() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let original = dir.appendingPathComponent("Foo.swift")
+        let sandboxCopy = dir.appendingPathComponent("sandbox/Foo.swift")
+        try FileManager.default.createDirectory(
+            at: sandboxCopy.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try "func f() {\nlet a = true\nlet b = true\n}".write(to: original, atomically: true, encoding: .utf8)
+        let mutants = [
+            makeMutantDescriptor(
+                id: "swift-mutation-testing_0", filePath: original.path, utf8Offset: 19, originalText: "true",
+                mutatedText: "false", replacementKind: .booleanLiteral, isSchematizable: true
+            ),
+            makeMutantDescriptor(
+                id: "swift-mutation-testing_1", filePath: original.path, utf8Offset: 32, originalText: "true",
+                mutatedText: "false", replacementKind: .booleanLiteral, isSchematizable: true
+            ),
+        ]
+        let schema = try #require(SchemaNarrower.regeneratedSchema(originalPath: original.path, keeping: mutants))
+        try schema.write(to: sandboxCopy, atomically: true, encoding: .utf8)
+        let lines = schema.components(separatedBy: "\n")
+        let errorLine = try #require(lines.firstIndex(of: "case \"swift-mutation-testing_0\":")) + 3
+        let resolved = original.resolvingSymlinksInPath().path
+
+        let excluded = try SchemaNarrower.excludeProblematicMutants(
+            sandboxPath: sandboxCopy.path,
+            originalPath: resolved,
+            errorOutput: "\(sandboxCopy.path):\(errorLine):5: error: cannot convert",
+            mutantsInFile: mutants,
+            importStyle: .implicit
+        )
+
+        #expect(excluded.map(\.id) == ["swift-mutation-testing_0"])
+        let narrowed = try String(contentsOf: sandboxCopy, encoding: .utf8)
+        #expect(narrowed.contains("__SwiftMutationTesting_\(SupportDeclarations.suffix(for: original.path))"))
+        if resolved != original.path {
+            #expect(!narrowed.contains("__SwiftMutationTesting_\(SupportDeclarations.suffix(for: resolved))"))
+        }
+    }
+
     @Test("Given a sandbox directory that cannot be written, when the original cannot be restored, then it throws")
     func aLinkThatCannotBeRestoredStopsTheNarrowing() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

@@ -57,16 +57,37 @@ actor CacheStore {
         init(
             testFileHashes: [String: String],
             testSelection: CacheTestSelection? = nil,
+            sourceHashes: [String: String]? = nil,
+            coverage: TestCoverage? = nil,
             formatVersion: Int = CacheStore.formatVersion
         ) {
             self.formatVersion = formatVersion
             self.testFileHashes = testFileHashes
             self.testSelection = testSelection
+            self.sourceHashes = sourceHashes
+            self.coverage = coverage
         }
 
         let formatVersion: Int
         let testFileHashes: [String: String]
         let testSelection: CacheTestSelection?
+        let sourceHashes: [String: String]?
+        var coverage: TestCoverage?
+    }
+
+    private(set) var coverage: TestCoverage?
+
+    func adoptCoverage(unless diff: TestFileDiff, sourceHashes: [String: String]) throws {
+        guard
+            !diff.hasChanges, let stored = try loadMetadata(), stored.sourceHashes == sourceHashes,
+            let coverage = stored.coverage
+        else { return }
+        self.coverage = coverage
+    }
+
+    func storeCoverage(_ coverage: TestCoverage) {
+        guard !noCache else { return }
+        self.coverage = coverage
     }
 
     func result(for key: MutantCacheKey) -> ExecutionStatus? {
@@ -198,6 +219,8 @@ actor CacheStore {
     func persistMetadata(_ metadata: CacheMetadata) throws {
         guard !noCache else { return }
 
+        var metadata = metadata
+        metadata.coverage = coverage
         let data = try JSONEncoder().encode(metadata)
         let url = URL(fileURLWithPath: metadataPath)
         try fileSystem.createDirectory(url.deletingLastPathComponent())

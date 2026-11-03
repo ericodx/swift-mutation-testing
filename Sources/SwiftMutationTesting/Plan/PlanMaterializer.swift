@@ -48,7 +48,8 @@ struct PlanMaterializer: Sendable {
                 ),
                 isSchematizable: mutant.schematizable,
                 fingerprint: mutant.fingerprint,
-                isInLoopCondition: source.loopConditions.contains(utf8Offset: mutant.utf8Start)
+                isInLoopCondition: source.loopConditions.contains(utf8Offset: mutant.utf8Start),
+                functionBodyStart: source.functionScopes.innermostScope(containing: mutant.utf8Start)?.bodyStartOffset
             )
         }
 
@@ -68,7 +69,8 @@ struct PlanMaterializer: Sendable {
             noCache: execution.noCache,
             schematizedFiles: schematizedFiles,
             mutants: descriptors,
-            importStyle: ImportStyle.of(sources)
+            importStyle: ImportStyle.of(sources),
+            sourceHashes: Dictionary(plan.files.map { ($0.path, $0.sha256) }, uniquingKeysWith: { first, _ in first })
         )
     }
 
