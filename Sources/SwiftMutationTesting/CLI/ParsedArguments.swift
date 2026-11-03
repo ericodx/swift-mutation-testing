@@ -25,6 +25,7 @@ struct ParsedArguments: Sendable {
         var buildTimeout: Double?
         var concurrency: Int?
         var noCache: Bool = false
+        var noWarmSandbox: Bool = false
         var testingFramework: String?
         var workspace: String?
         var xcodeProject: String?

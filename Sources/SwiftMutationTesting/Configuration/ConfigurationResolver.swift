@@ -6,7 +6,8 @@ struct ConfigurationResolver: Sendable {
     static let fileKeys: Set<String> = Set(
         [
             "scheme", "destination", "workspace", "project", "test-target", "timeout", "build-timeout",
-            "concurrency", "no-cache", "testing-framework", "keep-logs", "quiet", "timing", "sources-path", "exclude",
+            "concurrency", "no-cache", "no-warm-sandbox", "testing-framework", "keep-logs", "quiet", "timing",
+            "sources-path", "exclude",
             "exclude-patterns", "operators", "disabled-mutators", "operator-tier", "min-score", "max-score-drop",
             "max-new-survivors", "max-integrity-warnings", "baseline", "xcodebuild-args",
         ] + ReportFormat.allCases.map(\.fileKey)
@@ -60,6 +61,8 @@ struct ConfigurationResolver: Sendable {
                 buildTimeout: buildTimeout,
                 concurrency: effectiveConcurrency,
                 noCache: try cliArguments.build.noCache || flag(fileValues["no-cache"], key: "no-cache"),
+                warmSandboxes: try !cliArguments.build.noWarmSandbox
+                    && !flag(fileValues["no-warm-sandbox"], key: "no-warm-sandbox"),
                 testingFramework: testingFramework
             ),
             reporting: try resolvedReporting(cli: cliArguments, fileValues: fileValues),

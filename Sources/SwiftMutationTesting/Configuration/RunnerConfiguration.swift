@@ -25,6 +25,7 @@ struct RunnerConfiguration: Sendable {
         var buildTimeout: Double
         var concurrency: Int
         var noCache: Bool
+        var warmSandboxes: Bool = true
         var testingFramework: TestingFramework = .swiftTesting
         var reproduction: Reproduction?
 

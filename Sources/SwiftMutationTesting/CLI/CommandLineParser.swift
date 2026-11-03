@@ -189,6 +189,9 @@ struct CommandLineParser: Sendable {
         case "--no-cache":
             values.build.noCache = true
 
+        case "--no-warm-sandbox":
+            values.build.noWarmSandbox = true
+
         case "--testing-framework":
             values.build.testingFramework = try nextValue(for: flag, at: &index, in: arguments)
 

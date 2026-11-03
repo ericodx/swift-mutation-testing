@@ -12,10 +12,11 @@ struct BuildStage: Sendable {
     ) async throws -> BuildArtifact {
         let derivedDataURL = URL(fileURLWithPath: ToolRequests.derivedDataPath(in: sandbox))
 
-        let (exitCode, buildOutput) = try await launcher.launchCapturing(
+        let (exitCode, buildOutput) = try await run(
             ToolRequests.buildForTesting(
                 in: sandbox, scheme: scheme, destination: destination, arguments: arguments, timeout: timeout
-            )
+            ),
+            in: sandbox
         )
 
         guard exitCode != SPMResultParser.timedOutExitCode else {
@@ -49,8 +50,8 @@ struct BuildStage: Sendable {
         sandbox: Sandbox,
         timeout: Double
     ) async throws -> BuildArtifact {
-        let (exitCode, buildOutput) = try await launcher.launchCapturing(
-            ToolRequests.swiftBuildTests(in: sandbox, timeout: timeout)
+        let (exitCode, buildOutput) = try await run(
+            ToolRequests.swiftBuildTests(in: sandbox, timeout: timeout), in: sandbox
         )
 
         guard exitCode != SPMResultParser.timedOutExitCode else {
@@ -64,6 +65,24 @@ struct BuildStage: Sendable {
             xctestrunURL: nil,
             plist: nil
         )
+    }
+
+    func run(_ request: ProcessRequest, in sandbox: Sandbox) async throws -> (exitCode: Int32, output: String) {
+        let first = try await launcher.launchCapturing(request)
+
+        guard sandbox.isPersistent, Self.isStale(exitCode: first.exitCode, output: first.output, in: sandbox)
+        else { return first }
+
+        for name in WarmSandboxes.keptDirectories {
+            try? FileManager.default.removeItem(at: sandbox.rootURL.appendingPathComponent(name))
+        }
+        return try await launcher.launchCapturing(request)
+    }
+
+    static func isStale(exitCode: Int32, output: String, in sandbox: Sandbox) -> Bool {
+        guard exitCode != 0, exitCode != SPMResultParser.timedOutExitCode else { return false }
+        let root = CanonicalPath.make(for: sandbox.rootURL.path)
+        return SchemaNarrower.errorLocations(in: output, under: root).isEmpty
     }
 
     private func findXctestrun(in directory: URL) -> URL? {

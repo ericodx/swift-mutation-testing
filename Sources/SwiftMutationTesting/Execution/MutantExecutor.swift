@@ -72,7 +72,9 @@ struct MutantExecutor: Sendable {
                 schematizedFiles: input.schematizedFiles
             )
         }
-        SandboxCleaner.register(sandbox)
+        if !sandbox.isPersistent {
+            SandboxCleaner.register(sandbox)
+        }
         defer { SandboxCleaner.deregister() }
 
         let schema = SchemaSandbox(sandbox: sandbox, projectPath: input.projectPath, installed: input.schematizedFiles)

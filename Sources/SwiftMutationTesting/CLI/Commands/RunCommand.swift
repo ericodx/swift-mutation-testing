@@ -46,6 +46,9 @@ struct RunCommand: Command {
         let executionLauncher = launcher ?? configuration.build.projectType.defaultLauncher
 
         SandboxCleaner.clearLeftovers()
+        if !configuration.build.warmSandboxes {
+            WarmSandboxes().removeAll(projectPath: configuration.projectPath)
+        }
 
         if !discovered.resumed.isEmpty, !configuration.reporting.quiet {
             StandardOutput.write(
@@ -61,7 +64,10 @@ struct RunCommand: Command {
         if !input.mutants.isEmpty || discovered.resumed.isEmpty {
             results += try await MutantExecutor(
                 configuration: configuration, launcher: executionLauncher, planJournal: discovered.journal,
-                environment: MutantExecutor.Environment(timings: timings)
+                environment: MutantExecutor.Environment(
+                    sandboxFactory: SandboxFactory(warm: configuration.build.warmSandboxes ? WarmSandboxes() : nil),
+                    timings: timings
+                )
             ).execute(input)
         }
         results = MutantID.ordered(results, by: \.descriptor.id)

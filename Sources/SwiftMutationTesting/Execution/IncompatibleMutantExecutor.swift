@@ -5,7 +5,7 @@ struct IncompatibleMutantExecutor: Sendable {
     let sandboxFactory: SandboxFactory
     var importStyle: ImportStyle = .implicit
 
-    static let warmSandboxShare = 4
+    static let warmSandboxShare = 2
 
     func execute(
         _ mutants: [MutantDescriptor],
@@ -86,8 +86,8 @@ struct IncompatibleMutantExecutor: Sendable {
             if !reusing { sandbox.release(keepingFor: configuration.build.reproduction) }
         }
 
-        let build = try await deps.launcher.launchCapturing(
-            ToolRequests.swiftBuildTests(in: sandbox, timeout: configuration.build.buildTimeout)
+        let build = try await BuildStage(launcher: deps.launcher).run(
+            ToolRequests.swiftBuildTests(in: sandbox, timeout: configuration.build.buildTimeout), in: sandbox
         )
         guard build.exitCode == 0 else { return WarmOutcome(slot: slot, build: build, readyAt: nil, results: []) }
 
@@ -259,8 +259,8 @@ struct IncompatibleMutantExecutor: Sendable {
         try LintSuppression.wrapping(content).write(toFile: path, atomically: true, encoding: .utf8)
         try? FileManager.default.removeItem(at: sandbox.rootURL.appendingPathComponent(".build/manifests"))
 
-        return try await deps.launcher.launchCapturing(
-            ToolRequests.swiftBuildTests(in: sandbox, timeout: configuration.build.buildTimeout)
+        return try await BuildStage(launcher: deps.launcher).run(
+            ToolRequests.swiftBuildTests(in: sandbox, timeout: configuration.build.buildTimeout), in: sandbox
         )
     }
 

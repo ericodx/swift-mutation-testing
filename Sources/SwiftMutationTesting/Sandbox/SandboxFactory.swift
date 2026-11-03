@@ -1,6 +1,8 @@
 import Foundation
 
 struct SandboxFactory: Sendable {
+    var warm: WarmSandboxes?
+
     func create(
         projectPath: String,
         schematizedFiles: [SchematizedFile]
@@ -51,24 +53,46 @@ struct SandboxFactory: Sendable {
     }
 
     private func populate(projectPath: String, replacing replacements: [String: String]) throws -> Sandbox {
-        let sandboxURL = SandboxName.directory.appendingPathComponent(SandboxName.make())
-        try FileManager.default.createDirectory(at: sandboxURL, withIntermediateDirectories: true)
         let projectURL = URL(fileURLWithPath: projectPath).resolvingSymlinksInPath()
+        var replacements = Replacements(replacements, under: projectURL.path)
+        let sandbox: Sandbox
 
-        try populateDirectory(
-            source: projectURL,
-            destination: sandboxURL,
-            replacements: Replacements(replacements, under: projectURL.path),
-            relativePath: "",
-            copiesFiles: false
-        )
+        if let warm {
+            let (sandboxURL, slot) = try warm.claim(projectPath: projectPath)
+            sandbox = Sandbox(rootURL: sandboxURL, slot: slot)
+            do {
+                replacements.kept = replacements.unchanged(in: sandboxURL)
+                try warm.prune(sandboxURL, keeping: replacements.kept)
+            } catch {
+                slot.unlock()
+                throw error
+            }
+        } else {
+            let sandboxURL = SandboxName.directory.appendingPathComponent(SandboxName.make())
+            try FileManager.default.createDirectory(at: sandboxURL, withIntermediateDirectories: true)
+            sandbox = Sandbox(rootURL: sandboxURL)
+        }
 
-        return Sandbox(rootURL: sandboxURL)
+        do {
+            try populateDirectory(
+                source: projectURL,
+                destination: sandbox.rootURL,
+                replacements: replacements,
+                relativePath: "",
+                copiesFiles: false
+            )
+        } catch {
+            sandbox.slot?.unlock()
+            throw error
+        }
+
+        return sandbox
     }
 
     struct Replacements {
         let byCanonicalPath: [String: String]
         let byRelativePath: [String: String]
+        var kept: Set<String> = []
 
         init(_ byCanonicalPath: [String: String], under root: String) {
             self.byCanonicalPath = byCanonicalPath
@@ -86,6 +110,20 @@ struct SandboxFactory: Sendable {
             if let content = byRelativePath[relativePath] { return content }
             guard isSymlink else { return nil }
             return byCanonicalPath[source.resolvingSymlinksInPath().path]
+        }
+
+        func unchanged(in sandboxURL: URL) -> Set<String> {
+            Set(
+                byRelativePath.compactMap { relativePath, content in
+                    let url = sandboxURL.appendingPathComponent(relativePath)
+                    guard
+                        (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == false,
+                        let existing = try? String(contentsOf: url, encoding: .utf8),
+                        existing == LintSuppression.wrapping(content)
+                    else { return nil }
+                    return relativePath
+                }
+            )
         }
     }
 
@@ -132,6 +170,7 @@ struct SandboxFactory: Sendable {
             } else if !replacements.isEmpty,
                 let content = replacements.content(for: item, relativePath: itemRelativePath, isSymlink: isSymlink)
             {
+                guard !replacements.kept.contains(itemRelativePath) else { continue }
                 try LintSuppression.wrapping(content).write(to: dest, atomically: true, encoding: .utf8)
             } else {
                 try writeFile(source: item, destination: dest, copiesFiles: copiesFiles)
