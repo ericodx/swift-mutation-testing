@@ -122,7 +122,7 @@ The container's relative path is passed as `-workspace` or `-project`, from the 
 | Destination | Behaviour |
 |---|---|
 | `platform=macOS` and SPM | One plain slot per worker, no simulator; `setUp` creates the slots and `tearDown` is a no-op |
-| iOS / tvOS / watchOS / visionOS simulator | Removes orphaned clones, shuts the base simulator down, clones it N times (one per worker), boots each clone on `setUp`; shuts down and deletes the clones on `tearDown`, and on a failed `setUp` |
+| iOS / tvOS / watchOS / visionOS simulator | Removes orphaned clones, shuts the base simulator down, clones it N times (one per worker) one after another — parallel clones share the copy of the base's data, so a timeout per clone that grows with that data (a minute plus half a minute per GB) replaces a flat minute that a 5 GB base ran past — and boots each clone on `setUp`; shuts down and deletes the clones on `tearDown`, and on a failed `setUp` |
 
 **The pool size is the worker count.** `ConfigurationResolver.effectiveConcurrency` resolves `--concurrency` before the pool is made: an SPM run keeps the requested count, and an Xcode run keeps it only for a destination that needs a simulator pool and a testing framework other than XCTest — one worker otherwise — rather than reporting a number the run will not honour. `usesSimulators` lets the reporter say "worker" instead of claiming simulators that do not exist.
 
@@ -130,7 +130,7 @@ The container's relative path is passed as `-workspace` or `-project`, from the 
 
 `acquire()` returns an available `SimulatorSlot` or suspends the caller until one is released. A `withTaskCancellationHandler` wraps the suspension — if the owning task is cancelled, the slot is released immediately to avoid a permanent deadlock.
 
-`SimulatorError` conforms to `LocalizedError` and covers three failure modes: `deviceNotFound(destination:)`, `bootTimeout(udid:)`, and `cloneFailed(udid:)`. Each provides a structured `errorDescription` for diagnostics.
+`SimulatorError` conforms to `LocalizedError` and covers three failure modes: `deviceNotFound(destination:)`, `bootTimeout(udid:)`, and `cloneFailed(udid:dataSize:)`, whose message names the base's data size when it is known and suggests `xcrun simctl erase` or a dedicated device. Each provides a structured `errorDescription` for diagnostics.
 
 ## Baseline Validation
 

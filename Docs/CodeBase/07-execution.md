@@ -965,6 +965,7 @@ actor SimulatorPool {
     func cancelPending(id: UUID)
     func tearDown() async
     static func orphanedClones(in listOutput: String, isAlive: (pid_t) -> Bool) -> [String]
+    static func cloneTimeout(dataSize: Int64?) -> Double
 }
 ```
 
@@ -973,9 +974,11 @@ Manages a fixed-size pool of simulator slots for parallel test execution.
 | Destination | `setUp` behaviour | `tearDown` behaviour |
 |---|---|---|
 | `platform=macOS`, SPM, or another destination that needs no simulator | Creates `size` plain slots (empty UDID, the configured destination) | No-op |
-| iOS / tvOS / watchOS Simulator | Sweeps orphaned clones, shuts the base simulator down, clones it `size` times in parallel (`CloneName.make`) and boots each clone; each slot's destination is the original `platform=` with `id=<clone>` | Shuts down and deletes each clone |
+| iOS / tvOS / watchOS Simulator | Sweeps orphaned clones, shuts the base simulator down, sizes its data (`SimulatorManager.dataSize`), clones it `size` times one after another (`CloneName.make`) and boots each clone; each slot's destination is the original `platform=` with `id=<clone>` | Shuts down and deletes each clone |
 
-Each clone's UDID is recorded as soon as its `simctl clone` returns, and every clone call is waited for even after one fails. If any clone or boot fails, `setUp` runs `tearDown` before rethrowing, so a pool that fails part-way leaves no `XMR-<pid>-<session>-<n>` device behind — the caller only tears down a pool whose `setUp` succeeded.
+**The clones are made one at a time.** `simctl clone` copies the base device's `data` directory, and clones run in parallel share that copy: eight clones of a 5 GB base take 80 s each and all end together, where one alone takes 11 s. Cloning sequentially costs the same total and gives each clone a timeout that means what it says: `cloneTimeout(dataSize:)` is a minute plus half a minute per GB of the base's data (60 s for a base that cannot be sized, 219 s for 5.3 GB), where a flat minute shared by eight parallel copies failed from about five clones of a 5 GB base. Each clone's UDID is recorded as its `simctl clone` returns, a failed clone stops the rest from being made, and the error carries the base's data size (`cloneFailed(udid:dataSize:)`). If any clone or boot fails, `setUp` runs `tearDown` before rethrowing, so a pool that fails part-way leaves no `XMR-<pid>-<session>-<n>` device behind — the caller only tears down a pool whose `setUp` succeeded.
+
+**The clones' first boot.** `waitForBooted` returns when CoreSimulator reports the clone `Booted`, a few seconds after `simctl boot`; the boot finishes (`simctl bootstatus`) 40–70 s later, and eight clones booting at once keep the machine fully busy for one to four minutes after that — first-boot work of every clone, whatever its base's history, and a second boot of settled clones is lighter but not free. The pool does not wait for it: a wait would cost the storm's own length, which is what the first mutants lose to it anyway, and no reliable signal says when a machine has settled. `ConsoleProgressReporter` says so under the readiness line instead.
 
 **Clones left by other runs.** A run killed with `SIGKILL` or a crash never reaches `tearDown`, and its clones stay registered with CoreSimulator, booted ones still holding memory. Before cloning, `setUp` lists the devices and shuts down and deletes every one `orphanedClones(in:isAlive:)` names, called with `ProcessTree.isAlive`: a clone whose name carries the pid of a process that is gone (`CloneName.isOrphaned`), or one in the `XMR-<session>-<n>` form clones had before the pid was part of the name. The pid is what makes this safe: sweeping every `XMR-*` device would delete the simulators of another run in progress, the mistake the sandbox sweep once made (#86). A device list that cannot be read skips the sweep.
 
@@ -1041,10 +1044,13 @@ struct SimulatorManager: Sendable {
         maxAttempts: Int = 60,
         sleepDuration: Duration = .milliseconds(500)
     ) async throws
+    func dataSize(of udid: String) async -> Int64?
 }
 ```
 
 Provides simulator lifecycle utilities.
+
+`dataSize(of:)` reads the device's `dataPath` from `xcrun simctl list devices --json` and runs `du -sk` on it, returning the bytes `simctl clone` will copy — 1.3 s for 5.3 GB in 29 000 files — or `nil` when the device is not listed, has no data path, or `du` fails; `SimulatorPool.cloneTimeout` treats `nil` as nothing to copy.
 
 `requiresSimulatorPool(for:)` returns `false` when the destination contains `platform=macOS`; otherwise `true` when it contains `Simulator` or names no `platform=` at all, and `false` for any other platform, such as a device.
 
@@ -1060,7 +1066,7 @@ Provides simulator lifecycle utilities.
 enum SimulatorError: Error, LocalizedError {
     case deviceNotFound(destination: String)
     case bootTimeout(udid: String)
-    case cloneFailed(udid: String)
+    case cloneFailed(udid: String, dataSize: Int64? = nil)
 
     var errorDescription: String? { get }
 }
@@ -1072,7 +1078,7 @@ Conforms to `LocalizedError` to provide structured error descriptions that propa
 |---|---|
 | `deviceNotFound` | No simulator matching the destination string |
 | `bootTimeout` | Simulator did not reach `Booted` state within the polling window |
-| `cloneFailed` | `xcrun simctl clone` returned a non-zero exit code; `udid` is the base simulator's |
+| `cloneFailed` | `xcrun simctl clone` returned a non-zero exit code or ran past its timeout; `udid` is the base simulator's, and `dataSize`, when the base could be sized, makes the message name how much data every clone copies and suggest `xcrun simctl erase <udid>` or a dedicated device |
 
 ---
 
