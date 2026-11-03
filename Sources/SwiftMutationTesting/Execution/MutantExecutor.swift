@@ -38,8 +38,17 @@ struct MutantExecutor: Sendable {
     }
 
     private struct BatchState {
+        let settingUp: Task<SimulatorPool, any Error>
         var checkedUnmutatedBuild = false
         var pool: SimulatorPool?
+
+        func tearDown() async {
+            if let pool {
+                await pool.tearDown()
+            } else if let pool = try? await settingUp.value {
+                await pool.tearDown()
+            }
+        }
     }
 
     private struct BatchOutcome {
@@ -100,7 +109,15 @@ struct MutantExecutor: Sendable {
         deps: ExecutionDeps,
         reporter: any ProgressReporter
     ) async throws -> [ExecutionResult] {
-        var state = BatchState()
+        let configuration = configuration
+        let launcher = launcher
+        var state = BatchState(
+            settingUp: Task {
+                let pool = try await SimulatorPool.make(for: configuration, launcher: launcher)
+                try await pool.setUp()
+                return pool
+            }
+        )
 
         do {
             let whole = try await runBatch(
@@ -119,10 +136,10 @@ struct MutantExecutor: Sendable {
             }
 
             try Self.requireObservedActivation(in: results)
-            await PhaseTimings.measure(.teardown, in: deps.timings) { await state.pool?.tearDown() }
+            await PhaseTimings.measure(.teardown, in: deps.timings) { await state.tearDown() }
             return results
         } catch {
-            await state.pool?.tearDown()
+            await state.tearDown()
             throw error
         }
     }
@@ -154,7 +171,7 @@ struct MutantExecutor: Sendable {
         if let existing = state.pool {
             pool = existing
         } else {
-            pool = try await makePool(deps: deps)
+            pool = try await awaitPool(state.settingUp, deps: deps)
             state.pool = pool
         }
 
@@ -171,12 +188,10 @@ struct MutantExecutor: Sendable {
         )
     }
 
-    private func makePool(deps: ExecutionDeps) async throws -> SimulatorPool {
-        let pool = try await PhaseTimings.measure(.workers, in: deps.timings) {
-            let pool = try await SimulatorPool.make(for: configuration, launcher: launcher)
-            try await pool.setUp()
-            return pool
-        }
+    private func awaitPool(
+        _ settingUp: Task<SimulatorPool, any Error>, deps: ExecutionDeps
+    ) async throws -> SimulatorPool {
+        let pool = try await PhaseTimings.measure(.workers, in: deps.timings) { try await settingUp.value }
         await deps.reporter.report(.workersReady(count: pool.size, usesSimulators: pool.usesSimulators))
         return pool
     }
