@@ -146,4 +146,36 @@ struct SimulatorManagerTests {
             try await manager.waitForBooted(udid: "UDID-1", maxAttempts: 1, sleepDuration: .zero)
         }
     }
+
+    @Test("Given a device with a data path, when its data is sized, then du's kilobytes are returned as bytes")
+    func dataSizeComesFromDu() async {
+        let list = """
+            {"devices":{"com.apple.runtime.iOS":[{"udid":"BASE","name":"iPhone 17","state":"Shutdown",\
+            "dataPath":"/Devices/BASE/data"}]}}
+            """
+        let manager = SimulatorManager(launcher: SimulatorCloneFailureMock(listOutput: list, dataKilobytes: 5_291_480))
+
+        let size = await manager.dataSize(of: "BASE")
+
+        #expect(size == 5_418_475_520)
+    }
+
+    @Test("Given a device list without a data path, when its data is sized, then there is no size")
+    func dataSizeNeedsADataPath() async {
+        let list = SimulatorCommandMock.bootedDevicesJSON(udid: "BASE")
+        let manager = SimulatorManager(launcher: SimulatorCloneFailureMock(listOutput: list, dataKilobytes: 1))
+
+        #expect(await manager.dataSize(of: "BASE") == nil)
+    }
+
+    @Test("Given du that fails, when the data is sized, then there is no size")
+    func dataSizeSurvivesDuFailing() async {
+        let list = """
+            {"devices":{"com.apple.runtime.iOS":[{"udid":"BASE","name":"iPhone 17","state":"Shutdown",\
+            "dataPath":"/Devices/BASE/data"}]}}
+            """
+        let manager = SimulatorManager(launcher: SimulatorCloneFailureMock(listOutput: list))
+
+        #expect(await manager.dataSize(of: "BASE") == nil)
+    }
 }
