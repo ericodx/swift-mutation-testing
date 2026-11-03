@@ -47,6 +47,49 @@ struct SimulatorManager: Sendable {
         throw SimulatorError.bootTimeout(udid: udid)
     }
 
+    func dataSize(of udid: String) async -> Int64? {
+        guard
+            let listed = try? await launcher.launchCapturing(listRequest()),
+            let dataPath = devices(in: listed.output).lazy
+                .first(where: { $0["udid"] as? String == udid })?["dataPath"] as? String,
+            let measured = try? await launcher.launchCapturing(
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/usr/bin/du"),
+                    arguments: ["-sk", dataPath],
+                    environment: nil,
+                    additionalEnvironment: [:],
+                    workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                    timeout: 120
+                ).discardingStandardError()
+            ),
+            measured.exitCode == 0,
+            let kilobytes = measured.output.split(whereSeparator: \.isWhitespace).first.flatMap({ Int64($0) })
+        else { return nil }
+
+        return kilobytes * 1024
+    }
+
+    private func listRequest() -> ProcessRequest {
+        ProcessRequest(
+            executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+            arguments: ["simctl", "list", "devices", "--json"],
+            environment: nil,
+            additionalEnvironment: [:],
+            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+            timeout: 10
+        ).discardingStandardError()
+    }
+
+    private func devices(in output: String) -> [[String: Any]] {
+        guard
+            let data = output.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let devices = json["devices"] as? [String: [[String: Any]]]
+        else { return [] }
+
+        return devices.values.flatMap { $0 }
+    }
+
     private func parseValue(for key: String, in destination: String) -> String? {
         let prefix = "\(key)="
         return destination.components(separatedBy: ",")

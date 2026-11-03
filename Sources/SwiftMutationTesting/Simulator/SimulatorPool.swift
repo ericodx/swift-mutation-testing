@@ -44,11 +44,11 @@ actor SimulatorPool {
         available = clones.map { SimulatorSlot(udid: $0, destination: "\(platform),id=\($0)") }
     }
 
-    private func cloneBase(_ base: String) async throws {
-        let launcher = self.launcher
-        let size = self.size
-        let session = self.sessionID
+    static func cloneTimeout(dataSize: Int64?) -> Double {
+        60 + 30 * Double(dataSize ?? 0) / 1_000_000_000
+    }
 
+    private func cloneBase(_ base: String) async throws {
         _ = try? await launcher.launch(
             executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
             arguments: ["simctl", "shutdown", base],
@@ -56,36 +56,26 @@ actor SimulatorPool {
             timeout: 30
         )
 
-        try await withThrowingTaskGroup(of: String.self) { group in
-            for index in 0 ..< size {
-                group.addTask {
-                    let result = try await launcher.launchCapturing(
-                        ProcessRequest(
-                            executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
-                            arguments: ["simctl", "clone", base, CloneName.make(session: session, index: index)],
-                            environment: nil,
-                            additionalEnvironment: [:],
-                            workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
-                            timeout: 60
-                        )
-                    )
+        let dataSize = await SimulatorManager(launcher: launcher).dataSize(of: base)
+        let timeout = Self.cloneTimeout(dataSize: dataSize)
 
-                    guard result.exitCode == 0 else {
-                        throw SimulatorError.cloneFailed(udid: base)
-                    }
+        for index in 0 ..< size {
+            let result = try await launcher.launchCapturing(
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                    arguments: ["simctl", "clone", base, CloneName.make(session: sessionID, index: index)],
+                    environment: nil,
+                    additionalEnvironment: [:],
+                    workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                    timeout: timeout
+                )
+            )
 
-                    return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
+            guard result.exitCode == 0 else {
+                throw SimulatorError.cloneFailed(udid: base, dataSize: dataSize)
             }
 
-            var firstError: (any Error)?
-            while let outcome = await group.nextResult() {
-                switch outcome {
-                case .success(let udid): clonedUDIDs.append(udid)
-                case .failure(let error): firstError = firstError ?? error
-                }
-            }
-            if let firstError { throw firstError }
+            clonedUDIDs.append(result.output.trimmingCharacters(in: .whitespacesAndNewlines))
         }
     }
 

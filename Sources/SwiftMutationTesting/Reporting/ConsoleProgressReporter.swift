@@ -42,6 +42,11 @@ actor ConsoleProgressReporter: ProgressReporter {
         case .workersReady(let count, let usesSimulators):
             let unit = usesSimulators ? "simulator" : "worker"
             StandardOutput.write("  ✓ \(count) \(unit)\(count == 1 ? "" : "s") ready")
+            if usesSimulators {
+                StandardOutput.write(
+                    "    The clones' first boot keeps the machine busy for a few minutes; the first mutants take longer"
+                )
+            }
             StandardOutput.write("\nTesting mutants...")
 
         case .mutantStarted:
