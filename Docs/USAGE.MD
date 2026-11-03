@@ -601,7 +601,7 @@ A run never builds in the project itself: it builds a copy — a sandbox of syml
 
 ### Time by phase
 
-`--timing` prints, after the summary, how long each phase of the run took: the sandbox, the schema build and its narrowing rounds, the checks of the unmutated project, the workers, the baseline, the three passes over the schematized mutants, the fallback builds, the warm sandboxes and the incompatible mutants, and the teardown. A phase that ran more than once — a narrowing round, a schema batch — is summed and marked with its count. `Warm sandboxes` ends when the first of them is ready to take a mutant; the others finish building under `Incompatible mutants`. `Other` is what the phases do not account for. Discovery precedes `Total duration`, so it is listed but left out of `Other`.
+`--timing` prints, after the summary, how long each phase of the run took: the sandbox, the schema build and its narrowing rounds, the checks of the unmutated project, the workers (the time waited for the simulator pool, which is cloned and booted while the schema builds), the baseline, the three passes over the schematized mutants, the fallback builds, the warm sandboxes and the incompatible mutants, and the teardown. A phase that ran more than once — a narrowing round, a schema batch — is summed and marked with its count. `Warm sandboxes` ends when the first of them is ready to take a mutant; the others finish building under `Incompatible mutants`. `Other` is what the phases do not account for. Discovery precedes `Total duration`, so it is listed but left out of `Other`.
 
 ```
 Time by phase:

@@ -339,7 +339,7 @@ Every verdict, whichever path reached it, goes through `ResultRecorder.record(..
 | `schemaBuild` | `MutantExecutor.buildArtifact` — the first build of a schema, whether it compiles or not; once per batch |
 | `schemaNarrowing` | `SchemaNarrower` — one entry per round, from the blame to the end of that round's rebuild |
 | `unmutatedBuildCheck`, `unmutatedSuiteCheck` | `MutantExecutor`, around each check |
-| `workers` | `MutantExecutor.makePool` — the pool's `make` and `setUp` |
+| `workers` | `MutantExecutor.awaitPool` — the time the run waited for the pool, whose `make` and `setUp` run in a task started before the schema build; near zero when the clones booted while the build ran |
 | `baseline` | `MutantExecutor.baselineContext` — the probe, or the Xcode baseline |
 | `mutants`, `stragglers`, `unactivatedKills` | `TestExecutionStage.execute` — its three passes, wherever it is called from |
 | `fallbackBuilds` | `FallbackExecutor` — each file's install, check and build; its tests are the three passes above |
