@@ -40,6 +40,9 @@ concurrency: 4
 # Disable result cache (re-runs all mutants on every execution)
 # no-cache: true
 
+# Build every sandbox from scratch instead of keeping built ones between runs
+# no-warm-sandbox: true
+
 # Report output paths
 output: mutation-report.json
 # html-output: mutation-report.html
@@ -83,7 +86,7 @@ mutators:
 
 For a package the file has no container, scheme, destination, testing framework or concurrency, and its timeout is `30`. When detection could not choose a container, the file says why and lists every candidate commented out.
 
-The keys the tool knows are `ConfigurationResolver.fileKeys`, all kebab-case: `scheme`, `destination`, `workspace`, `project`, `xcodebuild-args`, `test-target`, `timeout`, `build-timeout`, `concurrency`, `no-cache`, `testing-framework`, `keep-logs`, `quiet`, `timing`, `sources-path`, `exclude` (or `exclude-patterns`), `operators`, `disabled-mutators`, `operator-tier`, `min-score`, `max-score-drop`, `max-new-survivors`, `max-integrity-warnings`, `baseline`, and one per report format (`ReportFormat.fileKey`: `output`, `html-output`, `sonar-output`, `sarif-output`, `markdown-output`). `--write-baseline` is a command-line option only.
+The keys the tool knows are `ConfigurationResolver.fileKeys`, all kebab-case: `scheme`, `destination`, `workspace`, `project`, `xcodebuild-args`, `test-target`, `timeout`, `build-timeout`, `concurrency`, `no-cache`, `no-warm-sandbox`, `testing-framework`, `keep-logs`, `quiet`, `timing`, `sources-path`, `exclude` (or `exclude-patterns`), `operators`, `disabled-mutators`, `operator-tier`, `min-score`, `max-score-drop`, `max-new-survivors`, `max-integrity-warnings`, `baseline`, and one per report format (`ReportFormat.fileKey`: `output`, `html-output`, `sonar-output`, `sarif-output`, `markdown-output`). `--write-baseline` is a command-line option only.
 
 **Parsing and validation.** A `#` that starts a line or follows whitespace, outside quotes, starts a comment, so `timeout: 60 # seconds` reads `60`; surrounding quotes are stripped from values and list items. Every value is then checked as the matching flag would be, and a value that does not parse is a `UsageError` naming the key and the file:
 
@@ -91,7 +94,7 @@ The keys the tool knows are `ConfigurationResolver.fileKeys`, all kebab-case: `s
 |---|---|
 | `timeout`, `build-timeout` | a positive number |
 | `concurrency` | an integer, at least 1 |
-| `no-cache`, `quiet`, `timing` | `true`/`false`, `yes`/`no` or `on`/`off`, in any case |
+| `no-cache`, `no-warm-sandbox`, `quiet`, `timing` | `true`/`false`, `yes`/`no` or `on`/`off`, in any case |
 | `testing-framework` | `xctest` or `swift-testing` |
 | `operator-tier` | `conservative`, `default` or `experimental` |
 | `min-score` | a number from 0 to 100 |
@@ -216,6 +219,7 @@ OPTIONS:
   --concurrency <n>             Parallel test workers (default: CPUs - 1). An Xcode
                                 run on macOS or with XCTest uses one worker
   --no-cache                    Disable the result cache — nothing is read or written
+  --no-warm-sandbox             Remove the project's kept sandboxes and build from scratch
   --output <json-path>          Write mutation report JSON to path
   --html-output <html-path>     Write HTML report to path
   --sonar-output <json-path>    Write a SonarQube generic issue import report to path

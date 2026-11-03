@@ -141,6 +141,9 @@ struct ConfigurationFileWriter: Sendable {
         lines.append("# Disable result cache (re-runs all mutants on every execution)")
         lines.append("# no-cache: true")
         lines.append("")
+        lines.append("# Build every sandbox from scratch instead of keeping built ones between runs")
+        lines.append("# no-warm-sandbox: true")
+        lines.append("")
         lines.append("# Report output paths")
         for format in ReportFormat.allCases {
             lines.append("\(format == .json ? "" : "# ")\(format.fileKey): \(format.exampleFile)")

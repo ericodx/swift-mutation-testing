@@ -38,10 +38,16 @@ struct ConfigurationResolverFileValueTests {
         arguments: [("yes", true), ("on", true), ("True", true), ("no", false), ("off", false), ("false", false)]
     )
     func flagsAcceptTheYAMLSpellings(raw: String, expected: Bool) throws {
-        let result = try resolve(fileValues: ["quiet": raw, "no-cache": raw])
+        let result = try resolve(fileValues: ["quiet": raw, "no-cache": raw, "no-warm-sandbox": raw])
 
         #expect(result.reporting.quiet == expected)
         #expect(result.build.noCache == expected)
+        #expect(result.build.warmSandboxes == !expected)
+    }
+
+    @Test("Given no-warm-sandbox nowhere, when resolved, then the sandboxes are kept between runs")
+    func warmSandboxesAreKeptByDefault() throws {
+        #expect(try resolve(fileValues: [:]).build.warmSandboxes)
     }
 
     @Test("Given a flag in the file that is neither true nor false, when resolved, then it is rejected")

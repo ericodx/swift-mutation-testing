@@ -7,7 +7,7 @@ import Testing
 struct IncompatibleMutantXcodeConcurrencyTests {
     @Test(
         "Given a concurrency, a pool and some mutants, when the width is worked out, then the smallest bound wins",
-        arguments: [(8, 4, 10, 2), (16, 2, 10, 2), (16, 8, 3, 3), (2, 4, 10, 1), (8, 4, 0, 1)]
+        arguments: [(8, 4, 10, 4), (16, 2, 10, 2), (16, 8, 3, 3), (2, 4, 10, 1), (8, 4, 0, 1)]
     )
     func theWidthIsTheSmallestBound(concurrency: Int, poolSize: Int, mutants: Int, expected: Int) {
         #expect(
@@ -32,7 +32,7 @@ struct IncompatibleMutantXcodeConcurrencyTests {
         }
 
         let results = try await executor.execute(
-            mutants, configuration: makeRunnerConfiguration(projectPath: dir.path, concurrency: 8), pool: pool
+            mutants, configuration: makeRunnerConfiguration(projectPath: dir.path, concurrency: 4), pool: pool
         )
 
         #expect(results.map(\.descriptor.id) == (0 ..< 6).map { "m\($0)" })

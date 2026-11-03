@@ -75,12 +75,13 @@ extension IncompatibleMutantExecutor {
             if !reusing { sandbox.release(keepingFor: nil) }
         }
 
-        let build = try await deps.launcher.launchCapturing(
+        let build = try await BuildStage(launcher: deps.launcher).run(
             ToolRequests.buildForTesting(
                 in: sandbox, scheme: warmup.scheme, destination: slot.destination,
                 arguments: configuration.build.xcodeArguments,
                 timeout: configuration.build.buildTimeout
-            )
+            ),
+            in: sandbox
         )
         guard build.exitCode == 0 else { return WarmOutcome(slot: index, build: build, readyAt: nil, results: []) }
 
@@ -286,14 +287,15 @@ extension IncompatibleMutantExecutor {
         let configuration = run.attempt.configuration
         let start = Date()
 
-        let build = try await deps.launcher.launchCapturing(
+        let build = try await BuildStage(launcher: deps.launcher).run(
             ToolRequests.buildForTesting(
                 in: run.sandbox,
                 scheme: run.attempt.scheme,
                 destination: run.slot.destination,
                 arguments: configuration.build.xcodeArguments,
                 timeout: configuration.build.buildTimeout
-            )
+            ),
+            in: run.sandbox
         )
 
         guard build.exitCode == 0 else {

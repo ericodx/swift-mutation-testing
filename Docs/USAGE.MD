@@ -177,6 +177,9 @@ timeout: 60
 # Disable result cache (re-runs all mutants on every execution)
 # no-cache: true
 
+# Build every sandbox from scratch instead of keeping built ones between runs
+# no-warm-sandbox: true
+
 # Suppress progress output
 # quiet: true
 
@@ -238,7 +241,7 @@ The file is read line by line, not by a full YAML parser:
 - A key is `key: value` at the start of a line. Keys are kebab-case, as in the table below. A key the tool does not know is ignored with a warning (`Warning: unknown key 'treshold' in .swift-mutation-testing.yml is ignored`), so a misspelt key does not pass unnoticed.
 - A list is either `- item` lines under the key or one comma-separated value (`exclude: /Generated/, /Vendor/`).
 - `#` starts a comment at the start of a line or after a space, outside quotes, so `timeout: 60  # seconds` reads `60`. Quotes around a value are removed.
-- Values are checked before anything runs, and a bad one stops with exit code `1`, naming the key: `timeout` and `build-timeout` must be positive numbers, `concurrency` a whole number of at least 1, `min-score` between 0 and 100, `max-score-drop` 0 or more, `max-new-survivors` and `max-integrity-warnings` whole numbers of 0 or more. `no-cache` and `quiet` take `true`/`false`, `yes`/`no` or `on`/`off`.
+- Values are checked before anything runs, and a bad one stops with exit code `1`, naming the key: `timeout` and `build-timeout` must be positive numbers, `concurrency` a whole number of at least 1, `min-score` between 0 and 100, `max-score-drop` 0 or more, `max-new-survivors` and `max-integrity-warnings` whole numbers of 0 or more. `no-cache`, `no-warm-sandbox` and `quiet` take `true`/`false`, `yes`/`no` or `on`/`off`.
 
 ### Field reference
 
@@ -255,6 +258,7 @@ The file is read line by line, not by a full YAML parser:
 | `build-timeout` | Number | `120` | Build timeout in seconds |
 | `concurrency` | Number | `max(1, CPUs − 1)` | Parallel test workers, at least 1. Xcode on `platform=macOS`, and XCTest on a simulator, run one — see [Parallelism](#parallelism) |
 | `no-cache` | Boolean | `false` | Disable result caching |
+| `no-warm-sandbox` | Boolean | `false` | Build every sandbox from scratch instead of keeping built ones between runs |
 | `quiet` | Boolean | `false` | Suppress progress output |
 | `output` | String | — | Path for Stryker-compatible JSON report |
 | `html-output` | String | — | Path for the HTML report |
@@ -364,6 +368,7 @@ swift-mutation-testing [project-path] [options]
 | `--build-timeout <seconds>` | Build timeout, a positive number (default: 120). Sandboxes never inherit `.build`, so every build is cold |
 | `--concurrency <n>` | Parallel workers, at least 1 (default: CPUs − 1). Resolved to 1 for Xcode on `platform=macOS` and for XCTest — see [Parallelism](#parallelism) |
 | `--no-cache` | Disable result caching — no verdict is read from the cache, and none is written back |
+| `--no-warm-sandbox` | Remove the sandboxes the project keeps in `$TMPDIR` between runs and build from scratch. See [Kept sandboxes](#kept-sandboxes) |
 | `--keep-logs <dir>` | Write each mutant's captured test output to `<dir>/<mutant-id>.log`, and the output of an unmutated build or suite that fails to `<dir>/baseline.log` |
 | `--output <path>` | Write Stryker-compatible JSON report |
 | `--html-output <path>` | Write the HTML report |
@@ -582,11 +587,15 @@ A package's mutants run the compiled test bundles directly, not through `swift t
 
 **The workers of a package share one sandbox.** Every worker runs the same compiled test bundles from the same sandbox, with the same working directory, the same temporary directory and the same `#filePath` paths, so a test runs at the same time as copies of itself in other processes. That asks more of a suite than `swift test --parallel`, which runs each test once. A test that writes a file at a fixed path — a fixture next to its source found through `#filePath`, a fixed name under `NSTemporaryDirectory()`, a file relative to the working directory — can then fail because another worker deleted or overwrote it. When the mutated code ran in that process, the failure is recorded as a kill like any other: no integrity warning and no reason in the report. On macOS, setting `TMPDIR` would not separate them: `NSTemporaryDirectory()` and `FileManager.default.temporaryDirectory` ignore it and return the user's temporary directory. Give each test's files a unique name or a directory of its own (a `UUID` in the path), or run with `--concurrency 1` (or `concurrency: 1` in `.swift-mutation-testing.yml`); a kill that disappears with one worker came from this. See [Mutation Results](MUTATION-RESULTS.md#killed-).
 
-Two passes use fewer workers: mutants that timed out in the parallel pass are run again on half the machine's cores (never more than `--concurrency`, at least 1), and incompatible mutants are built and tested on a quarter of the workers, each worker with a sandbox of its own that it builds once and then rebuilds incrementally — see [Mutation Results](MUTATION-RESULTS.md#performance-implications).
+Two passes use fewer workers: mutants that timed out in the parallel pass are run again on half the machine's cores (never more than `--concurrency`, at least 1), and incompatible mutants are built and tested on half of the workers, each worker with a sandbox of its own — kept between runs, see [Kept sandboxes](#kept-sandboxes) — that it builds once and then rebuilds incrementally — see [Mutation Results](MUTATION-RESULTS.md#performance-implications).
 
 The parallel pass starts with the mutants the cache remembers as slowest, so a mutant that looped last time does not hold a worker at the end of the pass while the rest sit idle. On a first run, or under `--no-cache`, the mutants of a `while` or `repeat` condition go first instead, since those are the ones that loop.
 
 ---
+
+## Kept sandboxes
+
+A run never builds in the project itself: it builds a copy — a sandbox of symlinks to the project's files, with the schematized or mutated ones written in — in `$TMPDIR/swift-mutation-testing`. Those sandboxes are kept between runs, one per project and slot (`warm-<project key>-<n>`): the next run of the same project refreshes the links, rewrites only the files whose content changed and builds on top of the build that is already there, so the schema build and the warm builds of the incompatible mutants are incremental rather than cold. A sandbox whose build fails for a reason that is not a compile error in its files is emptied and built once from scratch. Two runs of the same project at once take different slots; a run that crashed leaves nothing locked. `--no-warm-sandbox` (or `no-warm-sandbox: true`) removes the project's kept sandboxes before the run and uses throwaway ones, as `reproduce` always does; macOS also removes what `$TMPDIR` has not used for three days. Each kept sandbox holds a full build of the project with its tests.
 
 ## Output Formats
 

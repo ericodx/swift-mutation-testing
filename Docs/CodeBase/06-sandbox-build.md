@@ -8,6 +8,8 @@
 
 ```swift
 struct SandboxFactory: Sendable {
+    var warm: WarmSandboxes?
+
     func create(
         projectPath: String,
         schematizedFiles: [SchematizedFile]
@@ -29,14 +31,16 @@ struct SandboxFactory: Sendable {
     struct Replacements {
         let byCanonicalPath: [String: String]
         let byRelativePath: [String: String]
+        var kept: Set<String>
         init(_ byCanonicalPath: [String: String], under root: String)
         var isEmpty: Bool { get }
         func content(for source: URL, relativePath: String, isSymlink: Bool) -> String?
+        func unchanged(in sandboxURL: URL) -> Set<String>
     }
 }
 ```
 
-Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<pid>-<UUID>/`, where `<pid>` is the process that created it. Supports both Xcode and SPM projects. The original project is never modified.
+Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<pid>-<UUID>/`, where `<pid>` is the process that created it — or, with `warm` set, refreshes a kept one in `$TMPDIR/swift-mutation-testing/warm-<project key>-<slot>/` (see [WarmSandboxes](#sandboxwarmsandboxesswift)). Supports both Xcode and SPM projects. The original project is never modified.
 
 **Three factory methods:**
 
@@ -71,6 +75,8 @@ flowchart TD
 
 **Off the cooperative pool.** All three are `async` but the work is synchronous file system calls, which used to occupy a cooperative thread for the whole walk — threads that simulator and process work wait on. `offCooperativePool` runs it on a global dispatch queue and resumes the caller through a continuation.
 
+**Kept sandboxes.** With `warm` set — `RunCommand` sets it unless `--no-warm-sandbox`; a reproduction and the tests use the default `nil` — `populate` claims a slot of the project (`WarmSandboxes.claim`) instead of making a fresh directory, and the sandbox carries the slot (`Sandbox.slot`). Before the walk, `Replacements.unchanged(in:)` lists the replaced files that already sit in the slot as regular files with exactly the content about to be written, and `WarmSandboxes.prune` removes everything else except `.build`, `.xmr-derived-data` and the lock; the walk then recreates every link and directory as for a fresh sandbox and skips the files in `kept`. A kept file keeps its modification date, so a schema that did not change since the last run does not recompile; everything else is rebuilt incrementally on top of the build that is there. Removing and recreating a symlink does not touch the file it points to, and Swift Build signs inputs through the link, so a refreshed sandbox whose sources did not change builds as a no-op (measured on swift-cpd: 2.2 s against 16.6 s cold). A slot whose claim or walk throws is unlocked before the error leaves.
+
 **Post-processing (`create(projectPath:schematizedFiles:)`, and `createClean` with `disablingSwiftLint: true`):**
 
 1. `disableSwiftLintBuildPhases` — for every `.xcodeproj` of the sandbox (`SandboxFactory.xcodeprojs(in:)`: any depth, in path order, not inside `.build`, `DerivedData`, `Pods`, `.xmr-derived-data`, `.derived-data`, a symlinked directory or another `.xcodeproj`/`.xcworkspace`), patches `project.pbxproj`, replacing the `shellScript` of every `PBXShellScriptBuildPhase` that contains `swiftlint` (any case) with `exit 0\n`; the sandbox's `project.pbxproj` is a symlink to the original, so the link is removed and the patched XML written in its place. Before, only the first `.xcodeproj` at the root was patched, and a workspace's other projects linted the schematized code and failed the build.
@@ -83,6 +89,8 @@ flowchart TD
 ```swift
 struct Sandbox: Sendable {
     let rootURL: URL
+    var slot: WarmSandboxes.Slot?
+    var isPersistent: Bool { get }
     func cleanup() throws
 }
 ```
@@ -91,9 +99,10 @@ A lightweight wrapper around the sandbox root URL.
 
 | Field | Description |
 |---|---|
-| `rootURL` | Absolute URL of the `xmr-<pid>-<UUID>` directory in `$TMPDIR` |
+| `rootURL` | Absolute URL of the `xmr-<pid>-<UUID>` or `warm-<key>-<n>` directory in `$TMPDIR` |
+| `slot` | The claimed slot of a kept sandbox, with its lock; `nil` for a throwaway one |
 
-`cleanup()` removes the entire `rootURL` directory tree via `FileManager.default.removeItem(at:)`. The executors release a sandbox through `release(keepingFor:)` (`Plan/Reproduction.swift`): it is kept, and its path recorded, when a `Reproduction` is passed, and removed with `cleanup()` otherwise.
+`cleanup()` removes the entire `rootURL` directory tree via `FileManager.default.removeItem(at:)` for a throwaway sandbox, and only releases the lock (`Slot.unlock`) for a kept one, whose directory and build stay for the next run. The executors release a sandbox through `release(keepingFor:)` (`Plan/Reproduction.swift`): it is kept, and its path recorded, when a `Reproduction` is passed, and `cleanup()` runs otherwise.
 
 ---
 
@@ -144,6 +153,49 @@ The one place that knows how a sandbox directory is named and where it lives, so
 
 ---
 
+## Sandbox/WarmSandboxes.swift
+
+```swift
+struct WarmSandboxes: Sendable {
+    static let prefix: String
+    static let lockName: String
+    static let keptDirectories: Set<String>
+    var directory: URL = SandboxName.directory
+
+    struct Slot: Sendable {
+        let index: Int
+        let lockDescriptor: Int32
+        func unlock()
+    }
+
+    struct LockError: Error, LocalizedError { let path: String }
+
+    static func key(for projectPath: String) -> String
+    static func name(for projectPath: String, slot: Int) -> String
+    func claim(projectPath: String) throws -> (URL, Slot)
+    func slots(of projectPath: String) -> [URL]
+    func removeAll(projectPath: String)
+    func prune(_ sandboxURL: URL, keeping kept: Set<String>) throws
+}
+```
+
+The sandboxes a project keeps between runs, so that the schema build and the warm builds of the incompatible path are incremental instead of cold. SwiftPM's and Xcode's incremental builds are keyed by absolute path, so a built `.build` cannot be cloned to another directory and used from there: the sandbox has to be the same directory every run.
+
+| Method | Description |
+|---|---|
+| `key(for:)` | The first 16 hex digits of the SHA-256 of the project's resolved path: one family of slots per project, whatever path spelling or symlink the run was started with |
+| `name(for:slot:)` | `warm-<key>-<slot>` |
+| `claim(projectPath:)` | Walks the slots from 0 up, creates each directory if needed, and takes the first whose lock it can get: the `lock` file inside the slot is opened `O_CREAT \| O_CLOEXEC` and `flock`ed exclusively without waiting; a held lock means a live run of the same project owns that slot, and the next one is tried. The owner's pid is written into the file for anyone looking. The lock lives with the open descriptor — closed on `unlock`, or by the kernel when the process ends, however it ends — so a crashed or killed run leaves nothing stale and no staleness check is needed; `O_CLOEXEC` keeps the test and build processes from inheriting it |
+| `slots(of:)` | The project's slot directories, in order |
+| `removeAll(projectPath:)` | Removes every slot of the project whose lock can be taken — what `--no-warm-sandbox` does before its run; a slot a live run holds stays |
+| `prune(_:keeping:)` | Empties a slot for a refresh, keeping `.build` and `.xmr-derived-data` (`keptDirectories`), the lock, and the files in `kept` with the directories that lead to them; see **Kept sandboxes** under `SandboxFactory` |
+
+The schema sandbox is slot 0 of its run, and the warm sandboxes `IncompatibleMutantExecutor` creates with `createClean` the slots after it, in the order they are claimed; the schema sandbox is also the first warm sandbox, as before, so after the first run no build of a run is cold. Two runs of the same project at once take disjoint slots. The sweep of `SandboxCleaner.removeOrphaned` matches only `xmr-` names and leaves the kept slots alone; macOS removes entries of `$TMPDIR` unused for three days, and `--no-warm-sandbox` removes a project's at once. Each slot holds a full build — about 520 MB for swift-cpd with its tests.
+
+Not used by a reproduction (`Reproducer` builds its executor with the default factory), which keeps the cold sandbox it prints the path of.
+
+---
+
 ## Sandbox/SandboxCleaner.swift
 
 ```swift
@@ -174,7 +226,7 @@ Handles cleanup of orphaned and active sandbox directories.
 
 | Method | Description |
 |---|---|
-| `removeOrphaned(in:)` | Scans the directory for `xmr-*` entries and removes the ones whose owning process is gone. Called through `SandboxCleaner.clearLeftovers()` (CLI/CommandSupport.swift) by `RunCommand` before `MutantExecutor` runs and by `ReproduceCommand`, to clean up sandboxes from interrupted runs |
+| `removeOrphaned(in:)` | Scans the directory for `xmr-*` entries and removes the ones whose owning process is gone; the kept `warm-*` slots are not looked at. Called through `SandboxCleaner.clearLeftovers()` (CLI/CommandSupport.swift) by `RunCommand` before `MutantExecutor` runs and by `ReproduceCommand`, to clean up sandboxes from interrupted runs |
 | `register(_:in:)` | Records the sandbox as the active one in the registry |
 | `deregister(in:)` | Forgets the active sandbox without touching the directory |
 | `cleanupActiveSandbox(in:)` | Removes the active sandbox directory, if one is registered |
@@ -263,10 +315,15 @@ struct BuildStage: Sendable {
         sandbox: Sandbox,
         timeout: Double
     ) async throws -> BuildArtifact
+
+    func run(_ request: ProcessRequest, in sandbox: Sandbox) async throws -> (exitCode: Int32, output: String)
+    static func isStale(exitCode: Int32, output: String, in sandbox: Sandbox) -> Bool
 }
 ```
 
 Runs a single build inside the sandbox.
+
+**A kept sandbox builds cold once when its build is stale.** Every build of a sandbox — the two above, and the warm-up and per-mutant builds of `IncompatibleMutantExecutor`, SPM and Xcode — goes through `run`, which launches the request and, for a kept sandbox (`Sandbox.isPersistent`) whose build failed for a reason that is not a compile error in its files, removes `.build` and `.xmr-derived-data` (`WarmSandboxes.keptDirectories`) and launches it once more. `isStale` is the rule: a non-zero exit that is not the timeout's, with no `error:` located under the sandbox root (`SchemaNarrower.errorLocations`). A mutant that does not compile is always reported at a file of the sandbox, so its build is never retried and its verdict is unchanged; a module built by another toolchain, a missing object or a link error after a crash mid-build are not, and cost one cold build rather than a run that reports every mutant unviable. A throwaway sandbox is never retried.
 
 **Xcode path (`build`):**
 

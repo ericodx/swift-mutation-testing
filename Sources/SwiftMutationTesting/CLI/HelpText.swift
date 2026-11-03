@@ -37,6 +37,7 @@ enum HelpText {
           --concurrency <n>             Parallel test workers (default: CPUs - 1). An Xcode
                                         run on macOS or with XCTest uses one worker
           --no-cache                    Disable the result cache — nothing is read or written
+          --no-warm-sandbox             Remove the project's kept sandboxes and build from scratch
           \(ReportFormat.allCases.map(\.helpLine).joined(separator: "\n  "))
           --keep-logs <directory>       Write each mutant's captured test output to <directory>
           --quiet                       Suppress progress output

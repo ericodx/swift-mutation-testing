@@ -11,7 +11,7 @@ struct IncompatibleMutantXcodeWarmTests {
         defer { FileHelpers.cleanup(dir) }
         let launcher = CountingLauncher(wrapping: MockProcessLauncher(exitCode: 0))
 
-        let results = try await run(mutants: 6, concurrency: 8, poolSize: 4, launcher: launcher, in: dir)
+        let results = try await run(mutants: 6, concurrency: 4, poolSize: 4, launcher: launcher, in: dir)
 
         let builds = await launcher.requests.filter { $0.arguments.first == "build-for-testing" }
         #expect(results.map(\.descriptor.id) == (0 ..< 6).map { "m\($0)" })
@@ -31,7 +31,7 @@ struct IncompatibleMutantXcodeWarmTests {
         defer { try? reused.cleanup() }
 
         let results = try await run(
-            mutants: 6, concurrency: 8, poolSize: 4, launcher: launcher, in: dir, reusing: reused
+            mutants: 6, concurrency: 4, poolSize: 4, launcher: launcher, in: dir, reusing: reused
         )
 
         let builds = await launcher.requests.filter { $0.arguments.first == "build-for-testing" }
@@ -115,7 +115,7 @@ struct IncompatibleMutantXcodeWarmTests {
 
         await #expect(throws: CocoaError.self) {
             _ = try await executor.execute(
-                mutants, configuration: makeRunnerConfiguration(projectPath: dir.path, concurrency: 8), pool: pool
+                mutants, configuration: makeRunnerConfiguration(projectPath: dir.path, concurrency: 4), pool: pool
             )
         }
 
@@ -130,7 +130,7 @@ struct IncompatibleMutantXcodeWarmTests {
         defer { FileHelpers.cleanup(dir) }
         let launcher = FirstWarmBuildIsSlow()
 
-        let results = try await run(mutants: 4, concurrency: 8, poolSize: 4, launcher: launcher, in: dir)
+        let results = try await run(mutants: 4, concurrency: 4, poolSize: 4, launcher: launcher, in: dir)
 
         #expect(results.map(\.descriptor.id) == (0 ..< 4).map { "m\($0)" })
         #expect(await launcher.testRunsByRoot.values.reduce(0, +) == 4)

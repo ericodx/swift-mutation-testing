@@ -66,7 +66,7 @@ struct SchemaNarrower: Sendable {
         Set(errorLocations(in: output, under: sandboxRoot).map(\.path))
     }
 
-    private static func errorLocations(in output: String, under root: String) -> [(path: String, line: Int)] {
+    static func errorLocations(in output: String, under root: String) -> [(path: String, line: Int)] {
         output.components(separatedBy: "\n").compactMap { errorLocation(in: $0, under: root) }
     }
 

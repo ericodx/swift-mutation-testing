@@ -264,10 +264,10 @@ In all of these cases, the mutation site is not inside any executable scope that
 |---|---|---|
 | Builds required | 1 (shared) | 1 per worker, then 1 incremental rebuild per mutant |
 | Test command | `test-without-building` (Xcode) / the test bundles (SPM) | build + test per mutant |
-| Parallel execution | yes, `--concurrency` workers | a quarter of the workers, at least 1 |
+| Parallel execution | yes, `--concurrency` workers | half of the workers, at least 1 |
 | Typical cost | seconds per mutant | an incremental build + test per mutant |
 
-Incompatible mutants are the expensive ones: each needs its own rebuild before its tests can run. The rebuild is incremental — the sandbox is built once and only the mutated file is recompiled after that — and the mutants are spread over a quarter of the workers, but a project with 10 incompatible mutants still pays roughly 10 rebuilds plus 10 test runs on top of the shared build for schematizable mutants. The progress output calls this out explicitly:
+Incompatible mutants are the expensive ones: each needs its own rebuild before its tests can run. The rebuild is incremental — the sandbox is built once, and kept between runs, and only the mutated file is recompiled after that — and the mutants are spread over half of the workers, but a project with 10 incompatible mutants still pays roughly 10 rebuilds plus 10 test runs on top of the shared build for schematizable mutants. The progress output calls this out explicitly:
 
 ```
   ✓ Discovery: 154 mutants (143 schematizable, 11 incompatible) in 2.3s
