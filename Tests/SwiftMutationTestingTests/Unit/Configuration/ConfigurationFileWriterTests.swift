@@ -213,6 +213,8 @@ struct ConfigurationFileWriterTests {
         let content = try String(contentsOf: dir.appendingPathComponent(".swift-mutation-testing.yml"), encoding: .utf8)
         #expect(content.contains("# no-cache: true"))
         #expect(!content.contains("\nno-cache:"))
+        #expect(content.contains("# no-warm-sandbox: true"))
+        #expect(!content.contains("\nno-warm-sandbox:"))
     }
 
     @Test("Given any project, when write called, then output is set to mutation-report.json")

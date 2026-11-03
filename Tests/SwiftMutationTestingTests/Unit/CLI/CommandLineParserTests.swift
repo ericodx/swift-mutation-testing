@@ -148,6 +148,15 @@ struct CommandLineParserTests {
         #expect(result.reporting.timing)
     }
 
+    @Test("Given --no-warm-sandbox, when parsed, then noWarmSandbox is true; without it, false")
+    func parsesNoWarmSandbox() throws {
+        let with = try parser.parse(["run", "--scheme", "App", "--destination", "d", "--no-warm-sandbox"])
+        let without = try parser.parse(["run", "--scheme", "App", "--destination", "d"])
+
+        #expect(with.build.noWarmSandbox)
+        #expect(!without.build.noWarmSandbox)
+    }
+
     @Test("Given no --timing flag, when parsed, then timing is off")
     func timingIsOffByDefault() throws {
         let result = try parser.parse(["run", "--scheme", "App", "--destination", "d"])

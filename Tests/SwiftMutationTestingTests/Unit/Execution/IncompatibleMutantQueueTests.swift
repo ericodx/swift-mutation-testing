@@ -105,7 +105,7 @@ struct IncompatibleMutantQueueTests {
         try await pool.setUp()
         return try await executor.execute(
             mutants,
-            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 8),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 4),
             pool: pool
         )
     }

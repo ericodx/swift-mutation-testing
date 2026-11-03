@@ -902,7 +902,7 @@ struct IncompatibleMutantExecutorTests {
         #expect(build?.arguments.contains("-only-testing") == false)
     }
 
-    @Test("Given eight workers and four incompatible mutants, when executed, then two warm sandboxes share the work")
+    @Test("Given four workers and four incompatible mutants, when executed, then two warm sandboxes share the work")
     func incompatibleMutantsAreSpreadOverWarmSandboxes() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -915,7 +915,7 @@ struct IncompatibleMutantExecutorTests {
 
         let results = try await executor.execute(
             fourIncompatibleMutants(in: dir),
-            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 8),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 4),
             pool: pool
         )
 
@@ -940,7 +940,7 @@ struct IncompatibleMutantExecutorTests {
 
         let results = try await executor.execute(
             fourIncompatibleMutants(in: dir),
-            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 8),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 4),
             pool: pool
         )
 
@@ -962,7 +962,7 @@ struct IncompatibleMutantExecutorTests {
 
         let results = try await executor.execute(
             fourIncompatibleMutants(in: dir),
-            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 8),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 4),
             pool: pool
         )
 
@@ -970,7 +970,7 @@ struct IncompatibleMutantExecutorTests {
         #expect(await launcher.testRunsByRoot.isEmpty)
     }
 
-    @Test("Given a sandbox to reuse and eight workers, when executed, then it is the first warm sandbox and survives")
+    @Test("Given a sandbox to reuse and four workers, when executed, then it is the first warm sandbox and survives")
     func aReusedSandboxIsTheFirstWarmSandbox() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
@@ -985,7 +985,7 @@ struct IncompatibleMutantExecutorTests {
 
         let results = try await executor.execute(
             fourIncompatibleMutants(in: dir),
-            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 8),
+            configuration: makeRunnerConfiguration(projectPath: dir.path, projectType: .spm, concurrency: 4),
             pool: pool,
             reusing: reused
         )
