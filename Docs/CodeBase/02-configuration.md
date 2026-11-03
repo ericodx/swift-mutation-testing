@@ -14,7 +14,7 @@ struct CommandLineParser: Sendable {
 
 No arguments at all yield the default `ParsedArguments` — `run` on `.`. `--help` (or `-h`) and `--version` as the first word yield `.help` and `.version` at once; `init` yields `.initialize` with the next word as its project path unless it starts with `-`, and reads nothing after it. Otherwise the first word may be a command — `run` (the default when none is given), `plan`, `merge` or `reproduce` — then the words before the first flag are the command's positionals (the project path for `run` and `plan`; the result files for `merge`; the mutant and an optional project path for `reproduce`), then the flags. Iterates the flags left-to-right, dispatching each token to an internal `applyFlag` method that writes straight into the `ParsedArguments` it returns. Throws `UsageError` for unrecognised flags, for a flag without its value, for more positionals than the command takes, for `merge` without result files and `reproduce` without a mutant, for `--shard` outside `run` and for a shard that is not `i/n` — `--shard` is parsed into a `Shard` on the spot, with `PlanError.invalidShard`'s message. For `plan`, `--output` is the plan's path, not a report's. `--project-path <path>` sets the project path of `merge`, whose positionals are the result files, and is refused elsewhere. `--workspace` and `--project` name the Xcode container.
 
-Multi-value flags (`--exclude`, `--operator`, `--disable-mutator`) accumulate into arrays. Boolean flags (`--no-cache`, `--quiet`, `--timing`) set a single Bool. All other flags consume the next token as their value: `--timeout` and `--build-timeout` must be positive numbers, `--min-score` and `--max-score-drop` numbers of at least 0, and `--concurrency`, `--max-new-survivors` and `--max-integrity-warnings` integers; their range is checked later, by `ConfigurationResolver`.
+Multi-value flags (`--exclude`, `--operator`, `--disable-mutator`) accumulate into arrays. Boolean flags (`--no-cache`, `--no-warm-sandbox`, `--quiet`, `--timing`) set a single Bool. All other flags consume the next token as their value: `--timeout` and `--build-timeout` must be positive numbers, `--min-score` and `--max-score-drop` numbers of at least 0, and `--concurrency`, `--max-new-survivors` and `--max-integrity-warnings` integers; their range is checked later, by `ConfigurationResolver`.
 
 ---
 
@@ -96,6 +96,7 @@ struct ParsedArguments: Sendable {
 | `build.buildTimeout` | `nil` | `--build-timeout <seconds>` |
 | `build.concurrency` | `nil` | `--concurrency <n>` |
 | `build.noCache` | `false` | `--no-cache` |
+| `build.noWarmSandbox` | `false` | `--no-warm-sandbox` |
 | `build.workspace` | `nil` | `--workspace <path>` |
 | `build.xcodeProject` | `nil` | `--project <path>` |
 | `build.xcodebuildArguments` | `[]` | `--xcodebuild-arg <arg>` (repeatable; a value starting with `-` is taken as is) |
@@ -258,7 +259,7 @@ The project is SPM when neither `scheme` nor `destination` is given, no containe
 
 `timeout` defaults to `defaultXcodeTimeout` or `defaultSPMTimeout` by project type, `build-timeout` to `defaultBuildTimeout`, `concurrency` to `defaultConcurrency`; `--concurrency` below 1 is a `UsageError` too, and `--testing-framework` must be `xctest` or `swift-testing`. `effectiveConcurrency` then decides the workers: SPM keeps the requested count, and Xcode keeps it only for a destination that needs a simulator pool (`SimulatorManager.requiresSimulatorPool`) and a framework other than `.xctest` — one worker otherwise. Exclusions come from `--exclude`, else `exclude`, else `exclude-patterns`.
 
-**File values are checked, not dropped.** A value the file gets wrong used to fall back to the default without a word: `timeout: 0` was accepted, `timeout: soon` became the default, `quiet: yes` was false, and a misspelled key did nothing. Now `timeout` and `build-timeout` must be positive numbers and `concurrency` an integer of at least 1 — the same rules as their flags, in an error that names the file rather than the flag — and `quiet` and `no-cache` accept `true`/`yes`/`on` and `false`/`no`/`off` in any case and reject anything else. Every key outside `fileKeys` is reported through `warn` as `Warning: unknown key '<key>' in .swift-mutation-testing.yml is ignored`; it is a warning rather than an error so that a file written for a newer version still runs.
+**File values are checked, not dropped.** A value the file gets wrong used to fall back to the default without a word: `timeout: 0` was accepted, `timeout: soon` became the default, `quiet: yes` was false, and a misspelled key did nothing. Now `timeout` and `build-timeout` must be positive numbers and `concurrency` an integer of at least 1 — the same rules as their flags, in an error that names the file rather than the flag — and `quiet`, `no-cache` and `no-warm-sandbox` accept `true`/`yes`/`on` and `false`/`no`/`off` in any case and reject anything else. Every key outside `fileKeys` is reported through `warn` as `Warning: unknown key '<key>' in .swift-mutation-testing.yml is ignored`; it is a warning rather than an error so that a file written for a newer version still runs.
 **Operator resolution** (`resolveOperators`), which always yields the full list of identifiers to run:
 
 1. An explicit list — `--operator` (CLI) or `operators` (file), CLI first — is used as is, whatever the operators' tiers
@@ -302,7 +303,7 @@ Generates YAML content using `DetectedProject` values where available, falling b
 - `xcodebuild-args` — Xcode only, commented, with `-allowProvisioningUpdates` as the example item
 - `timeout: 120` for Xcode, `timeout: 30` for SPM — the `defaultXcodeTimeout` and `defaultSPMTimeout` of `RunnerConfiguration`; `build-timeout` commented
 - `concurrency` — Xcode only: `concurrency: 1` for XCTest, `concurrency: 4` otherwise; the code default (`max(1, CPU count - 1)`) applies when absent
-- `no-cache` commented; one line per `ReportFormat`, `fileKey: exampleFile`, only `output` active
+- `no-cache` and `no-warm-sandbox` commented; one line per `ReportFormat`, `fileKey: exampleFile`, only `output` active
 - `exclude` — the detected test target as a fragment (`"/<target>/"`), else a commented glob example
 - quality gate keys — `min-score`, `baseline`, `max-score-drop`, `max-new-survivors` and `max-integrity-warnings`, all commented
 - `operator-tier: default`, commented, with a link to `Docs/OPERATORS.md`
