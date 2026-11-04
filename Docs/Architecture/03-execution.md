@@ -10,12 +10,12 @@
 
 ```mermaid
 flowchart TD
-    IN[RunnerInput] --> PREP["prepareCacheStore\nsnapshot the test files once · granular invalidation"]
+    IN[RunnerInput] --> PREP["prepareCacheStore\nsnapshot the test files once · granular invalidation\nadopt a valid coverage map"]
     PREP --> ALLCACHED{every mutant cached?}
     ALLCACHED -- yes --> RETURN[return cached results]
-    ALLCACHED -- no --> SF["SandboxFactory.create\nschematized sandbox"]
-    SF --> REG[SandboxCleaner.register]
-    REG --> VERIFY{"ApplicationVerifier\nevery mutant in the sandbox?"}
+    ALLCACHED -- no --> SF["SandboxFactory.create\nschema sandbox: a kept warm slot,\nor a throwaway one SandboxCleaner registers"]
+    SF --> POOLTASK["Task: SimulatorPool.make · setUp\none slot per worker, clones booted\nwhile the build runs"]
+    SF --> VERIFY{"ApplicationVerifier\nevery mutant in the sandbox?"}
     VERIFY -- no --> INTEGRITY[throw IntegrityError]
     VERIFY -- yes --> BS["BuildStage\nbuild-for-testing or swift build --build-tests"]
     BS -- "SPM: compilationFailed" --> NARROW["SchemaNarrower\nnarrow the schema, rebuild"]
@@ -23,30 +23,39 @@ flowchart TD
     NARROW -- rebuilt --> POOL
     NARROW -- "gave up" --> CLEAN{"UnmutatedBuildCheck\nunmutated project builds?"}
     BS -- "Xcode: compilationFailed" --> CLEAN
+    BS -- "timedOut, no .xctestrun" --> ABORTB[the run ends]
     CLEAN -- yes --> POOL
     CLEAN -- no --> ABORTU["throw BaselineError.buildFailed"]
-    POOL["SimulatorPool.make · setUp\none slot per worker"] --> ART{schema built?}
+    POOLTASK --> POOL["await the pool task\nfirst build only"]
+    POOL --> ART{schema built?}
     ART -- "yes, SPM" --> PROBE["BaselineProbe\neach test bundle and library once"]
-    PROBE -- fails --> ABORT[throw BaselineError]
-    PROBE -- passes --> TES["TestExecutionStage\nthree passes, see below"]
     ART -- "yes, Xcode" --> XBASE["TestExecutionStage\nunmutated test-without-building once"]
-    XBASE -- fails --> ABORT
+    PROBE -- fails --> SUITE{"UnmutatedSuiteCheck\nschema sandbox restored:\ndoes the suite pass unmutated?"}
+    XBASE -- fails --> SUITE
+    SUITE -- no --> ABORT[throw BaselineError]
+    SUITE -- "yes, whole schema, a body over 16 mutants" --> BATCHES["SchemaBatches\neach batch run like the whole schema\nafter this round"]
+    SUITE -- "yes, otherwise" --> IME
+    PROBE -- passes --> TES["TestExecutionStage\nthree passes, see below"]
     XBASE -- passes --> TES
-    ART -- no --> FBP["FallbackExecutor\none file at a time in the schema sandbox"]
+    ART -- "no, schematizable mutants left" --> FBP["FallbackExecutor\none file at a time in the schema sandbox"]
+    ART -- "no, nothing left" --> IME
     NARROW -- "excluded mutants, rewritten whole-file" --> IME
-    POOL -- incompatible mutants --> IME["IncompatibleMutantExecutor\nschema sandbox restored + warm sandboxes\nincremental rebuild per mutant"]
-    TES --> REC["ResultRecorder\nlog · CacheStore · plan journal · progress"]
-    FBP --> REC
-    IME --> REC
-    REC --> OBS{"kills, and no activation\never observed?"}
+    TES --> IME["IncompatibleMutantExecutor\nschema sandbox restored + warm sandboxes\nincremental rebuild per mutant"]
+    FBP --> IME
+    BATCHES --> IME
+    IME --> NEXT{another batch?}
+    NEXT -- "yes: SchemaSandbox.install" --> VERIFY
+    NEXT -- no --> OBS{"kills, and no activation\never observed?"}
     OBS -- yes --> NEVER["throw IntegrityError.activationNeverObserved"]
-    OBS -- no --> DOWN["pool.tearDown · CacheStore.persist\nsandbox released · SandboxCleaner.deregister"]
+    OBS -- no --> DOWN["pool.tearDown · sandbox released\nCacheStore.persist · SandboxCleaner.deregister"]
     DOWN --> OUT["[ExecutionResult]"]
 ```
 
+Every verdict on the way — cached, `noCoverage` without a launch, tested, `unviable` — goes through `ResultRecorder` (log, `CacheStore`, plan journal, progress). The incompatible path runs after the schematizable one in every round, with the mutants the round rerouted; the schema batches, when the suite asked for them, come after it.
+
 ## SandboxFactory
 
-Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<pid>-<UUID>/` (`SandboxName`) before every build — or, for a `run`, refreshes one the project keeps between runs, `warm-<project key>-<slot>/` (`WarmSandboxes`), so the build on top of it is incremental. Supports both Xcode and SPM projects. The copy runs on a dispatch queue rather than the cooperative pool, since it is blocking file-system work.
+Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<pid>-<UUID>/` (`SandboxName`) — once per run for the schema sandbox, and once for each warm sandbox the incompatible path adds beside it — or, for a `run`, refreshes one the project keeps between runs, `warm-<project key>-<slot>/` (`WarmSandboxes`), so the build on top of it is incremental. Supports both Xcode and SPM projects. The copy runs on a dispatch queue rather than the cooperative pool, since it is blocking file-system work.
 
 **Factory methods:**
 - `create(projectPath:schematizedFiles:)` — full sandbox with schematized files: the schema sandbox, the one sandbox of a run that is not a reproduction
@@ -59,7 +68,7 @@ Creates an isolated copy of the project in `$TMPDIR/swift-mutation-testing/xmr-<
 - For source files being replaced (schematized or mutated): writes the new content directly, wrapped in `// swiftlint:disable all` and `// swiftlint:enable all` (`LintSuppression`) so a SwiftLint build tool plugin, which no pbxproj patch reaches, does not fail the build on generated identifiers; `SchemaNarrower` and `IncompatibleMutantExecutor` wrap what they write the same way
 - For an Icon Composer `.icon` bundle: copies its files, since `actool` rejects a symlinked manifest or layer image
 - For all other files: creates symlinks to the originals (fast, space-efficient)
-- `create(projectPath:schematizedFiles:)`, and `createClean` when asked, disable SwiftLint `PBXShellScriptBuildPhase` entries by patching the `project.pbxproj` of **every** `.xcodeproj` in the sandbox, at any depth — a workspace's projects included; `.build`, `DerivedData` and `Pods/` are not looked into
+- `create(projectPath:schematizedFiles:)`, and `createClean` when asked, disable SwiftLint `PBXShellScriptBuildPhase` entries by patching the `project.pbxproj` of **every** `.xcodeproj` in the sandbox, at any depth — a workspace's projects included; `.build`, `DerivedData`, `Pods`, `.xmr-derived-data`, `.derived-data`, symlinked directories and the inside of an `.xcodeproj` or `.xcworkspace` are not looked into
 
 The original project is never touched. When execution completes, `Sandbox.release(keepingFor:)` removes the entire `xmr-*` directory — unless the run is a reproduction, which keeps it and prints its path.
 
@@ -77,7 +86,7 @@ Handles cleanup of orphaned sandbox directories and signal-based cleanup of the 
 
 **Signal cleanup (`installSignalHandlers`):** Called first thing in `main`. For `SIGINT`, `SIGTERM` and `SIGHUP` it replaces the default action with a handler that does nothing, and installs a `DispatchSource` signal source per signal on a global queue; the source's event handler runs `terminate`, which kills every test process group still in flight (`ProcessGroupRegistry`), removes the active sandbox directory (if registered) and calls `_exit(1)`. The work runs as ordinary code on a dispatch queue rather than inside a C signal handler, so it is not limited to async-signal-safe calls. Test processes lead their own process groups, so without this a terminal's Ctrl-C would end the tool and leave a looping mutant running. The active path lives in `SandboxRegistry` as a C string behind an `Atomic`, and every operation takes the pointer out with a single exchange, so the signal path and a normal deregister never free it twice.
 
-**Lifecycle:** `MutantExecutor` calls `register(sandbox)` after creating the sandbox and `deregister()` after releasing it (both on the success and error paths). This ensures the signal handler always has the correct path.
+**Lifecycle:** `MutantExecutor` calls `register(sandbox)` after creating a throwaway sandbox — a kept warm one is not registered, since a signal must not remove it and its lock dies with the process — and `deregister()` when `execute` returns or throws. This ensures the signal handler always has the correct path.
 
 ## BuildStage
 
@@ -117,7 +126,7 @@ The container's relative path is passed as `-workspace` or `-project`, from the 
 
 ## SimulatorPool
 
-`SimulatorPool` is an `actor` that manages a pool of worker slots for parallel test execution, one per resolved worker (`--concurrency`). `SimulatorPool.make(for:launcher:)` picks the pool from the configuration's destination: simulator clones when `SimulatorManager.requiresSimulatorPool(for:)` says so — a destination naming a `Simulator` platform, or no platform at all — plain slots otherwise. The pool is set up after the schema build and shared by every path of the run: normal, fallback and incompatible.
+`SimulatorPool` is an `actor` that manages a pool of worker slots for parallel test execution, one per resolved worker (`--concurrency`). `SimulatorPool.make(for:launcher:)` picks the pool from the configuration's destination: simulator clones when `SimulatorManager.requiresSimulatorPool(for:)` says so — a destination naming a `Simulator` platform, or no platform at all — plain slots otherwise. The pool is made and set up in a task `MutantExecutor` starts before the schema build, so cloning and booting the simulators overlaps the build; the run awaits it after the first build (the `workers` phase) and shares it with every path: normal, fallback and incompatible.
 
 | Destination | Behaviour |
 |---|---|
@@ -150,7 +159,7 @@ Runs each mutant's tests in parallel via `withThrowingTaskGroup` — `xcodebuild
 flowchart TD
     MUTANTS["[MutantDescriptor]"] --> TG
     subgraph TG["pass 1 — withThrowingTaskGroup (concurrency N, limit = timeout × 2)"]
-        T1["Task: mutant 1\nacquire slot → targeted suite → full suite → release"] & T2["Task: mutant 2"] & T3["Task: mutant N"]
+        T1["Task: mutant 1\nacquire slot → reaching tests, or targeted suite then full suite → release"] & T2["Task: mutant 2"] & T3["Task: mutant N"]
     end
     TG -- settled --> RESULTS["[ExecutionResult]"]
     TG -- still running at the limit --> SG
@@ -168,12 +177,13 @@ flowchart TD
 **Per-mutant execution, Xcode path:**
 
 1. Check cache — return cached result immediately if `noCache` is false and a match exists (`ResultRecorder.cached`, which reads `CacheStore.cachedResult(for:)`)
-2. Activate the mutant: `XCTestRunPlist.activating(_:activationFile:coverageFile:)` injects the mutant ID and the activation marker path into the `EnvironmentVariables` of every test target, in a fresh `.xctestrun` copy
-3. Acquire a simulator slot from the pool
-4. Run `xcodebuild test-without-building -xctestrun <path> -destination <slot> -resultBundlePath <xcresult> -derivedDataPath <dir> -collect-test-diagnostics never [-only-testing <id>…]` — with a coverage map, one `-only-testing` per test that reaches the mutant's function body (`TestExecutionStage.onlyTesting`), kept to the `--target` target when one is set; without a map, or for a body reached outside every test, `-only-testing <target>` when `--target` is set, as before; a body no test reached is `noCoverage` without any `xcodebuild`, as on SPM
-5. Release the simulator slot
-6. Parse the result via `ResultParser`, then delete the `.xcresult` bundle
-7. Record the verdict through `ResultRecorder`: mutant log, `CacheStore`, plan journal, progress
+2. With a coverage map, a mutant whose function body no test reached is recorded `noCoverage`, not activated, without any `xcodebuild`, as on SPM
+3. Activate the mutant: `XCTestRunPlist.activating(_:activationFile:coverageFile:)` injects the mutant ID and the activation marker path into the `EnvironmentVariables` of every test target, in a fresh `.xctestrun` copy
+4. Acquire a simulator slot from the pool
+5. Run `xcodebuild test-without-building -xctestrun <path> -destination <slot> -resultBundlePath <xcresult> -derivedDataPath <dir> -collect-test-diagnostics never [-only-testing <id>…] [--xcodebuild-arg …]` — with a coverage map, one `-only-testing` per test that reaches the mutant's function body (`TestExecutionStage.onlyTesting`), kept to the `--target` target when one is set; without a map, for a body reached outside every test, or in a reproduction, `-only-testing <target>` when `--target` is set, as before
+6. Release the simulator slot
+7. Parse the result via `ResultParser`, then delete the `.xcresult` bundle
+8. Record the verdict through `ResultRecorder`: mutant log, `CacheStore`, plan journal, progress
 
 **Per-mutant execution, SPM path:** the mutant id travels in the environment rather than in a plist, and the bundle is invoked directly instead of through `swift test`. When the run has a coverage map (below), a mutant runs **only the tests that reach its function body**, in the bundles of their modules, the XCTest ones as one comma-separated `-XCTest` list and the Swift Testing ones as one anchored `--filter` each, stopping at the first failing test; a mutant whose body no test reached is `noCoverage` without any test process — the verdict the activation marker would give — and a mutant whose body was reached outside every test, before the first or after the last, runs as below. Without a map, two things happen before the whole suite is asked:
 
@@ -228,7 +238,7 @@ flowchart TD
     PT -- .xcode --> REPRO{reproduce?}
     REPRO -- yes --> COLD["one cold sandbox per attempt\nSandboxFactory.create(mutatedFilePath:)"]
     REPRO -- no --> XW["xcodeWidth warm workers\neach: pool slot + build-for-testing\nthe schema sandbox first, then createClean"]
-    PT -- .spm --> SW["warm sandboxes\nconcurrency ÷ 4, swift build --build-tests\nthe schema sandbox first, then createClean"]
+    PT -- .spm --> SW["warm sandboxes\nconcurrency ÷ 2, swift build --build-tests\nthe schema sandbox first, then createClean"]
     XW -- none built --> UNVIABLE[".unviable\nwith the warm build's output\n(a timed-out build stops the run)"]
     SW -- none built --> UNVIABLE
     XW --> DEAL["each sandbox that built takes\nthe next mutant from the MutantQueue"]
@@ -308,7 +318,7 @@ Cache is stored at `<project>/.swift-mutation-testing-cache/results.json`, with 
 
 A kill with no recorded killer file is invalidated by any change. `.unviable` is permanent because it is a property of the mutant: a mutant that does not compile stays uncompilable however the tests change. Everything else is a statement about what happened when the tests ran, and is re-measured — including `.killedByCrash`, which used to be grouped with `.unviable` and so could never be cleared once recorded.
 
-Each entry also remembers whether the mutated code ran, so a cached `noCoverage` stays `noCoverage` and a cached kill without activation is still reported as a warning. The format is versioned (`formatVersion` 4: 2 added activation, 3 measured it for incompatible mutants, 4 drops the `unviable` verdicts recorded while a SwiftLint build tool plugin failed the build on generated code); a cache in an older format is discarded once, with a warning. Every stored verdict is also appended to `journal.jsonl`, so an interrupted run loses none; see [Resuming](06-plans.md#resuming).
+Each entry also remembers whether the mutated code ran, so a cached `noCoverage` stays `noCoverage` and a cached kill without activation is still reported as a warning. The format is versioned (`formatVersion` 5: 2 added activation, 3 measured it for incompatible mutants, 4 drops the `unviable` verdicts recorded while a SwiftLint build tool plugin failed the build on generated code, 5 keeps every verdict's duration, a timeout's included, for `SlowestFirst`); a cache in another format is discarded once, with a warning. Every stored verdict is also appended to `journal.jsonl`, so an interrupted run loses none; see [Resuming](06-plans.md#resuming).
 
 **Test selection:** the metadata also records what the tests ran against — the Xcode scheme, destination, container and extra `xcodebuild` arguments, `--target` and the testing library (`CacheTestSelection`). When a run's selection differs from the cache's, every cached verdict and the journal are discarded first, with a note on stderr: a verdict from one test target says nothing about another. The console and Markdown summaries show `Verdicts from cache: N of M` whenever some verdicts were reused, so a reused verdict is never invisible.
 
@@ -377,7 +387,11 @@ score      = detected / (detected + undetected) × 100   (none, printed n/a, whe
 | `MutationCounter` | `actor` — tracks the current progress index |
 | `ConsoleProgressReporter` | `actor` — serialises output to stdout |
 | `TestExecutionStage` | `withThrowingTaskGroup` — N tasks, dynamically refilled |
-| `IncompatibleMutantExecutor` | `withThrowingTaskGroup` — one task per warm sandbox, each working through its share of the mutants in turn |
+| `IncompatibleMutantExecutor` | `withThrowingTaskGroup` — one task per warm sandbox, each taking the next mutant from the shared queue until it is empty |
+| `MutantQueue` | `actor` — hands each incompatible mutant to exactly one warm sandbox |
+| `SchemaSandbox` | `actor` — what the schema sandbox holds, changed in turn by the batches, the checks, the fallback and the incompatible path |
+| `PhaseTimings` | `actor` — collects the phase entries from every task |
+| `WarmSandboxes` | an exclusive `flock` per kept slot, held for the run, so two runs of a project never share one |
 | `ProcessRunner` | `withTaskCancellationHandler` + `withCheckedThrowingContinuation` — kills process on cancel |
 | `SPMProcessLauncher` | `RunnerLaunching` (`ProcessLaunching`) conformance backed by `ProcessRunner`; on timeout it kills the process group and the descendants `ProcessTree` snapshotted before the first signal |
 | `XcodeProcessLauncher` | `RunnerLaunching` conformance backed by `ProcessRunner`; on timeout it stops and kills the descendants outside the process group (`SWBBuildService` and its compilers), then `SIGTERM` to the group, escalated to `SIGKILL` (`TimeoutEscalation`) |

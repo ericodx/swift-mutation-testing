@@ -10,15 +10,15 @@ Type-level reference for every public and internal type in `swift-mutation-testi
 |---|---|
 | [01 — Entry Point](01-entry-point.md) | the executable's `main.swift`, `SwiftMutationTesting`, `Command` and its seven commands (`HelpCommand`, `VersionCommand`, `InitCommand`, `PlanCommand`, `MergeCommand`, `ReproduceCommand`, `RunCommand`), `RunConclusion`, `CommandSupport`, `ExitCode`, `HelpText`, `Version`, `UsageError` |
 | [02 — Configuration](02-configuration.md) | `CommandLineParser`, `ParsedArguments`, `RunnerConfiguration`, `BuildOptions`, `ReportingOptions`, `FilterOptions`, `ProjectType`, `XcodeContainer`, `XcodeContainerLocator`, `TestingFramework`, `ConfigurationResolver`, `ConfigurationFileParser`, `ConfigurationFileWriter`, `ProjectDetector`, `DetectedProject`, `GateOptions` |
-| [03 — Discovery Pipeline](03-discovery-pipeline.md) | `DiscoveryPipeline`, `OperatorRegistry`, `OperatorTier`, `DiscoveryInput`, `FileDiscoveryStage`, `ExcludePattern`, `FileDiscoveryError`, `ParsingStage`, `MutantDiscoveryStage`, `MutantIndexingStage`, `SchematizationStage`, `IncompatibleRewritingStage`, `SourceFile`, `ParsedSource`, `MutationPoint`, `IndexedMutationPoint`, `MutantDescriptor`, `MutantID`, `MutationExclusion`, `DeclarationPath`, `MutantFingerprint` |
+| [03 — Discovery Pipeline](03-discovery-pipeline.md) | `DiscoveryPipeline`, `OperatorRegistry`, `OperatorTier`, `DiscoveryInput`, `FileDiscoveryStage`, `ExcludePattern`, `FileDiscoveryError`, `ParsingStage`, `MutantDiscoveryStage`, `MutantIndexingStage`, `SchematizationStage`, `IncompatibleRewritingStage`, `SourceFile`, `ParsedSource`, `MutationPoint`, `IndexedMutationPoint`, `MutantDescriptor`, `MutantID`, `MutationExclusion`, `DeclarationPath`, `MutantFingerprint`, `LoopConditions` |
 | [04 — Mutation Operators](04-mutation-operators.md) | `MutationOperator`, `OperatorVisitor`, `VisitorOperator`, `MutationSyntaxVisitor`, `ReplacementKind`, all 7 operator typealiases and visitors, `SuppressionAnnotationExtractor`, `SuppressionFilter`, `SuppressionVisitor`, `InfiniteLoopBodyVisitor`, `InfiniteLoopBodyExtractor`, `InfiniteLoopFilter`, `HostBuildConfiguration`, `InactiveRegionExtractor`, `InactiveRegionFilter` |
 | [05 — Schematization](05-schematization.md) | `SchemataGenerator`, `SchemaGeneration`, `SupportDeclarations`, `ActivationInstrumenter`, `ImportStyle`, `FunctionBodyShape`, `MutationRewriter`, `UTF8Splice`, `TypeScopeVisitor`, `FunctionBodyScopes`, `FunctionBodyScope`, `SchematizedFile` |
 | [06 — Sandbox & Build](06-sandbox-build.md) | `SandboxFactory`, `LintSuppression`, `SandboxLink`, `SandboxName`, `WarmSandboxes`, `SandboxCleaner`, `OrphanedProcessReaper`, `SandboxRegistry`, `Sandbox`, `BuildStage`, `ToolRequests`, `BuildArtifact`, `BuildError` |
-| [07 — Execution](07-execution.md) | `MutantExecutor`, `SchemaNarrower`, `SchemaSandbox`, `SchemaInstaller`, `UnmutatedBuildCheck`, `UnmutatedSuiteCheck`, `BaselineProbe`, `TestCoverage`, `ResultRecorder`, `ExecutionDeps`, `ApplicationVerifier`, `IntegrityError`, `ActivationMarker`, `TestExecutionStage`, `TestExecutionContext`, `TestBundle`, `TestTargetSelection`, `TargetedSuite`, `TestLaunchResult`, `TestBundleInvocation`, `DeveloperToolchain`, `TargetedSuites`, `FallbackExecutor`, `IncompatibleMutantExecutor`, `MutantQueue`, `SlowestFirst`, `SimulatorPool`, `CloneName`, `SimulatorSlot`, `SimulatorManager`, `SimulatorError`, `MutationCounter`, `RunnerInput`, `ExecutionResult`, `ExecutionStatus`, `BaselineError` |
+| [07 — Execution](07-execution.md) | `MutantExecutor` (with `Environment`), `SchemaNarrower`, `UnmutatedBuildCheck`, `SchemaBatches`, `SchemaInstaller`, `SchemaSandbox`, `UnmutatedSuiteCheck`, `BaselineProbe`, `ResultRecorder`, `ApplicationVerifier`, `IntegrityError`, `ActivationMarker`, `ExecutionDeps`, `PhaseTimings` (with `RunPhase` and `PhaseTiming`), `BaselineError`, `TestExecutionStage`, `SlowestFirst`, `TestExecutionContext`, `TestLaunchResult`, `TestBundleInvocation` (with `Options`), `DeveloperToolchain`, `TestCoverage`, `TestReference`, `CoverageOutputParser`, `TestBundle`, `TargetedSuite`, `TargetedSuites`, `TestTargetSelection`, `FallbackExecutor`, `IncompatibleMutantExecutor` (with `+Xcode`), `MutantQueue`, `SimulatorPool` (with `+Make`), `CloneName`, `SimulatorSlot`, `SimulatorManager`, `SimulatorError`, `MutationCounter`, `RunnerInput` (with `+Excluding`), `ExecutionResult`, `ExecutionStatus` |
 | [08 — Result Parsing & Cache](08-result-parsing-cache.md) | `TestResultResolver`, `ResultParser`, `TestRunOutcome`, `TestOutputParser`, `SPMResultParser`, `XCResultParser`, `CacheTestSelection`, `CacheStore`, `CacheMetadata`, `MutantCacheKey`, `TestFileDiff`, `KillerTestFileResolver` |
-| [09 — Reporting & Infrastructure](09-reporting-infrastructure.md) | `ProgressReporter`, `ConsoleProgressReporter`, `SilentProgressReporter`, `RunnerEvent`, `RunnerSummary`, `ExecutionResult+ReportStatusReason`, `RunnerSummary+DetectionLine`, `RunnerSummary+Cache`, `TextReporter`, `JsonReporter`, `HtmlReporter`, `String+HtmlEscaped`, `SonarReporter`, `SarifReporter`, all `Sarif*` types and `SarifRuleCatalog`, `MarkdownReporter`, `GateResult+Summary`, `ReportFormat`, `ReportWriter`, `ExecutionStatus+MutationReportStatus`, `ExecutionStatus+ProgressIcon`, all `MutationReport*` types (with `MutationReportConfig`), all `Sonar*` types, `MutantLogWriter`, `ProcessLaunching`, `RunnerLaunching`, `ProcessRequest`, `ProcessRunner`, `SPMProcessLauncher`, `XcodeProcessLauncher`, `SleepInhibitor`, `StandardOutput`, `StandardError`, `FileSystem`, `VersionedJSON`, `JSONLines`, `OnceWarning`, `OutputStopRule`, `OutputWatcher`, `SystemCalls`, `CanonicalPath`, `ProcessTree`, `ProcessArguments`, `TimeoutEscalation`, `ProcessGroupRegistry`, `XCTestRunPlist`, `ProjectRelativePath`, `TestFilesHasher`, `Uniquing` |
+| [09 — Reporting & Infrastructure](09-reporting-infrastructure.md) | `ProgressReporter`, `ConsoleProgressReporter`, `SilentProgressReporter`, `RunnerEvent`, `RunnerSummary`, `ExecutionResult+ReportStatusReason`, `RunnerSummary+DetectionLine`, `RunnerSummary+FormattedScore`, `RunnerSummary+Cache`, `TextReporter`, `TimingReporter`, `JsonReporter`, `HtmlReporter`, `String+HtmlEscaped`, `SonarReporter`, `SarifReporter`, all `Sarif*` types and `SarifRuleCatalog`, `MarkdownReporter`, `GateResult+Summary`, `ReportFormat`, `ReportWriter`, `ExecutionStatus+MutationReportStatus`, `ExecutionStatus+ProgressIcon`, all `MutationReport*` types (with `MutationReportConfig`), all `Sonar*` types, `MutantLogWriter`, `ProcessLaunching`, `RunnerLaunching`, `ProcessRequest`, `ProcessRunner`, `SPMProcessLauncher`, `XcodeProcessLauncher`, `SleepInhibitor`, `StandardOutput`, `StandardError`, `FileSystem`, `VersionedJSON`, `JSONLines`, `OnceWarning`, `OutputStopRule`, `OutputWatcher`, `SystemCalls`, `CanonicalPath`, `ProcessTree`, `ProcessArguments`, `TimeoutEscalation`, `ProcessGroupRegistry`, `XCTestRunPlist`, `ProjectRelativePath`, `TestFilesHasher`, `Uniquing` |
 | [10 — Quality Gate](10-quality-gate.md) | `GatePolicy`, `QualityGate`, `GateResult`, `Baseline`, `BaselineScope`, `BaselineEntry`, `BaselineStore`, `GateError`, `GateReporter` |
-| [11 — Plans](11-plans.md) | `Plan`, `PlanStore`, `PlanError`, `Planner`, `PlanMaterializer`, `Shard`, `ShardSelector`, `PlanJournal`, `PlanResumer`, `RunIdentity`, `RunnerConfiguration+Plan`, `ResultMerger`, `MergeError`, `Reproducer`, `Reproduction` |
+| [11 — Plans](11-plans.md) | `Plan`, `PlanStore`, `PlanError`, `Planner`, `PlanMaterializer`, `Shard`, `ShardSelector`, `PlanJournal`, `PlanResumer`, `RunIdentity`, `RunnerConfiguration+Plan`, `ResultMerger`, `MergeError`, `Reproducer`, `Reproduction` (with `Sandbox.release(keepingFor:)`) |
 
 ---
 
@@ -34,16 +34,24 @@ DiscoveryInput
   → MutantIndexingStage       → [IndexedMutationPoint]  ┘ → Plan (+ plan.json through PlanStore)
   → SchematizationStage       → [SchematizedFile], [MutantDescriptor]  ┐ PlanMaterializer
   → IncompatibleRewritingStage → [MutantDescriptor]                     ┘
-  → RunnerInput
+  → RunnerInput (+ sourceHashes from the plan's files)
 
 RunnerInput
-  → SandboxFactory → Sandbox
-  → BuildStage     → BuildArtifact
-  → TestExecutionStage → TestResultResolver → [ExecutionResult]
-  → FallbackExecutor (on build failure)     → [ExecutionResult]
-  → IncompatibleMutantExecutor              → [ExecutionResult]
-  → RunnerSummary
-  → RunConclusion → TextReporter, QualityGate, ReportWriter → Reporters, GateReporter
+  → MutantExecutor
+      CacheStore (load, adoptCoverage)        → cached verdicts, TestCoverage?
+      SandboxFactory (warm: WarmSandboxes?)   → Sandbox → SchemaSandbox
+      SimulatorPool.make + setUp, while the schema builds
+      BuildStage → BuildArtifact              (SPM compile error → SchemaNarrower)
+      BaselineProbe (SPM) or requireXcodeBaselineToPass (Xcode) → TestExecutionContext (+ TestCoverage)
+      TestExecutionStage (SlowestFirst)       → ResultParser → [ExecutionResult]
+      baseline fails → SchemaBatches          → each batch through SchemaSandbox.install, built and run again
+      FallbackExecutor (no schema artifact)   → [ExecutionResult]
+      IncompatibleMutantExecutor (MutantQueue, reusing the schema sandbox) → [ExecutionResult]
+  → RunnerSummary (+ PhaseTimings entries)
+  → RunConclusion → TextReporter, TimingReporter, QualityGate, ReportWriter → Reporters, GateReporter
+
+Plan + result.json…  → ResultMerger → [ExecutionResult] → RunnerSummary → RunConclusion   (merge)
+Plan + mutant        → Reproducer → PlanMaterializer → MutantExecutor → verdict          (reproduce)
 ```
 
 ### Actors
@@ -54,6 +62,9 @@ RunnerInput
 | `CacheStore` | Serialises reads/writes to result cache |
 | `MutationCounter` | Tracks progress index across concurrent tasks |
 | `ConsoleProgressReporter` | Serialises progress output to stdout |
+| `SchemaSandbox` | Tracks which schemas the sandbox holds; installs a batch's over them, or restores the links to the originals |
+| `MutantQueue` | Hands the next incompatible mutant to whichever warm sandbox is free |
+| `PhaseTimings` | Collects the phase entries every stage records, for `--timing` and `timing.json` |
 
 ### Exit codes
 
@@ -65,7 +76,7 @@ RunnerInput
 
 ### Regions the suite deliberately does not cover
 
-Region coverage is **99.84% — six regions of 3711 missed**. The regions left are listed here with the reason, so that the next person measuring does not spend a second afternoon rediscovering them. Everything not on this list is expected to be covered; a new uncovered region is a gap, not a member of this set.
+Measured on `b66c962`: `llvm-cov report` gives **4421 regions with 46 missed (98.96%)**, 1552 functions with 13 missed, and 10789 lines with 13 missed; the lcov export gives 9518 of 9518 lines. The page used to say "99.84% — six regions of 3711 missed"; that was the figure after #154, and the code added since brought the region count to 4421 and the missed count to 46. The groups below record the regions known to be uncoverable, with the reason, so that the next person measuring does not spend a second afternoon rediscovering them. They are not the 46: every missed region that is not listed here is a gap to cover, not a member of this set, and the 46 have not yet been sorted into the two.
 
 **How the figure is measured.** From the repository root:
 
@@ -77,12 +88,12 @@ xcrun llvm-cov report "$TEST_BINARY" -instr-profile "$BIN_PATH/codecov/default.p
     $(find Sources -name "*.swift" | sort)
 ```
 
-The `TOTAL` row of that report is the one source of the figure above, and the rows with a missed region are the files to look in. To see where in a file, `xcrun llvm-cov show "$TEST_BINARY" -instr-profile "$BIN_PATH/codecov/default.profdata" <file> -show-regions`, or the regions with a zero count and kind 0 (code regions) in `xcrun llvm-cov export` over the same files. Two things make other counts differ:
+The `TOTAL` row of that report is the one source of the region figure above, and the rows with a missed region are the files to look in. To see where in a file, `xcrun llvm-cov show "$TEST_BINARY" -instr-profile "$BIN_PATH/codecov/default.profdata" <file> -show-regions`, or the regions with a zero count and kind 0 (code regions) in `xcrun llvm-cov export` over the same files. Two things make other counts differ:
 
-- **The report's line column is not the line coverage.** It counts the lines of every function it instantiates, so a closure or autoclosure that never runs — the fallback of a `??` — shows as a missed function with a missed line, while the lcov export the Sonar analysis imports folds that line into the function around it. Line coverage from the lcov is 9518 of 9518 (#235).
-- **Passing a function as an argument is a region.** `uniquingKeysWith: Uniquing.first` or `isAlive: ProcessTree.isAlive` compile to a thunk that only runs when the function is called — for a uniquing rule, only on a duplicate key. That is why `Uniquing` builds its dictionaries with loops rather than taking a function.
+- **The report's line column is not the line coverage.** It counts the lines of every function it instantiates, so a closure or autoclosure that never runs — the fallback of a `??` — shows as a missed function with a missed line, while the lcov export the Sonar analysis imports folds that line into the function around it. Line coverage from the lcov is 9518 of 9518 (#235), and was again on `b66c962`.
+- **Passing a function as an argument is a region.** `uniquingKeysWith: { first, _ in first }` or `isAlive: ProcessTree.isAlive` compile to a thunk that only runs when the function is called — for a uniquing rule, only on a duplicate key. That is why `Uniquing` builds its dictionaries with loops rather than taking a function. Two `uniquingKeysWith:` closures are in the code at `b66c962` — `RunnerInput.sourceHashes` in `PlanMaterializer` and the input positions in `TestExecutionStage` — and are gaps of this kind, not entries of the list below.
 
-Each entry was tried before it was listed. The rule from #95 applies: a region that cannot be made to fail under a negative control is a candidate for deletion, not for a test. Going from 71 missed regions to six (#154), fallbacks no input reaches were deleted or rewritten without the optional — the shard error's missing description, the locator's non-usage errors and its child-path `?? name`, a protocol name in a declaration path, an empty ternary slice, the instrumenter's substring, the integrity reason, the shard balance's `min`, a merge's second search for missing verdicts, the warm Xcode path's content and result-bundle listing, a SARIF rule index looked up with a fallback, and an `.expr` item that is an `if` or `switch`, which the parser never produces — and the rest were covered by tests.
+Each entry was tried before it was listed. The rule from #95 applies: a region that cannot be made to fail under a negative control is a candidate for deletion, not for a test. Going from 71 missed regions to six (#154, when the total was 3711), fallbacks no input reaches were deleted or rewritten without the optional — the shard error's missing description, the locator's non-usage errors and its child-path `?? name`, a protocol name in a declaration path, an empty ternary slice, the instrumenter's substring, the integrity reason, the shard balance's `min`, a merge's second search for missing verdicts, the warm Xcode path's content and result-bundle listing, a SARIF rule index looked up with a fallback, and an `.expr` item that is an `if` or `switch`, which the parser never produces — and the rest were covered by tests.
 
 **Failure arms of system calls that macOS does not produce** — none left
 
@@ -96,9 +107,11 @@ All ten are covered now, by the same move each time: the failing call is a param
 |---|---|---|
 | `Discovery/Pipeline/FileDiscoveryStage.swift` | 48 | `sourcesPath` was checked for existence at the top of `run`, and the enumerator is never `nil` |
 | `Discovery/Operators/ArithmeticOperatorVisitor.swift` | 58 | the operator is looked up by position in the list that contains it |
-| `Discovery/Schematization/SchemataGenerator.swift` | 23 | a body's offsets, moved by the edits after them, always fall inside the buffer they were taken from |
-| `Infrastructure/XCTestRunPlist.swift` | 24 | `init?` already refused data that is not a `[String: Any]` |
-| `Infrastructure/ProcessTree.swift` | 18 | the process table has no cycles, so no pid is visited twice |
+| `Discovery/Schematization/SchemataGenerator.swift` | 70 | a body's offsets, moved by the edits after them, always fall inside the buffer they were taken from; the check moved from the loop in `generate` into `schemaBody`, where it shares one guard with the statements' range (d397bf3), so this arm was not re-measured on its own |
+| `Infrastructure/XCTestRunPlist.swift` | 22, 55 | `init?` already refused data that is not a `[String: Any]`, so `dictionary()` is never `nil` in `activating` or `targetNames` |
+| `Infrastructure/ProcessTree.swift` | 40 | the process table has no cycles, so no pid is visited twice |
+
+Line numbers are those of `b66c962`.
 
 These stay because removing them replaces a graceful degrade with a crash or a force-unwrap. They are not free — each is a line that can rot without anyone noticing — which is why they are written down rather than left to be rediscovered.
 

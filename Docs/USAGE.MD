@@ -11,11 +11,13 @@ This guide covers every way to run and configure `swift-mutation-testing`, from 
 3. [CLI Reference](#cli-reference)
 4. [Plans](#plans) — shard a run across machines, merge, resume, reproduce one mutant
 5. [Parallelism](#parallelism)
-6. [Output Formats](#output-formats)
-7. [Suppressing Mutations](#suppressing-mutations)
-8. [Quality Gate](#quality-gate)
-9. [CI/CD Integration](#cicd-integration)
-10. [Exit Codes](#exit-codes)
+6. [Which tests a mutant runs](#which-tests-a-mutant-runs)
+7. [Kept sandboxes](#kept-sandboxes)
+8. [Output Formats](#output-formats)
+9. [Suppressing Mutations](#suppressing-mutations)
+10. [Quality Gate](#quality-gate)
+11. [CI/CD Integration](#cicd-integration)
+12. [Exit Codes](#exit-codes)
 
 ---
 
@@ -112,18 +114,18 @@ Building for testing...
     The clones' first boot keeps the machine busy for a few minutes; the first mutants take longer
 
 Testing mutants...
-  ✓ 1/147  NegateConditional           Calculator.swift:12
+  ✓ 1/147  NegateConditional  Calculator.swift:12
   ✗ 2/147  LogicalOperatorReplacement  Validator.swift:34
-  ✓ 3/147  SwapTernary                 FeatureFlags.swift:8
+  ✓ 3/147  SwapTernary  FeatureFlags.swift:8
   ...
 
 Results by file:
   Sources/Calculator.swift    score: 95.0%   killed: 19   survived: 1   timeout: 0   unviable: 0   no coverage: 0
-  Sources/Validator.swift     score: 72.4%   killed: 21   survived: 8   timeout: 0   unviable: 0   no coverage: 0
+  Sources/Validator.swift    score: 72.4%   killed: 21   survived: 8   timeout: 0   unviable: 0   no coverage: 0
 
 Undetected mutants:
   Sources/Validator.swift:34:5   LogicalOperatorReplacement   survived
-  Sources/Validator.swift:67:12  NegateConditional            survived
+  Sources/Validator.swift:67:12   NegateConditional   survived
   ...
 
 Overall mutation score: 85.3%
@@ -146,7 +148,7 @@ swift-mutation-testing init
 
 ### Full reference
 
-Every key the file accepts. `init` writes the same layout, filling in what it detects and leaving the rest commented out; the `operators` and `disabled-mutators` lines are not part of what it writes. Comments show the default value for each optional field.
+Every key the file accepts. `init` writes part of this layout, filling in what it detects and leaving the rest commented out: the container, `scheme`, `destination`, `xcodebuild-args`, `testing-framework` and `concurrency` lines only for an Xcode project, and never `quiet`, `timing`, `sources-path`, `keep-logs`, `operators` or `disabled-mutators`. Comments show the default value for each optional field.
 
 ```yaml
 # swift-mutation-testing configuration
@@ -158,6 +160,10 @@ Every key the file accepts. `init` writes the same layout, filling in what it de
 
 scheme: MyApp
 destination: platform=iOS Simulator,name=iPhone 16
+
+# Arguments appended to every xcodebuild call (Xcode only)
+# xcodebuild-args:
+#   - -allowProvisioningUpdates
 
 # Limit test execution to a specific target (recommended when the project has UI tests)
 # test-target: MyAppTests
@@ -183,6 +189,9 @@ timeout: 60
 
 # Suppress progress output
 # quiet: true
+
+# Print how the run's time splits between its phases
+# timing: true
 
 # Directory for source discovery, or a single .swift file (default: the project path)
 # sources-path: Sources
@@ -242,7 +251,7 @@ The file is read line by line, not by a full YAML parser:
 - A key is `key: value` at the start of a line. Keys are kebab-case, as in the table below. A key the tool does not know is ignored with a warning (`Warning: unknown key 'treshold' in .swift-mutation-testing.yml is ignored`), so a misspelt key does not pass unnoticed.
 - A list is either `- item` lines under the key or one comma-separated value (`exclude: /Generated/, /Vendor/`).
 - `#` starts a comment at the start of a line or after a space, outside quotes, so `timeout: 60  # seconds` reads `60`. Quotes around a value are removed.
-- Values are checked before anything runs, and a bad one stops with exit code `1`, naming the key: `timeout` and `build-timeout` must be positive numbers, `concurrency` a whole number of at least 1, `min-score` between 0 and 100, `max-score-drop` 0 or more, `max-new-survivors` and `max-integrity-warnings` whole numbers of 0 or more. `no-cache`, `no-warm-sandbox` and `quiet` take `true`/`false`, `yes`/`no` or `on`/`off`.
+- Values are checked before anything runs, and a bad one stops with exit code `1`, naming the key: `timeout` and `build-timeout` must be positive numbers, `concurrency` a whole number of at least 1, `min-score` between 0 and 100, `max-score-drop` 0 or more, `max-new-survivors` and `max-integrity-warnings` whole numbers of 0 or more. `no-cache`, `no-warm-sandbox`, `quiet` and `timing` take `true`/`false`, `yes`/`no` or `on`/`off`.
 
 ### Field reference
 
@@ -258,7 +267,7 @@ The file is read line by line, not by a full YAML parser:
 | `timeout` | Number | `120` (Xcode) / `30` (SPM) | Per-mutant test timeout in seconds. The first, parallel pass allows twice this |
 | `build-timeout` | Number | `120` | Build timeout in seconds |
 | `concurrency` | Number | `max(1, CPUs − 1)` | Parallel test workers, at least 1. Xcode on `platform=macOS`, and XCTest on a simulator, run one — see [Parallelism](#parallelism) |
-| `no-cache` | Boolean | `false` | Disable result caching |
+| `no-cache` | Boolean | `false` | Disable result caching, and with it the [coverage map](#which-tests-a-mutant-runs) |
 | `no-warm-sandbox` | Boolean | `false` | Build every sandbox from scratch instead of keeping built ones between runs |
 | `quiet` | Boolean | `false` | Suppress progress output |
 | `output` | String | — | Path for Stryker-compatible JSON report |
@@ -267,7 +276,7 @@ The file is read line by line, not by a full YAML parser:
 | `sarif-output` | String | — | Path for the SARIF 2.1.0 report of undetected mutants |
 | `markdown-output` | String | — | Path for a Markdown summary, for CI job summaries |
 | `keep-logs` | String | — | Directory for per-mutant test output logs, for `baseline.log` when the unmutated project does not build or its suite fails, and for `timing.json` |
-| `timing` | Bool | `false` | Print how the run's time splits between its phases after the summary. See [Time by phase](#time-by-phase) |
+| `timing` | Boolean | `false` | Print how the run's time splits between its phases after the summary. See [Time by phase](#time-by-phase) |
 | `sources-path` | String | project root | Directory for Swift source file discovery, or a single `.swift` file to mutate alone |
 | `exclude` | List | `[]` | Files to skip: globs, or fragments of the path. See [Excluding files](#excluding-files). `exclude-patterns` is read as the same key |
 | `disabled-mutators` | List | `[]` | Operator identifiers to skip — deny-list alternative to the `mutators` block |
@@ -327,7 +336,7 @@ operators:
 How the three settings combine, on the command line and in the file:
 
 1. An explicit list — `--operator` or `operators` — runs exactly those operators, whatever their tier. The command line wins over the file.
-2. Otherwise the tier's set runs — `--operator-tier`, else `operator-tier`, else `default` — minus every operator disabled by `--disable-mutator`, `disabled-mutators` or `active: false`, from the command line and the file alike. Disabling every operator of the tier is a usage error, exit code `1`; choose a larger `--operator-tier` instead.
+2. Otherwise the tier's set runs — `--operator-tier`, else `operator-tier`, else `default` — minus every operator disabled by `--disable-mutator`, `disabled-mutators` or `active: false`, from the command line and the file alike. In one file, a `mutators` block with at least one `active: false` entry replaces the `disabled-mutators` key rather than adding to it. Disabling every operator of the tier is a usage error, exit code `1`; choose a larger `--operator-tier` instead.
 
 Identifiers are case-sensitive, and one that names no operator is ignored without a warning: a list in which no name matches finds no mutant, and the run ends with exit code `1`.
 
@@ -366,9 +375,9 @@ swift-mutation-testing [project-path] [options]
 | `--target <test-target>` | Limit test execution to this test target: its bundle on a package, `-only-testing` on an Xcode project |
 | `--testing-framework <fw>` | `xctest` or `swift-testing` — which library a mutant's tests are run with (default: `swift-testing`). Auto-detected by `init`; on an SPM package the probe drops a library that has no tests anyway |
 | `--timeout <seconds>` | Per-mutant test timeout, a positive number (default: 120 Xcode, 30 SPM) |
-| `--build-timeout <seconds>` | Build timeout, a positive number (default: 120). Sandboxes never inherit `.build`, so every build is cold |
+| `--build-timeout <seconds>` | Build timeout, a positive number (default: 120). Sandboxes never inherit the project's `.build` or `DerivedData`, so the first build of a [kept sandbox](#kept-sandboxes), and every build under `--no-warm-sandbox`, is cold |
 | `--concurrency <n>` | Parallel workers, at least 1 (default: CPUs − 1). Resolved to 1 for Xcode on `platform=macOS` and for XCTest — see [Parallelism](#parallelism) |
-| `--no-cache` | Disable result caching — no verdict is read from the cache, and none is written back |
+| `--no-cache` | Disable result caching — no verdict, duration or [coverage map](#which-tests-a-mutant-runs) is read from the cache, and none is written back |
 | `--no-warm-sandbox` | Remove the sandboxes the project keeps in `$TMPDIR` between runs and build from scratch. See [Kept sandboxes](#kept-sandboxes) |
 | `--keep-logs <dir>` | Write each mutant's captured test output to `<dir>/<mutant-id>.log`, and the output of an unmutated build or suite that fails to `<dir>/baseline.log` |
 | `--output <path>` | Write Stryker-compatible JSON report |
@@ -392,7 +401,7 @@ swift-mutation-testing [project-path] [options]
 | `--plan <plan.json>` | `run`: execute this plan instead of discovering, refusing it if the code changed. `merge`, `reproduce`: the plan to work from |
 | `--shard <i/n>` | `run --plan` only: run the i-th of n slices of the plan, split by file |
 | `--project-path <path>` | `merge` only: the project the merged report describes (default: the current directory) |
-| `--version` | Print the version and the platform it was built for (`swift-mutation-testing 1.7.0 [arm64-macos15]`) and exit |
+| `--version` | Print the version, the architecture it was built for and the major version of the macOS it runs on (`swift-mutation-testing 1.7.0 [arm64-macos15]`), and exit |
 | `--help`, `-h` | Print the usage and exit (as the first argument) |
 
 An option the tool does not know, a missing value, or a value of the wrong kind stops the run with exit code `1` before anything is built.
@@ -582,45 +591,65 @@ swift-mutation-testing reproduce swift-mutation-testing_12      # by the id in a
 | Xcode scheme on a simulator destination, XCTest | 1 |
 | Xcode scheme on `platform=macOS` | 1 |
 
-A package's mutants run the compiled test bundles directly, not through `swift test`, so the workers do not queue on the lock SwiftPM takes on `.build`. An Xcode run on a simulator destination gives each worker a simulator of its own: the destination's simulator is cloned once per worker (`✓ 3 simulators ready`) and the clones are deleted when the run ends. A destination with no `platform=`, or with a `Simulator` platform, counts as a simulator; `platform=macOS` has nothing to clone.
+A package's mutants run the compiled test bundles directly, not through `swift test`, so the workers do not queue on the lock SwiftPM takes on `.build`. An Xcode run on a simulator destination gives each worker a simulator of its own: the destination's simulator is shut down and cloned once per worker (`✓ 3 simulators ready`), and the clones are deleted when the run ends; clones a crashed run left behind are deleted at the start of the next one. A destination with no `platform=`, or with a `Simulator` platform, counts as a simulator; `platform=macOS` has nothing to clone.
 
-Each clone copies the simulator's data, one clone at a time, within a minute plus half a minute per GB of it: a device Xcode has used for a while can hold gigabytes, and eight clones of a 5 GB one take over a minute, where clones of a fresh device take a second. A clone that runs past its time ends the run with `Failed to clone simulator`, naming the size; `xcrun simctl erase <udid>` or a device created for mutation testing clones faster. The clones' first boot then keeps the machine busy for a few minutes — the readiness line says so — and the first mutants take longer while it lasts.
+The clones are made and booted while the schema builds; `Workers` in the [time by phase](#time-by-phase) is how long the run still waited for them once the build was done.
+
+Each clone copies the simulator's data, one clone at a time, each within a minute plus half a minute per GB of that data: a device Xcode has used for a while can hold gigabytes, and eight clones of a 5 GB one take over a minute, where clones of a fresh device take a second. A clone that fails or runs past its time ends the run with exit code `1` and, when the size could be measured, names it:
+
+```
+Error: Failed to clone simulator <udid>. Its data holds 5.0 GB, which every clone copies: `xcrun simctl erase <udid>` or a dedicated device clones faster.
+```
+
+A clone that does not boot ends it with `Error: Simulator <udid> did not boot within the expected time.` The clones' first boot keeps the machine busy for a few minutes — the readiness line says so — and the first mutants take longer while it lasts.
 
 `--concurrency` is resolved down to 1 for the last two rows rather than accepted and quietly ignored, so the number the configuration reports is the number of mutants actually tested at once.
 
 **The workers of a package share one sandbox.** Every worker runs the same compiled test bundles from the same sandbox, with the same working directory, the same temporary directory and the same `#filePath` paths, so a test runs at the same time as copies of itself in other processes. That asks more of a suite than `swift test --parallel`, which runs each test once. A test that writes a file at a fixed path — a fixture next to its source found through `#filePath`, a fixed name under `NSTemporaryDirectory()`, a file relative to the working directory — can then fail because another worker deleted or overwrote it. When the mutated code ran in that process, the failure is recorded as a kill like any other: no integrity warning and no reason in the report. On macOS, setting `TMPDIR` would not separate them: `NSTemporaryDirectory()` and `FileManager.default.temporaryDirectory` ignore it and return the user's temporary directory. Give each test's files a unique name or a directory of its own (a `UUID` in the path), or run with `--concurrency 1` (or `concurrency: 1` in `.swift-mutation-testing.yml`); a kill that disappears with one worker came from this. See [Mutation Results](MUTATION-RESULTS.md#killed-).
 
-Two passes use fewer workers: mutants that timed out in the parallel pass are run again on half the machine's cores (never more than `--concurrency`, at least 1), and incompatible mutants are built and tested on half of the workers, each worker with a sandbox of its own — kept between runs, see [Kept sandboxes](#kept-sandboxes) — that it builds once and then rebuilds incrementally — see [Mutation Results](MUTATION-RESULTS.md#performance-implications).
+Two passes use fewer workers: mutants that timed out in the parallel pass are run again on half the machine's cores (never more than `--concurrency`, at least 1), and incompatible mutants are built and tested on half of the workers (at least 1, and on a simulator destination no more than there are simulators), each worker with a sandbox of its own that it builds once and then rebuilds incrementally for each mutant it takes from the shared queue. The first of them reuses the schema's sandbox; the others are [kept between runs](#kept-sandboxes). See [Mutation Results](MUTATION-RESULTS.md#performance-implications).
 
-The parallel pass starts with the mutants the cache remembers as slowest, so a mutant that looped last time does not hold a worker at the end of the pass while the rest sit idle. On a first run, or under `--no-cache`, the mutants of a `while` or `repeat` condition go first instead, since those are the ones that loop.
+The parallel pass orders the mutants by the test durations the cache remembers. A mutant with no remembered duration goes first — among those, the `NegateConditional` and `RelationalOperatorReplacement` mutants of a `while` or `repeat` condition, since those are the ones that loop — and the mutants with a remembered duration follow, slowest first. A mutant that looped last time timed out, so its verdict is not cached but its duration is: it starts before the faster ones and does not hold a worker at the end of the pass while the rest sit idle. Under `--no-cache` no duration is known, and the loop-condition mutants go first.
 
 ---
 
+## Which tests a mutant runs
+
+The baseline — the unmutated suite run once against the schema build, before any mutant — also records which tests reach each function that holds a mutant. That **coverage map** decides what each mutant of the schema runs:
+
+- A mutant in a function no test reached is reported **no coverage** without launching anything: no test could have run its code.
+- A mutant in a function some tests reached runs only those tests: on an Xcode project, one `-only-testing` per test (within `--target` when it is set); on a package, only those tests, in the bundles that hold them. A pass of those tests is the verdict.
+- A mutant the map does not place — outside a function body, or in a function that also ran outside any test — runs as it does without a map: on a package, the `<File>Tests` suite of a `<File>Tests.swift` test file first, when its source file is `<File>.swift`, and the whole suite when that suite does not detect it; on an Xcode project, the whole suite, or `--target`.
+
+The map is stored with the cache, in `.swift-mutation-testing-cache/metadata.json`, and reused while the test files and the sources in scope are unchanged; a run with any of them changed records it again in its baseline. On an Xcode project, the baseline that records the map runs its tests one at a time (`-parallel-testing-enabled NO`). Under `--no-cache` no map is recorded or read, so every mutant launches its tests. `reproduce` ignores the map and runs the whole suite. A mutant the map reports as no coverage still gets a `--keep-logs` file, with `activated: no` and no test output.
+
 ## Kept sandboxes
 
-A run never builds in the project itself: it builds a copy — a sandbox of symlinks to the project's files, with the schematized or mutated ones written in — in `$TMPDIR/swift-mutation-testing`. Those sandboxes are kept between runs, one per project and slot (`warm-<project key>-<n>`): the next run of the same project refreshes the links, rewrites only the files whose content changed and builds on top of the build that is already there, so the schema build and the warm builds of the incompatible mutants are incremental rather than cold. A sandbox whose build fails for a reason that is not a compile error in its files is emptied and built once from scratch. Two runs of the same project at once take different slots; a run that crashed leaves nothing locked. `--no-warm-sandbox` (or `no-warm-sandbox: true`) removes the project's kept sandboxes before the run and uses throwaway ones, as `reproduce` always does; macOS also removes what `$TMPDIR` has not used for three days. Each kept sandbox holds a full build of the project with its tests.
+A run never builds in the project itself: it builds a copy — a sandbox of symlinks to the project's files, with the schematized or mutated ones written in — in `$TMPDIR/swift-mutation-testing`. Those sandboxes are kept between runs, one per project and slot (`warm-<project key>-<n>`, the key a hash of the project's path): the schema's sandbox, and one for each further worker of the incompatible mutants. The next run of the same project refreshes the links, rewrites only the files whose content changed and builds on top of the build that is already there, so the schema build and the builds of the incompatible mutants are incremental rather than cold. A build that fails without an error in a file under the sandbox — a stale build state rather than a mutant that does not compile — has its `.build` and `.xmr-derived-data` removed and runs once more from scratch.
+
+Each slot is locked while a run uses it, so two runs of the same project at once take different slots; the lock goes with the process, so a run that crashed leaves nothing locked. Each kept sandbox holds a full build of the project with its tests — a `.build` for a package, a derived data directory for an Xcode project — so `$TMPDIR/swift-mutation-testing` grows by that much per slot and stays that size between runs. `--no-warm-sandbox` (or `no-warm-sandbox: true`) removes the project's kept sandboxes before the run, except a slot another run holds, and uses throwaway sandboxes, as `reproduce` always does; to reclaim the space of every project, delete `$TMPDIR/swift-mutation-testing` when no run is active. macOS also removes what `$TMPDIR` has not used for three days.
 
 ## Output Formats
 
 ### Time by phase
 
-`--timing` prints, after the summary, how long each phase of the run took: the sandbox, the schema build and its narrowing rounds, the checks of the unmutated project, the workers (the time waited for the simulator pool, which is cloned and booted while the schema builds), the baseline, the three passes over the schematized mutants, the fallback builds, the warm sandboxes and the incompatible mutants, and the teardown. A phase that ran more than once — a narrowing round, a schema batch — is summed and marked with its count. `Warm sandboxes` ends when the first of them is ready to take a mutant; the others finish building under `Incompatible mutants`. `Other` is what the phases do not account for. Discovery precedes `Total duration`, so it is listed but left out of `Other`.
+`--timing` (or `timing: true`) prints, after the summary, how long each phase of the run took, in this order: discovery, the sandbox, the schema build and its narrowing rounds, the check that the unmutated project builds, the workers (the time waited, after the build, for the simulator pool, which is cloned and booted while the schema builds), the baseline, the check of the unmutated suite, the three passes over the schematized mutants (`Mutants`, `Stragglers`, `Kills without activation`), the fallback builds, the warm sandboxes and the incompatible mutants, and the teardown. Only the phases that ran are listed. A phase that ran more than once — a narrowing round, a schema batch — is summed and marked with its count. `Warm sandboxes` ends when the first of them is ready to take a mutant; the others finish building under `Incompatible mutants`. `Other` is what the phases do not account for. Discovery precedes `Total duration`, so it is listed but left out of `Other`.
 
 ```
 Time by phase:
-  Discovery                   0.6s
-  Sandbox                     0.3s
-  Schema build               20.1s
-  Schema narrowing           27.2s   4×
-  Workers                     0.1s
-  Baseline                    5.9s
-  Mutants                   154.0s
-  Stragglers                211.0s
-  Kills without activation    0.4s
-  Warm sandboxes             25.0s
-  Incompatible mutants      142.0s
-  Teardown                    0.2s
-  Other                       1.2s
+  Discovery                      0.6s
+  Sandbox                        0.3s
+  Schema build                  20.1s
+  Schema narrowing              27.2s   4×
+  Workers                        0.1s
+  Baseline                       5.9s
+  Mutants                      154.0s
+  Stragglers                   211.0s
+  Kills without activation       0.4s
+  Warm sandboxes                25.0s
+  Incompatible mutants         142.0s
+  Teardown                       0.2s
+  Other                          1.2s
 ```
 
 The same table, with the start of every entry, is written to `<directory>/timing.json` whenever `--keep-logs` is set, with or without `--timing`. Use it to measure a change to the tool on one phase without the others' noise.
@@ -664,8 +693,9 @@ Building for testing...
 Testing mutants...
   ✓ 1/147  ArithmeticOperatorReplacement  Calculator.swift:12
   ✗ 2/147  RelationalOperatorReplacement  Validator.swift:34
-  ⚠ 3/147  RemoveSideEffects              Service.swift:55
-  ⏱ 4/147  NegateConditional              Loop.swift:9
+  ⚠ 3/147  RemoveSideEffects  Service.swift:55
+  ⏱ 4/147  NegateConditional  Loop.swift:9
+  – 5/147  SwapTernary  Formatter.swift:21
 ```
 
 When the schema does not build, the run says which mutants it drops before rebuilding:
@@ -709,11 +739,11 @@ When the schema still does not build, the run first builds an unmutated copy of 
 ```
 Results by file:
   Sources/Calculator.swift    score: 95.0%   killed: 19   survived: 1   timeout: 0   unviable: 0   no coverage: 0
-  Sources/Validator.swift     score: 72.4%   killed: 21   survived: 8   timeout: 0   unviable: 0   no coverage: 0
+  Sources/Validator.swift    score: 72.4%   killed: 21   survived: 8   timeout: 0   unviable: 0   no coverage: 0
 
 Undetected mutants:
   Sources/Validator.swift:34:5   RelationalOperatorReplacement   survived
-  Sources/Validator.swift:67:12  NegateConditional               survived
+  Sources/Validator.swift:67:12   NegateConditional   survived
 
 Overall mutation score: 85.3%
 Detected: 122 (killed 122, timeout 0) / Undetected: 21 (survived 18, no coverage 3)
@@ -736,7 +766,7 @@ A mutant killed by a crash counts as killed. Unviable mutants are excluded from 
 
 ### Quiet mode (`--quiet`)
 
-Suppresses all progress output. The text summary, the quality gate and the lines naming each report written are still printed at the end.
+Suppresses all progress output. At the end the text summary, the `--timing` table when asked for, the lines naming each report written (`  ✓ JSON report: mutation-report.json`), the quality gate and the `  ✓ Baseline: <path>` line of `--write-baseline` are still printed, in that order.
 
 ### JSON report (`--output`)
 
@@ -789,7 +819,7 @@ cat mutation-summary.md >> "$GITHUB_STEP_SUMMARY"
 
 ### Caching
 
-Results are cached at `<project>/.swift-mutation-testing-cache/results.json`, keyed by SHA256 of the source and test file contents, together with whether the mutated code ran and how long its tests took. On subsequent runs, cached mutants skip the build and test cycle entirely. A timeout is not a cached verdict — the mutant runs again next time — but its duration is kept, so the next run starts it early.
+Results are cached at `<project>/.swift-mutation-testing-cache/results.json`, keyed by SHA256 of the source and test file contents, together with whether the mutated code ran and how long its tests took. `metadata.json` next to it holds the hashes of the test files and sources the cache was made against, the tests it was made with, and the [coverage map](#which-tests-a-mutant-runs). On subsequent runs, cached mutants skip the build and test cycle entirely. A timeout is not a cached verdict — the mutant runs again next time — but its duration is kept, so the next run starts it before the mutants with a shorter one (see [Parallelism](#parallelism)).
 
 The cache format is versioned. A cache written by an older version is discarded once, with a warning, and the run tests every mutant again; the next run writes a cache in the current format.
 
@@ -894,7 +924,7 @@ Quality gate: FAILED
   ✓ score drop 0.7 pts ≤ 2.0 pts
   ✗ 2 new undetected mutants (max 0)
       Sources/Parser.swift:88   RelationalOperatorReplacement   < → <=
-      Sources/Cache.swift:12    RemoveSideEffects               remove store()
+      Sources/Cache.swift:12   RemoveSideEffects   remove store()
   ℹ 3 mutants detected now that were undetected in the baseline
 ```
 

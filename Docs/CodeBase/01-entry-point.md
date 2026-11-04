@@ -65,10 +65,10 @@ One thing the tool was asked to do, with everything it needs to do it. Each comm
 |---|---|---|
 | `HelpCommand` | — | Writes `HelpText.usage`; `.success` |
 | `VersionCommand` | — | Writes `Version.current`; `.success` |
-| `InitCommand` | `projectPath`, `launcher` | `ProjectDetector.detect` then `ConfigurationFileWriter.write`; `.success`. The launcher defaults to `XcodeProcessLauncher()` |
+| `InitCommand` | `projectPath`, `launcher` | `ProjectDetector.detect` then `ConfigurationFileWriter.write`; `.success`, or a `UsageError` when the file already exists. The launcher defaults to `XcodeProcessLauncher()` |
 | `PlanCommand` | `configuration`, `path` | `Planner().plan(for:)`, throws `FileDiscoveryError.noMutants(for:)` for an empty plan, writes it with `PlanStore`, announces discovery; `.success`. `path` defaults to `plan.json` |
 | `MergeCommand` | `options: PlanOptions`, `configuration` | Requires `--plan`, applies it, loads the baseline, joins the result files with `ResultMerger` and hands the summary to `RunConclusion.conclude` |
-| `ReproduceCommand` | `options: PlanOptions`, `configuration`, `launcher` | Takes the plan given or makes one, clears leftovers and runs `Reproducer` under `SleepInhibitor` |
+| `ReproduceCommand` | `options: PlanOptions`, `configuration`, `launcher` | Takes the plan given (`applyingPlan(at:)`) or makes one with `Planner`, clears leftovers and runs `Reproducer` under `SleepInhibitor`; returns what `Reproducer` returns, `.error` when the mutant reached no verdict. The launcher defaults to `ProjectType.defaultLauncher` |
 | `RunCommand` | `configuration`, `planPath`, `shard: Shard?`, `launcher` | The default command: discover, execute, conclude (below) |
 
 `RunCommand.execute` applies the plan when `--plan` was given (wrapping it in a `PlanResumer` with the shard), loads the baseline through `RunConclusion.loadBaseline` before anything runs, then holds a `SleepInhibitor` assertion for the rest of the run so an unattended run does not stop while the machine sleeps:
@@ -86,16 +86,22 @@ flowchart TD
     Z -- yes --> ERR[FileDiscoveryError.noMutants]
     Z -- no --> AN["ConsoleProgressReporter.announceDiscovery\nunless quiet"]
     AN --> CL[SandboxCleaner.clearLeftovers]
-    CL --> R{"mutants left, or nothing resumed?"}
-    R -- yes --> G["MutantExecutor.execute → results"]
+    CL --> W{"build.warmSandboxes?"}
+    W -- no --> WR["WarmSandboxes().removeAll\n(projectPath:)"]
+    W -- yes --> RS
+    WR --> RS["'Resumed N verdicts' unless quiet\nPhaseTimings records .discovery"]
+    RS --> R{"mutants left, or nothing resumed?"}
+    R -- yes --> G["MutantExecutor.execute → results\nSandboxFactory(warm:) · timings"]
     R -- no --> O
     G --> O["resumed + results\nMutantID.ordered"]
     O --> J["PlanJournal.remove\nwhen a journal was kept"]
-    J --> H[RunnerSummary]
+    J --> H["RunnerSummary\nresults · totalDuration · phases"]
     H --> C["RunConclusion.conclude → .success or .gateFailed"]
 ```
 
 `SandboxCleaner.clearLeftovers()` kills test processes still running from the sandboxes of dead runs (`OrphanedProcessReaper().reap()`) and then sweeps those sandboxes (`removeOrphaned()`); doing it in the commands that build rather than in `main()` keeps `--help`, `--version` and `init` from paying for a directory listing they do not need. A run whose every mutant was resumed from the journal skips `MutantExecutor` entirely.
+
+The `MutantExecutor` of a run gets an `Environment` with a `SandboxFactory` that claims a persistent `warm-<key>-<n>` sandbox through `WarmSandboxes` (none under `--no-warm-sandbox`, which first removes the project's kept ones with `WarmSandboxes().removeAll(projectPath:)`) and the run's `PhaseTimings`. The discovery phase is recorded from the measured discovery duration, and `timings.entries` becomes the summary's `phases`; `totalDuration` counts from after discovery. `Reproducer` builds its own `MutantExecutor` with the default `Environment` (`SandboxFactory()` without `WarmSandboxes`), so a reproduction always uses a fresh `xmr-` sandbox.
 
 ---
 
@@ -107,15 +113,18 @@ struct RunConclusion: Sendable {
     let baseline: Baseline?
 
     func conclude(_ summary: RunnerSummary, identity: RunIdentity) throws -> ExitCode
+    static func reportTiming(_ summary: RunnerSummary, configuration: RunnerConfiguration)
     static func loadBaseline(for configuration: RunnerConfiguration) throws -> Baseline?
     static func evaluateGate(_ summary: RunnerSummary, configuration: RunnerConfiguration, baseline: Baseline?) -> GateResult?
     static func applyGate(_ gate: GateResult?, summary: RunnerSummary, configuration: RunnerConfiguration, now: Date = Date()) throws -> ExitCode
 }
 ```
 
-How a run or a merge ends. `conclude` prints the `TextReporter` report, evaluates the gate, writes the report files through `ReportWriter` and applies the gate. The Markdown summary includes the gate result, which is why the gate is evaluated before the reports are written. A report that cannot be written produces a warning on `StandardError` without aborting.
+How a run or a merge ends. `conclude` prints the `TextReporter` report, reports the timing (`reportTiming`), evaluates the gate, writes the report files through `ReportWriter` and applies the gate.
 
-`loadBaseline` reads the baseline named by `--baseline` before anything runs and compares its scope with the run's (`BaselineScope.differences`). A missing, unreadable or out-of-scope baseline throws `GateError`, so the run ends with `.error` before a single mutant is built.
+`reportTiming` does nothing when the summary has no phases, as for a merge; a run always has at least `.discovery`. Otherwise `TimingReporter` prints the phase table under `--timing`, and, when `--keep-logs` names a directory, `MutantLogWriter` writes the same table as `timing.json` there, whether or not `--timing` was given. The Markdown summary includes the gate result, which is why the gate is evaluated before the reports are written. A report that cannot be written produces a warning on `StandardError` without aborting.
+
+`loadBaseline` reads the baseline named by `--baseline` before anything runs and compares its scope with the run's (`BaselineScope.differences`). An unreadable, unsupported or out-of-scope baseline throws `GateError` (a missing one was already refused by `ConfigurationResolver` with a `UsageError`), so the run ends with `.error` before a single mutant is built.
 
 `evaluateGate` returns `nil` when the gate is inactive, and `QualityGate`'s result otherwise. `applyGate` runs after the reports: it prints that result with `GateReporter` and returns `.gateFailed` if a check failed; then, when `--write-baseline` was given, it writes this run's baseline whatever the outcome. See [10 — Quality Gate](10-quality-gate.md).
 
@@ -174,7 +183,7 @@ enum Version {
 }
 ```
 
-`name` is `swift-mutation-testing` and `number` is `0.0.0-dev` in the repository, replaced with the tag's version by the release workflow. `current` is `<name> <number> [<architecture>-<os>]`, e.g. `swift-mutation-testing 0.0.0-dev [arm64-macos26]` — the architecture (`arm64`, `x86_64`) and the macOS major version (`macos<major>`, or `linux`) come from compile-time checks and `ProcessInfo`, `unknown` for anything else. `VersionCommand` prints it. `number` alone is what files record as the tool's version: `Plan.toolVersion` (`Planner`) and the baseline's `toolVersion` (`RunConclusion.applyGate`).
+`name` is `swift-mutation-testing` and `number` is `0.0.0-dev` in the repository, replaced with the tag's version by the release workflow. `current` is `<name> <number> [<architecture>-<os>]`, e.g. `swift-mutation-testing 0.0.0-dev [arm64-macos26]` — the architecture (`arm64`, `x86_64`) and the macOS major version (`macos<major>`, or `linux`) come from compile-time checks and `ProcessInfo`, `unknown` for anything else. `VersionCommand` prints it. `number` alone is what files record as the tool's version: `Plan.toolVersion` (`Planner`), the baseline's `toolVersion` (`RunConclusion.applyGate`), the JSON report's `toolVersion` (`JsonReporter`) and the SARIF driver's `version` (`SarifReporter`).
 
 ---
 
@@ -186,7 +195,7 @@ struct UsageError: Error, Sendable, Equatable {
 }
 ```
 
-The error for a request the tool cannot carry out as given. Thrown by `CommandLineParser` (unknown flags, missing or malformed values, misplaced positionals, `--shard` or `--project-path` outside their command), by `ConfigurationResolver` (a required field absent in both CLI and file values, such as `scheme` and `destination` for Xcode projects, or an invalid value), by `XcodeContainerLocator.locate`, which declares `throws(UsageError)`, by `ConfigurationFileWriter` when the file already exists, and by `MergeCommand` without `--plan`. `run` writes its `message` alone, without the `Error: ` prefix other errors get.
+The error for a request the tool cannot carry out as given. Thrown by `CommandLineParser` (unknown flags, missing or malformed values, misplaced positionals, `--shard` or `--project-path` outside their command), by `ConfigurationResolver` (a required field absent in both CLI and file values, such as `scheme` and `destination` for Xcode projects, or an invalid value), by `XcodeContainerLocator.locate`, which declares `throws(UsageError)`, by `ConfigurationFileWriter` when the file already exists, and by `MergeCommand` without `--plan`. A `--shard` that is not `i/n` is a `UsageError` carrying `PlanError.invalidShard`'s message. `run` writes its `message` alone, without the `Error: ` prefix other errors get.
 
 | Field | Type | Description |
 |---|---|---|

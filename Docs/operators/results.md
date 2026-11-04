@@ -3,9 +3,9 @@
 | `ArithmeticOperatorReplacement` | experimental | 4 of 5 | 88.9% | 12.1% | 27.3% (33) | 2969 ms |
 | `BooleanLiteralReplacement` | experimental | 5 of 5 | 73.6% | 11.5% | 27.9% (61) | 11050 ms |
 | `LogicalOperatorReplacement` | conservative | 4 of 5 | 81.0% | 0.0% | 9.1% (33) | 9232 ms |
-| `NegateConditional` | conservative | 5 of 5 | 96.2% | 0.2% | 8.6% (35) | 2593 ms |
+| `NegateConditional` | conservative | 5 of 5 | 96.2% | 0.2% | 8.1% (37) | 2593 ms |
 | `RelationalOperatorReplacement` | experimental | 5 of 5 | 82.7% | 7.4% | 32.6% (86) | 5669 ms |
-| `RemoveSideEffects` | experimental | 5 of 5 | 69.3% | 1.9% | 27.8% (79) | 19619 ms |
+| `RemoveSideEffects` | experimental | 5 of 5 | 69.3% | 1.9% | 28.0% (82) | 19619 ms |
 | `SwapTernary` | conservative | 4 of 5 | 94.9% | 0.0% | 7.1% (14) | 6006 ms |
 
 | Project | Operator | Generated | Detected | Survived | No coverage | Unviable | Kill rate | Cost per mutant |

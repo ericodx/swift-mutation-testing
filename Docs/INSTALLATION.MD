@@ -3,7 +3,8 @@
 ## Requirements
 
 - macOS 15 or later
-- Xcode, whose toolchain builds and tests the projects the tool runs on (`xcodebuild`, `xcrun`, `swift`)
+- Xcode, whose toolchain builds and tests the projects the tool runs on. The tool calls `/usr/bin/xcodebuild`, `/usr/bin/xcrun` and `/usr/bin/swift`, so it uses the Xcode that `xcode-select` (or `DEVELOPER_DIR`) selects
+- Free disk space under `$TMPDIR`: the tool keeps a built copy of each project it runs on in `$TMPDIR/swift-mutation-testing` between runs (see [Kept sandboxes](USAGE.MD#kept-sandboxes))
 - Swift 6.2 or later, which comes with Xcode 26 (for building from source; `Package.swift` declares `swift-tools-version: 6.2`)
 
 ---
@@ -21,7 +22,7 @@ Verify the installation:
 
 ```bash
 swift-mutation-testing --version
-# swift-mutation-testing 0.1.0 [arm64-macos15]
+# swift-mutation-testing 1.6.4 [arm64-macos15]
 ```
 
 ### Updating
@@ -41,11 +42,11 @@ brew untap ericodx/homebrew-tools  # optional
 
 ## Download a pre-built binary
 
-Pre-built binaries are published with every release on the [GitHub Releases page](https://github.com/ericodx/swift-mutation-testing/releases).
+Pre-built binaries are published with every release on the [GitHub Releases page](https://github.com/ericodx/swift-mutation-testing/releases): one archive per release, `swift-mutation-testing-v<version>-macos.tar.gz`, holding the single `swift-mutation-testing` executable. It is built by the release workflow with `swift build -c release` on a `macos-26` GitHub runner, which is Apple silicon, so the binary is arm64 only; on an Intel Mac, [build from source](#build-from-source).
 
 ```bash
 # Replace X.Y.Z with the desired version
-VERSION="0.1.0"
+VERSION="1.6.4"
 curl -L "https://github.com/ericodx/swift-mutation-testing/releases/download/v${VERSION}/swift-mutation-testing-v${VERSION}-macos.tar.gz" \
   | tar -xz
 

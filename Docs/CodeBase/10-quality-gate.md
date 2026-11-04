@@ -4,7 +4,7 @@
 
 ---
 
-The gate turns a run's result into a pass or fail. It is evaluated after the text summary and before the report files, so the Markdown summary can include it, and printed after them; a failed gate ends the run with `ExitCode.gateFailed` (`2`). It is inactive — and the run behaves as it did before the gate existed — unless a policy or a baseline is configured. The user-facing flow is in [Usage — Quality Gate](../USAGE.MD#quality-gate).
+The gate turns a run's result into a pass or fail. It is evaluated after the text summary (and the `--timing` phase table) and before the report files, so the Markdown summary can include it, and printed after them; a failed gate ends the run with `ExitCode.gateFailed` (`2`). It is inactive — and the run behaves as it did before the gate existed — unless a policy or a baseline is configured. The user-facing flow is in [Usage — Quality Gate](../USAGE.MD#quality-gate).
 
 ```mermaid
 flowchart TD
@@ -14,7 +14,8 @@ flowchart TD
     SCOPE -- yes --> ERR["GateError.scopeMismatch, exit 1"]
     SCOPE -- no --> RUN["run mutants, TextReporter"]
     LOAD -- no --> RUN
-    RUN --> ACTIVE{"gate.isActive?"}
+    RUN --> TIMING["reportTiming: --timing table, timing.json under --keep-logs"]
+    TIMING --> ACTIVE{"gate.isActive?"}
     ACTIVE -- yes --> EVAL["QualityGate.evaluate"]
     ACTIVE -- no --> REPORTS
     EVAL --> REPORTS["ReportWriter.write, Markdown includes the gate"]
@@ -27,7 +28,7 @@ flowchart TD
     STORE --> CODE[".success, or .gateFailed when a check failed"]
 ```
 
-The baseline is read and its scope checked before discovery, so a run that could never be compared stops before it spends any time. The steps live in `RunConclusion` (`CLI/RunConclusion.swift`): `loadBaseline` before the run, then `conclude` — text report, `evaluateGate`, `ReportWriter`, `applyGate` — after it, for `run` and `merge` alike. See [01 — Entry Point](01-entry-point.md#clirunconclusionswift).
+The baseline is read and its scope checked before discovery, so a run that could never be compared stops before it spends any time. The steps live in `RunConclusion` (`CLI/RunConclusion.swift`): `loadBaseline` before the run, then `conclude` — text report, `reportTiming`, `evaluateGate`, `ReportWriter`, `applyGate` — after it, for `run` and `merge` alike (a merge has no phase timings, so `reportTiming` prints nothing for it). `gate.isActive` is `!policy.isEmpty || baselinePath != nil`. `applyGate` prints the gate, then writes the baseline when `--write-baseline` is given — whether the gate passed or not, and with no gate at all — and prints `  ✓ Baseline: <path>`. See [01 — Entry Point](01-entry-point.md#clirunconclusionswift).
 
 ---
 
@@ -43,7 +44,7 @@ struct GatePolicy: Sendable, Equatable {
 }
 ```
 
-The four policies, each optional; `isEmpty` is true when none is set. `maxScoreDrop` and `maxNewSurvivors` need a baseline; `ConfigurationResolver` rejects them without one. `maxIntegrityWarnings` does not.
+The four policies, each optional; `isEmpty` is true when none is set. `maxScoreDrop` and `maxNewSurvivors` need a baseline; `ConfigurationResolver` rejects them without one, and rejects a `minScore` outside 0…100 or a negative maximum, each with a `UsageError`. `maxIntegrityWarnings` does not.
 
 ---
 
@@ -150,7 +151,7 @@ struct BaselineStore: Sendable {
 }
 ```
 
-Both halves go through `VersionedJSON`, which `PlanStore` shares. `write` encodes with `VersionedJSON.encode(_:dates: .iso8601)` — pretty-printed JSON with sorted keys, no escaped slashes, ISO 8601 dates and a trailing newline — and writes it atomically. `read` is `VersionedJSON.read`: it decodes `formatVersion` first, and throws `GateError.unsupportedBaselineVersion` for any version but `Baseline.formatVersion`, before trying the rest of the file; a missing file is `baselineNotFound`, an undecodable one `unreadableBaseline`.
+Both halves go through `VersionedJSON`, which `PlanStore` shares. `write` encodes with `VersionedJSON.encode(_:dates: .iso8601)` — pretty-printed JSON with sorted keys, no escaped slashes, ISO 8601 dates and a trailing newline — and writes it atomically. `read` is `VersionedJSON.read`: it decodes `formatVersion` first, and throws `GateError.unsupportedBaselineVersion` for any version but `Baseline.formatVersion`, before trying the rest of the file; a missing file is `baselineNotFound`, an undecodable one `unreadableBaseline`. Dates are decoded as ISO 8601. `--baseline` given on the command line or in the configuration file is checked for existence earlier, by `ConfigurationResolver`, which throws a `UsageError` with the same wording; `baselineNotFound` is what a file removed between the two checks gets.
 
 ---
 

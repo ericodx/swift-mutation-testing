@@ -6,6 +6,7 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=ericodx-swift-mutation-testing&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=ericodx-swift-mutation-testing)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=ericodx-swift-mutation-testing&metric=coverage)](https://sonarcloud.io/summary/new_code?id=ericodx-swift-mutation-testing)
 [![Mutation score](https://img.shields.io/badge/mutation%20score-98.3%25-lightgray?logo=jest&logoColor=white)](https://github.com/ericodx/swift-mutation-testing/blob/main/Docs/MUTATION-RESULTS.md)
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/ericodx/badge.svg)](https://hub.xerj.org/contributors/ericodx)
 
 **Measure and improve test effectiveness in Swift codebases using mutation testing.**
 
@@ -22,14 +23,16 @@ Mutation testing introduces controlled changes to your code to verify that your 
 - Mutation testing for Xcode projects and workspaces and for SPM packages — every project and module of a workspace in one build
 - Supports both XCTest and Swift Testing frameworks
 - 7 mutation operators (relational, boolean, logical, arithmetic, negate conditional, swap ternary, remove side effects), in tiers measured on real packages — `--operator-tier` picks how deep a run goes, see [Operators](Docs/OPERATORS.md)
-- Schematization — builds once, tests all mutants via runtime switch
+- Schematization — builds once, tests all mutants via runtime switch; a coverage map from the unmutated run gives each mutant only the tests that reach its code, and reports a mutant no test reaches as no coverage without running it
 - Activation verification — every verdict records whether the mutated code actually ran; a passing suite that never reached it is reported as no coverage, and a mutant missing from the build stops the run
 - Parallel test execution with configurable concurrency
+- Built sandboxes kept between runs in `$TMPDIR/swift-mutation-testing`, so the next run builds incrementally (`--no-warm-sandbox` builds from scratch)
+- `--timing` shows how a run's time splits between its phases
 - SHA256-based result caching across runs, with a journal that lets an interrupted run continue where it stopped
 - Plans: `plan` writes what a run will do, `run --plan --shard i/n` executes a slice of it on any machine, `merge` joins the slices into one report, `reproduce` reruns one mutant with its sandbox kept
 - Multiple report formats: text, JSON (Stryker-compatible), HTML, SonarQube, SARIF (GitHub code scanning), Markdown
 - Pull request annotations through GitHub code scanning, and a job summary, from the SARIF and Markdown reports
-- Simulator pool management for iOS/tvOS/watchOS targets
+- Simulator pool for simulator destinations: one clone of the destination's simulator per worker, cloned and booted while the schema builds
 - Mutation suppression by comment — `// swift-mutation-testing:disable` on a declaration, `// swift-mutation-testing:disable-next-line` on a line
 - Quality gate for CI: minimum score, maximum drop, no new survivors against a committed baseline, and a limit on integrity warnings
 - Configurable via YAML or CLI flags
@@ -47,7 +50,7 @@ Other installation methods — pre-built binary, build from source — are cover
 ## Quick start
 
 ```bash
-# Generate a config file (auto-detects project type, scheme, destination, and test targets)
+# Generate a config file (auto-detects project type, workspace or project, scheme, destination, test target and testing framework)
 swift-mutation-testing init
 
 # Run mutation testing
@@ -65,15 +68,16 @@ Example output:
 Building for testing...
   ✓ Built in 18.4s
   ✓ 3 simulators ready
+    The clones' first boot keeps the machine busy for a few minutes; the first mutants take longer
 
 Testing mutants...
   ✓ 1/147  LogicalOperatorReplacement  Validator.swift:18
-  ✗ 2/147  NegateConditional           Validator.swift:34
-  ✓ 3/147  SwapTernary                 FeatureFlags.swift:9
+  ✗ 2/147  NegateConditional  Validator.swift:34
+  ✓ 3/147  SwapTernary  FeatureFlags.swift:9
 
 Results by file:
-  Sources/Validator.swift      score: 72.4%   killed: 21   survived: 8   timeout: 0   unviable: 0   no coverage: 0
-  Sources/FeatureFlags.swift   score: 100.0%  killed: 6    survived: 0   timeout: 0   unviable: 0   no coverage: 0
+  Sources/Validator.swift    score: 72.4%   killed: 21   survived: 8   timeout: 0   unviable: 0   no coverage: 0
+  Sources/FeatureFlags.swift    score: 100.0%   killed: 6   survived: 0   timeout: 0   unviable: 0   no coverage: 0
 
 Undetected mutants:
   Sources/Validator.swift:34:5   NegateConditional   survived
@@ -145,7 +149,7 @@ Then ask Claude, in a Swift project, something like *"how good are the tests in 
 | Document | Description |
 |---|---|
 | [Building](Docs/BUILDING.md) | Contributor build, test, fixture, and local hook workflow |
-| [Installation](Docs/INSTALLATION.MD) | Homebrew, pre-built binary, build from source |
+| [Installation](Docs/INSTALLATION.MD) | Homebrew, pre-built binary, build from source, Claude Code plugin |
 | [Usage & Configuration](Docs/USAGE.MD) | CLI options, YAML config, output formats, CI integration |
 | [Mutation Results](Docs/MUTATION-RESULTS.md) | What each result means and when it occurs; schematizable vs incompatible mutants |
 | [Operators](Docs/OPERATORS.md) | Every operator's tier, the campaign that measured it, and how to reproduce the numbers |

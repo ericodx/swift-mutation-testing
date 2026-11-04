@@ -25,7 +25,7 @@ flowchart TD
 
 1. Extract the original statement text (from `statementsStartOffset` to `statementsEndOffset`)
 2. For each mutant in the group, apply the mutation to produce a mutated copy of the statements
-3. Build a `switch` block with one `case` per mutant and a `default` for the original code
+3. Build a `switch` block with one `case` per mutant and a `default` for the original code, which first records that the body was reached
 4. Replace the function body `{...}` with the new `switch` block
 
 ```swift
@@ -38,12 +38,13 @@ case "swift-mutation-testing_1":
 let _ = __SwiftMutationTesting_<hash>.activated()
 return a + b >= limit
 default:
+let _ = __SwiftMutationTesting_<hash>.reached(<body start>)
 return a + b > limit
 }
 }
 ```
 
-Each `case` starts by recording that it ran; how that call sits depends on the body's shape (see [Activation Marker](#activation-marker)). Mutations inside one body are written in id order.
+Each `case` starts by recording that it ran, and the `default` by recording that the body was reached, `<body start>` being the body's `bodyStartOffset` in the original file; how each call sits depends on the body's shape (see [Activation Marker](#activation-marker) and [Coverage records](#coverage-records)). Mutations inside one body are written in id order.
 
 Mutant IDs follow the pattern `swift-mutation-testing_<index>`, where index is the global sequential position of the mutant across all files. `MutantID` owns the format: it builds the id, reads the index back and orders results by it.
 
@@ -81,12 +82,47 @@ internal enum __SwiftMutationTesting_<hash> {
         ProcessInfo.processInfo.environment["__SWIFT_MUTATION_TESTING_ACTIVE"] ?? ""
     nonisolated(unsafe) static var activationRecorded = false
 
-    @usableFromInline nonisolated static func activated() { … }
+    @usableFromInline nonisolated static func activated() {
+        guard
+            !activationRecorded,
+            let path = ProcessInfo.processInfo.environment["__SWIFT_MUTATION_TESTING_ACTIVATION_FILE"]
+        else { return }
+        activationRecorded = true
+        FileManager.default.createFile(atPath: path, contents: nil)
+    }
 
     @discardableResult @usableFromInline nonisolated static func activating<T>(_ value: T) -> T {
         activated()
         return value
     }
+
+        nonisolated static let coverageDescriptor: Int32 = {
+            let environment = ProcessInfo.processInfo.environment
+            guard let path = environment["__SWIFT_MUTATION_TESTING_COVERAGE_FILE"] else { return -1 }
+            let descriptor = open(path, O_WRONLY | O_APPEND)
+            if descriptor >= 0, environment["__SWIFT_MUTATION_TESTING_COVERAGE_REDIRECT"] != nil { dup2(descriptor, 2) }
+            return descriptor
+        }()
+        nonisolated(unsafe) static var reachedSites: Set<Int> = []
+        nonisolated(unsafe) static var reachedSize: off_t = -1
+        nonisolated static let reachedLock = NSLock()
+
+        nonisolated static func coverageSize() -> off_t {
+            var status = stat()
+            return fstat(coverageDescriptor, &status) == 0 ? status.st_size : -1
+        }
+
+        @usableFromInline nonisolated static func reached(_ site: Int) {
+            guard coverageDescriptor >= 0 else { return }
+            reachedLock.lock()
+            defer { reachedLock.unlock() }
+            if coverageSize() != reachedSize { reachedSites.removeAll(keepingCapacity: true) }
+            if reachedSites.insert(site).inserted {
+                let line = "__swiftMutationTestingReached <hash>:\(site)\n"
+                line.withCString { _ = write(coverageDescriptor, $0, strlen($0)) }
+            }
+            reachedSize = coverageSize()
+        }
 }
 
 @usableFromInline nonisolated internal var __swiftMutationTestingID_<hash>: String {
@@ -94,7 +130,7 @@ internal enum __SwiftMutationTesting_<hash> {
 }
 ```
 
-`activating(_:)` serves incompatible mutants, whose rewritten file gets the same block; see [Activation Marker](#activation-marker).
+`activating(_:)` serves incompatible mutants, whose rewritten file gets the same block; see [Activation Marker](#activation-marker). The members from `coverageDescriptor` down serve the baseline's coverage records; see [Coverage records](#coverage-records). They are emitted with eight spaces of indentation, as shown, which the compiler does not mind.
 
 Each piece of it is there for a reason:
 
@@ -103,17 +139,17 @@ Each piece of it is there for a reason:
 - **A `static let`, not a global.** A stored global declared in `main.swift` is initialized when top-level code reaches its line; a function called before that reads uninitialized memory and crashes. A static stored property is initialized on first use wherever it is declared, so the block can sit at the end of any file, `main.swift` included, without shifting the line numbers of the code above it.
 - **Read once.** `ProcessInfo.processInfo.environment` builds a dictionary of the whole environment; reading it once per file, instead of on every function call, keeps the schema's cost to a string comparison.
 - **`nonisolated`.** Under Swift 6.2's default `MainActor` isolation, which app targets opt into, an unmarked global or static is main-actor isolated and a nonisolated function cannot read it. Both declarations opt out, and the same block compiles in Swift 5 mode, Swift 6 mode and under default isolation.
-- **An import in the project's own style, only when the file has none.** The block needs Foundation. A file that already imports it, with whatever access level and even inside the active clause of an `#if`, gets nothing more. A file that does not gets `import Foundation` — or `internal import Foundation` when any file of the project puts an access level on an import (`ImportStyle`, decided once per run and carried in `RunnerInput.importStyle` for the retry that regenerates a schema). The style matters: a bare import next to an `internal import` of the same module elsewhere is rejected as ambiguous, in both directions — `swift-argument-parser` imports Foundation as `internal` in every file, and this repository imports it bare in every file — while `public import` is accepted next to either but warns when the import is unused in public declarations, which `-warnings-as-errors` turns fatal. The block's `@usableFromInline` bodies are not inlined, so an internal import serves them.
+- **An import in the project's own style, only when the file has none.** The block needs Foundation. A file that already imports it, with whatever access level and even inside the active clause of an `#if`, gets nothing more. A file that does not gets `import Foundation` — or `internal import Foundation` when any file of the project puts an access level on an import (`ImportStyle`, decided once per run and carried in `RunnerInput.importStyle` for every later regeneration of a schema — a batch, a narrowed retry — and for the instrumented copies of incompatible mutants). The style matters: a bare import next to an `internal import` of the same module elsewhere is rejected as ambiguous, in both directions — `swift-argument-parser` imports Foundation as `internal` in every file, and this repository imports it bare in every file — while `public import` is accepted next to either but warns when the import is unused in public declarations, which `-warnings-as-errors` turns fatal. The block's `@usableFromInline` bodies are not inlined, so an internal import serves them.
 
 The block is part of `SchematizedFile.schematizedContent`. That is what makes the retry after a failed schema build correct for free: the narrowed schema comes from the same generator and carries the same declarations.
 
 ## Runtime Activation
 
-At test execution time, `XCTestRunPlist.activating(_:activationFile:)` injects the mutant ID into the `.xctestrun` plist under `EnvironmentVariables.__SWIFT_MUTATION_TESTING_ACTIVE`, with the activation marker path, for every test target in the run, and the SPM path puts the same variables in the test process's environment (`TestBundleInvocation.environment(mutantID:activationFile:)`). A fresh copy of the `.xctestrun` is written for each mutant run and removed after it.
+At test execution time, `XCTestRunPlist.activating(_:activationFile:coverageFile:serialize:)` injects the mutant ID into the `.xctestrun` plist under `EnvironmentVariables.__SWIFT_MUTATION_TESTING_ACTIVE`, with the activation marker path, for every test target in the run, and the SPM path puts the same variables in the test process's environment; both take them from `TestBundleInvocation.environment(mutantID:activationFile:coverageFile:)`. A fresh copy of the `.xctestrun` is written for each mutant run and removed after it.
 
 ```mermaid
 flowchart TD
-    PLIST[BuildArtifact.plist] --> ACT["XCTestRunPlist.activating\nmutantID + marker path"]
+    PLIST[BuildArtifact.plist] --> ACT["XCTestRunPlist.activating\nmutantID + marker path\n(baseline: #quot;#quot; + coverage file)"]
     ACT --> XCTESTRUN["Temporary .xctestrun\nwith env vars set"]
     XCTESTRUN --> XCB["xcodebuild test-without-building\n-xctestrun #lt;path#gt;"]
     SPM["SPM: TestBundleInvocation.environment\nmutantID + marker path"] --> BUNDLE["xctest / swiftpm-testing-helper\non the built bundle"]
@@ -123,7 +159,17 @@ flowchart TD
     SWITCH --> MARK["the case writes the marker file\nonce per file"]
 ```
 
-When no environment variable is set (baseline run or passive execution), `__swiftMutationTestingID_<hash>` returns `""`, which matches no `case` and the `default` branch executes — the original code runs unmodified.
+When no environment variable is set (passive execution), or it is set to `""` (the baseline), `__swiftMutationTestingID_<hash>` returns `""`, which matches no `case` and the `default` branch executes — the original code runs unmodified, after a `reached` call that returns at once unless the run collects coverage.
+
+## Coverage records
+
+The baseline can record which tests reach which function bodies; the coverage map built from it lets a mutant whose body no test reaches be reported `noCoverage` without a launch, and a reached one run only against the tests that reach it (see [Execution Pipeline](03-execution.md)). The records come from the `default` branches: `__SwiftMutationTesting_<hash>.reached(<body start>)`, placed in the same forms as the activation call in a `case` — a `let _ =` line, or the first element of the `( … ).1` tuple for a one-expression body.
+
+- **Off by default.** `coverageDescriptor` is opened once, on first use: `-1` when `__SWIFT_MUTATION_TESTING_COVERAGE_FILE` is not set or cannot be opened for appending, and `reached` then returns at once. Mutant runs never set the variable.
+- **A record per body per test.** `reached` appends `__swiftMutationTestingReached <hash>:<body start>` to that file with `write(2)`, under `reachedLock`, the first time a site is reached. It remembers the sites it wrote in `reachedSites` and the file's size after its last write in `reachedSize`; when the size has changed since (`fstat`) — a test library wrote the start or end of a test into the same file, or another process wrote its own record — the set is cleared, so each site is written again for the next test. A hot function costs a `Set` lookup and two `fstat` calls per call in the baseline only.
+- **Test boundaries in the same file.** `CoverageOutputParser` attributes each record to the test whose start line precedes it — a record before any test marks its site as unknown, and that site's mutants run as if no map existed — so the records and the test libraries' own lines must land in one stream. On the SPM path each bundle's run captures its output into that file (`TestBundleInvocation.collecting`), and Swift Testing, run with `--no-parallel`, writes its event stream to `/dev/fd/2`. On the Xcode path the test process's stderr is a pipe to the test runner, so the plist also sets `__SWIFT_MUTATION_TESTING_COVERAGE_REDIRECT`, and the first `reached` call `dup2`s the file over fd 2: the test libraries' lines go to the file from then on. The Xcode baseline runs without parallel testing while it collects.
+
+The key of a site in the map is `<hash>:<body start>` (`TestCoverage.key`), the same pair a mutant carries as its file path and `functionBodyStart`. A mutant outside every body — an incompatible one — has no site and runs as if no map existed.
 
 ## Activation Marker
 
@@ -146,6 +192,7 @@ What the marker decides:
 |---|---|---|
 | tests passed | written | `survived` |
 | tests passed | not written | `noCoverage` |
+| not run: the coverage map says no test reaches the body | — | `noCoverage`, without a launch |
 | a test failed, or the process crashed | written | `killed` / `killedByCrash` |
 | a test failed, or the process crashed | not written | run once more, alone; the second run decides, and a repeated kill stays, plus an integrity warning |
 | timed out | not written | unchanged, plus an integrity warning |

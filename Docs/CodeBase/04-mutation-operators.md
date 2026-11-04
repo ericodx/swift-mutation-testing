@@ -261,7 +261,7 @@ Removes standalone function call statements. Three things are never removed, eac
 
 **Inside a `while` or `repeat`.** Handled by the infinite-loop filter below, not by the operator itself.
 
-Visitor: `RemoveSideEffectsVisitor` — visits `CodeBlockItemSyntax` whose expression is a function call; the deny-list is matched against the called expression's text, which is how `super.init` and `self.init` are recognised. The reported line, column and offset come from the node's position after leading trivia, so a call preceded by a comment is reported at the call. Summary `Remove side effects`; `ReplacementKind.removeStatement`, mutated text empty; description `remove <callee>()`; loop-risky.
+Visitor: `RemoveSideEffectsVisitor` — visits `CodeBlockItemSyntax` whose expression is a function call, so a call behind `try` or `await` (a `TryExprSyntax` or `AwaitExprSyntax`) is not a candidate; the deny-list is matched against the called expression's text, which is how `super.init` and `self.init` are recognised. The reported line, column and offset come from the node's position after leading trivia, so a call preceded by a comment is reported at the call. Summary `Remove side effects`; `ReplacementKind.removeStatement`, mutated text empty; description `remove <callee>()`; loop-risky.
 
 ---
 

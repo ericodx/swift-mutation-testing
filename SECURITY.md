@@ -6,7 +6,7 @@ Swift Mutation Testing is currently under active development.
 
 Only the **latest release** is supported with security updates.
 
-Pre-release versions (`0.x`) do not carry stability or security guarantees.
+Builds from an unreleased checkout (`swift-mutation-testing --version` prints `0.0.0-dev`) do not carry stability or security guarantees.
 
 | Version | Supported          |
 |---------|--------------------|
@@ -39,7 +39,8 @@ This security policy applies to:
 - The Swift Mutation Testing CLI (`swift-mutation-testing`)
 - Distribution artifacts
 - Configuration handling (`.swift-mutation-testing.yml`)
-- `RunnerInput` parsing and sandbox isolation
+- The files the CLI reads back: plans (`plan`, `run --plan`), shard results (`merge`), baselines (`--baseline`) and the result cache (`.swift-mutation-testing-cache/`)
+- Sandbox isolation, including the sandboxes kept between runs in `$TMPDIR/swift-mutation-testing`
 
 It does **not** cover:
 

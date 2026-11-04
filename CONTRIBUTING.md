@@ -20,12 +20,12 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 SwiftMutationTesting follows a strict set of technical principles:
 
 - The original project is **never modified** — all mutations happen inside an isolated sandbox
-- The schema is built **once** for all schematizable mutants — `xcodebuild build-for-testing` for Xcode, `swift build --build-tests` for packages
+- The schema is built **once** for all schematizable mutants — `xcodebuild build-for-testing` for Xcode, `swift build --build-tests` for packages — and built again only when it does not compile (a package's schema is narrowed and rebuilt) or the unmutated suite fails against it (the schema is rebuilt in batches)
 - No mutant results are **lost or duplicated**
 - Mutant **positions (file, line, column) are accurate** in all reported results
 - A cancelled task never leaves a **simulator slot permanently acquired** from the pool
-- Every schematized file **declares its own** support block, `@usableFromInline internal` and named after the file (`__swiftMutationTestingID_<hash>`), and nothing else in the sandbox declares it
-- **No dependency beyond swift-syntax** — CryptoKit and Foundation are Apple frameworks; no other package is permitted
+- Every schematized file **declares its own** support block, `@usableFromInline internal` and named after the file (the `__SwiftMutationTesting_<hash>` enum and its `__swiftMutationTestingID_<hash>` accessor), and nothing else in the sandbox declares it
+- **No dependency beyond swift-syntax** — Foundation, CryptoKit, Synchronization and IOKit are Apple frameworks; no other package is permitted
 - Full compatibility with **Swift 6 Strict Concurrency**
 - Pipeline stages are **stateless pure transformations** — no shared mutable state between them
 

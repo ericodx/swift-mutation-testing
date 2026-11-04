@@ -44,6 +44,18 @@ deliberately leaves uncovered with a reason each, are in
 [Docs/CodeBase/README.md](CodeBase/README.md#regions-the-suite-deliberately-does-not-cover).
 Anything uncovered that is not on that list is a gap.
 
+The `Makefile` wraps the same commands: `make test` runs the suite,
+`make coverage` writes `coverage/code-coverage-report.xml` the way CI does,
+`make regions` prints the region coverage of every file under `Sources/` from
+the profile `make coverage` left, and `make sonar` publishes it (it needs
+`sonar-scanner` and `SWIFT_MUTATION_TESTING_SONAR_TOKEN`).
+
+On a pull request, CI also runs
+`swift .github/scripts/operator-campaign/campaign.swift check`, which
+aggregates the fixture in `.github/scripts/operator-campaign/check/` and
+compares it with its expected output. Run it after changing the campaign
+script.
+
 The suite includes unit tests and fixture-backed integration coverage. If the
 toolchain is older than the version required by `Package.swift`, upgrade Swift
 before trusting the result.
@@ -115,13 +127,20 @@ Install the configured hooks before preparing commits:
 
 ```bash
 pre-commit install
-pre-commit install --hook-type commit-msg
 ```
 
-The hook set includes conventional commit validation, common file checks,
-codespell, SwiftLint, swift-format, Swift code duplication detection,
-Swift Marshal, and Gitleaks. Swift source changes should pass SwiftLint and
-swift-format before review.
+`.pre-commit-config.yaml` lists both `pre-commit` and `commit-msg` in
+`default_install_hook_types`, so this one command installs both;
+`pre-commit install --hook-type commit-msg` does the same for the second.
+
+The hook set includes conventional commit validation (types `build`, `chore`,
+`ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`),
+a commit-message check that refuses a description body and a
+`Co-Authored-By` line (commit messages are a single line), common file checks
+(including a refusal to commit to `main` and a 1000 KB limit per file),
+codespell, SwiftLint (`--strict`), swift-format, Swift code duplication
+detection (swift-cpd), Swift Marshal, and Gitleaks. Swift source changes
+should pass SwiftLint and swift-format before review.
 
 To run all hooks on the current checkout:
 

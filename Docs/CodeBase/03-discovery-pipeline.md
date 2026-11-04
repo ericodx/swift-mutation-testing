@@ -62,7 +62,7 @@ Every mutation operator, in the order discovery runs them, with the tier it belo
 | 5 | `SwapTernary` | `conservative` |
 | 6 | `RemoveSideEffects` | `experimental` |
 
-When `input.operators` is empty, all seven operators are active; a run resolved through `ConfigurationResolver` gets the `default` tier's three unless told otherwise. Otherwise only the listed identifiers are used. `ConfigurationResolver` always passes the full list, so the empty case is for callers that build a `DiscoveryInput` by hand.
+When `input.operators` is empty, all seven operators are active; a run resolved through `ConfigurationResolver` gets the `default` tier's three unless told otherwise. Otherwise only the listed identifiers are used. `ConfigurationResolver` never passes an empty list — it passes the `--operator` names, or the tier's operators minus the disabled ones, and refuses a selection that leaves none — so the empty case is for callers that build a `DiscoveryInput` by hand.
 
 ---
 
@@ -223,7 +223,7 @@ enum MutantID {
 }
 ```
 
-The one owner of the mutant id format, `swift-mutation-testing_<index>`: the id a mutant carries in reports, schemata and the environment that activates it. `make(index:)` builds it (`IndexedMutationPoint`, `SchemataGenerator`, `PlanMaterializer`, `Reproducer`); `index(of:)` reads the position back, `nil` for a string that is not a mutant id (`Reproducer`, `SchemaNarrower`); `ordered(_:by:)` sorts items by their mutants' positions, reading each id once, an id that names no position sorting first (`PlanMaterializer`, `RunCommand`).
+The one owner of the mutant id format, `swift-mutation-testing_<index>`: the id a mutant carries in reports, schemata and the environment that activates it. `make(index:)` builds it (`IndexedMutationPoint`, `SchemataGenerator`, `PlanMaterializer`, `Reproducer`); `index(of:)` reads the position back, `nil` for a string that is not a mutant id (`Reproducer`, `SchemaNarrower`); `ordered(_:by:)` sorts items by their mutants' positions, reading each id once, an id that names no position sorting first (`PlanMaterializer`, `RunCommand`, `SchemaBatches`).
 
 ---
 

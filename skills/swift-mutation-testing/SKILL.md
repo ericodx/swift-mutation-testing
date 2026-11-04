@@ -7,16 +7,14 @@ description: Run mutation testing on a Swift package or Xcode project with swift
 
 `swift-mutation-testing` changes the code under test in small ways — `<` to `<=`, `true` to `false`, a call removed — and runs the test suite once per change. Each change is a *mutant*. A mutant the tests catch is **killed**. A mutant no test notices **survived**: the code can be wrong in that exact way and the suite still passes. Coverage says a line ran; a survivor says nothing checked what it did.
 
-The project is never modified. Every build and test run happens in a copy under `$TMPDIR/swift-mutation-testing/`.
+The project is never modified. Every build and test run happens in a copy under `$TMPDIR/swift-mutation-testing/`. Those copies are kept between runs (`warm-<key>-<n>`), each with a full build of the project, so the next run builds incrementally; `--no-warm-sandbox` removes them and builds from scratch.
 
 Reference, when a detail here is not enough: [Usage](https://github.com/ericodx/swift-mutation-testing/blob/main/Docs/USAGE.MD) and [Mutation results](https://github.com/ericodx/swift-mutation-testing/blob/main/Docs/MUTATION-RESULTS.md).
 
 ## 1. Preconditions
 
 1. **The tool is installed.** Run `swift-mutation-testing --version`. If it is missing, ask the user before installing it with `brew tap ericodx/homebrew-tools && brew install swift-mutation-testing`. It needs macOS 15+ and Swift 6.2+.
-2. **The suite passes without mutations.** A suite that already fails kills every mutant, and the score means nothing.
-   - Swift package: the tool checks this itself and stops with the failing tests named. Fix those first.
-   - Xcode project: the tool does **not** check it. Run the tests yourself first (`xcodebuild test` with the same scheme and destination) and stop if they fail.
+2. **The suite passes without mutations.** A suite that already fails kills every mutant, and the score means nothing. The tool checks this itself, on a Swift package and on an Xcode project alike: when the unmutated suite fails, crashes or does not finish within `--timeout`, it stops with exit code `1` and names the failing tests (`--keep-logs <dir>` keeps the suite's output as `baseline.log`). Fix those first.
 3. **The run is not in a hurry.** The suite runs once per mutant. On a package with a two-second suite and 300 mutants, expect minutes. On an app, expect much longer. Tell the user what you are about to start, and narrow the scope (step 2) when the project is large.
 
 ## 2. First run
@@ -53,7 +51,7 @@ Narrowing the scope:
 
 Test files (`Tests/`, `Mocks/`, `Stubs/`, `Fakes/`, `TestHelpers/`, `TestSupport/`, `*Tests.swift`, `*Mock.swift`, `*Spec.swift`), build output (`.build/`, `DerivedData/`), package manifests (`Package.swift`, `Package@swift-*.swift`) and `Snippets/` are never mutated, and neither are the branches of an `#if` the macOS build leaves out (`#if os(Windows)`, `#if canImport(Glibc)`).
 
-A second run on unchanged code is fast: verdicts are cached in `.swift-mutation-testing-cache/`, keyed by file contents. Editing a source file re-tests that file's mutants; editing a test file re-tests the mutants that survived, and the killed ones whose killing test lives in that file. Use `--no-cache` only to rule out the cache when a result looks wrong.
+A second run on unchanged code is fast: verdicts are cached in `.swift-mutation-testing-cache/`, keyed by file contents. Editing a source file re-tests that file's mutants; editing a test file re-tests every mutant except the unviable ones and the ones killed by a test in another file. The cache also holds the coverage map — which tests reach each function — so a mutant runs only the tests that reach its code; `--no-cache` drops the map too and makes every mutant run its whole suite. Use `--no-cache` only to rule out the cache when a result looks wrong.
 
 ## 3. Reading the result
 
@@ -78,7 +76,7 @@ Each mutant in the JSON report (`files["/Sources/Foo.swift"].mutants[]`) carries
 | `Killed` | A test failed with the mutant active. `statusReason: "crash"` means the process crashed instead | None |
 | `Timeout` | The suite never finished, even when rerun with fewer workers. Counts as detected | None, unless there are many: check `--timeout` |
 | `Survived` | The suite passed with the mutant active | **Write a test** (step 5) |
-| `NoCoverage` | The suite passed and the mutated code never ran — measured, not guessed: every mutant records when its code executes | Write a test that reaches the code first |
+| `NoCoverage` | No test ran the mutated code — measured, not guessed: either no test reached its function when the unmutated suite ran (the mutant is then not run at all), or the suite passed and the mutant's code never recorded that it executed | Write a test that reaches the code first |
 | `CompileError` | The mutant did not compile | None. It is a property of the operator, not of the tests, and it is outside the score |
 
 A 100% score means every mutant that compiled was detected. It does not mean the code is right. When no mutant could be tested — every one `CompileError` — there is no score: the summary prints `n/a`, and `--min-score` and `--max-score-drop` fail.
@@ -154,5 +152,7 @@ To keep code out of the run, use `--exclude` (or `exclude:` in the config file) 
 - **A baseline only compares with the same scope.** A run whose operators, `--sources-path` or `--exclude` differ from the baseline's stops with exit code `1` and lists the differences. Run with the baseline's scope, or write a new baseline on purpose.
 - **One run per project at a time.** Two runs on the same project write the same cache.
 - **Xcode needs a destination that exists.** An iOS simulator destination must name an installed simulator; for code that runs on macOS, `platform=macOS` is faster and needs no simulator.
+- **Simulator runs start slowly.** The destination's simulator is cloned once per worker while the schema builds, one clone at a time, each copying the simulator's data. A clone that takes longer than a minute plus half a minute per GB of that data stops the run with `Failed to clone simulator <udid>.` and the data size; suggest `xcrun simctl erase <udid>` or a device created for mutation testing. The clones' first boot keeps the machine busy for a few minutes, and the first mutants take longer while it lasts.
+- **Kept sandboxes take disk space.** Each one under `$TMPDIR/swift-mutation-testing/` holds a full build of the project. When disk space is short, run with `--no-warm-sandbox`, or delete that directory when no run is active.
 - **Timeouts cost time.** Each one waits for twice `--timeout` in the parallel pass (`--timeout` is 30 s for packages, 120 s for Xcode by default), then is rerun once with fewer workers, under `--timeout`, before it is reported.
 - **Do not leave the reports in the repository** unless the user asks: add `mutation-report.json` and `.swift-mutation-testing-cache/` to `.gitignore`.

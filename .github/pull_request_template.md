@@ -11,19 +11,19 @@
 - [ ] test: Addition or correction of tests.
 - [ ] docs: Changes only to the documentation.
 - [ ] ci: Changes related to continuous integration and deployment scripts.
-- [ ] build: Changes that affect the build system or external dependencies.
-- [ ] deps: Dependency version upgrades with no logic changes.
+- [ ] build: Changes that affect the build system or external dependencies, including dependency version upgrades.
+- [ ] style: Formatting changes that do not affect behavior.
 - [ ] chore: Other changes that do not fit into the previous categories.
 - [ ] revert: Reverts a previous commit.
 
 ## Invariants Checklist
 
 - [ ] Original project is never modified — all mutations happen inside an isolated sandbox
-- [ ] `xcodebuild build-for-testing` runs exactly once for all schematizable mutants
+- [ ] The schema is built once for all schematizable mutants (`xcodebuild build-for-testing` or `swift build --build-tests`), and again only to narrow it or split it into batches
 - [ ] No mutant results are lost or duplicated
 - [ ] Mutant positions (file, line, column) are accurate in all reported results
 - [ ] A cancelled task never leaves a simulator slot permanently acquired from the pool
-- [ ] Every schematized file declares its own support block, `@usableFromInline internal` and named after the file (`__swiftMutationTestingID_<hash>`), and nothing else in the sandbox declares it
+- [ ] Every schematized file declares its own support block, `@usableFromInline internal` and named after the file (the `__SwiftMutationTesting_<hash>` enum and its `__swiftMutationTestingID_<hash>` accessor), and nothing else in the sandbox declares it
 - [ ] Swift 6 Strict Concurrency compatible
 - [ ] Pipeline stages remain stateless pure transformations
 
@@ -31,14 +31,17 @@
 
 Which stages are affected?
 
-- [ ] SandboxFactory
-- [ ] BuildStage
+- [ ] Discovery / Schematization
+- [ ] SandboxFactory / WarmSandboxes
+- [ ] BuildStage / SchemaNarrower
 - [ ] SimulatorPool
-- [ ] TestExecutionStage
+- [ ] MutantExecutor / TestExecutionStage
 - [ ] IncompatibleMutantExecutor
-- [ ] PerFileBuildFallback
-- [ ] CacheStore
-- [ ] Reporters (Text / JSON / HTML / Sonar)
+- [ ] FallbackExecutor
+- [ ] CacheStore / TestCoverage
+- [ ] Reporters (Text / JSON / HTML / Sonar / SARIF / Markdown / Timing)
+- [ ] Quality gate / Baseline
+- [ ] Plans (plan / shard / merge / reproduce)
 - [ ] CLI / Configuration
 - [ ] Models / RunnerInput contract
 - [ ] None
@@ -50,4 +53,4 @@ Which stages are affected?
 - [ ] Tests use `FileHelpers` for any filesystem interaction (temp directories only)
 - [ ] Snapshot tests added or updated (if reporter output format changed)
 - [ ] Integration tests added or updated and tagged separately (if pipeline or CLI behavior changed)
-- [ ] All tests pass locally (`swift test`)
+- [ ] All tests pass locally (`swift test --no-parallel`)

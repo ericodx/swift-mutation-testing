@@ -61,7 +61,7 @@ flowchart TD
     XCODEPROJ -- yes --> PROJ["xcuserdata: empty directory<br>xcshareddata: copy<br>everything else: symlink"]
     XCODEPROJ -- no --> RECURSE["mkdir and recurse<br>copy flag set under .xcworkspace/xcshareddata<br>and under an .icon bundle"]
     KIND -- no --> REPLACED{"Replacements.content: by relative path,<br>or by resolved path for a symlink"}
-    REPLACED -- found --> WRITE["write its content"]
+    REPLACED -- found --> WRITE["write its content, wrapped by LintSuppression<br>left alone when kept unchanged in a warm slot"]
     REPLACED -- "none, or nothing replaced" --> SHARED{"copy flag set?"}
     SHARED -- yes --> COPY["copy"]
     SHARED -- no --> SYMLINK["symlink to original"]
@@ -75,7 +75,7 @@ flowchart TD
 
 **Off the cooperative pool.** All three are `async` but the work is synchronous file system calls, which used to occupy a cooperative thread for the whole walk — threads that simulator and process work wait on. `offCooperativePool` runs it on a global dispatch queue and resumes the caller through a continuation.
 
-**Kept sandboxes.** With `warm` set — `RunCommand` sets it unless `--no-warm-sandbox`; a reproduction and the tests use the default `nil` — `populate` claims a slot of the project (`WarmSandboxes.claim`) instead of making a fresh directory, and the sandbox carries the slot (`Sandbox.slot`). Before the walk, `Replacements.unchanged(in:)` lists the replaced files that already sit in the slot as regular files with exactly the content about to be written, and `WarmSandboxes.prune` removes everything else except `.build`, `.xmr-derived-data` and the lock; the walk then recreates every link and directory as for a fresh sandbox and skips the files in `kept`. A kept file keeps its modification date, so a schema that did not change since the last run does not recompile; everything else is rebuilt incrementally on top of the build that is there. Removing and recreating a symlink does not touch the file it points to, and Swift Build signs inputs through the link, so a refreshed sandbox whose sources did not change builds as a no-op (measured on swift-cpd: 2.2 s against 16.6 s cold). A slot whose claim or walk throws is unlocked before the error leaves.
+**Kept sandboxes.** With `warm` set — `RunCommand` sets it unless `--no-warm-sandbox`; a reproduction and the tests use the default `nil` — `populate` claims a slot of the project (`WarmSandboxes.claim`) instead of making a fresh directory, and the sandbox carries the slot (`Sandbox.slot`). Before the walk, `Replacements.unchanged(in:)` lists the replaced files that already sit in the slot as regular files with exactly the content about to be written, and `WarmSandboxes.prune` removes everything else except `.build`, `.xmr-derived-data` and the lock; the walk then recreates every link and directory as for a fresh sandbox and skips the files in `kept`. A kept file keeps its modification date, so a schema that did not change since the last run does not recompile; everything else is rebuilt incrementally on top of the build that is there. Removing and recreating a symlink does not touch the file it points to, and Swift Build signs inputs through the link, so a refreshed sandbox whose sources did not change builds as a no-op (measured on swift-cpd: 2.2 s against 16.6 s cold). A slot whose prune or walk throws is unlocked before the error leaves.
 
 **Post-processing (`create(projectPath:schematizedFiles:)`, and `createClean` with `disablingSwiftLint: true`):**
 
@@ -185,12 +185,12 @@ The sandboxes a project keeps between runs, so that the schema build and the war
 |---|---|
 | `key(for:)` | The first 16 hex digits of the SHA-256 of the project's resolved path: one family of slots per project, whatever path spelling or symlink the run was started with |
 | `name(for:slot:)` | `warm-<key>-<slot>` |
-| `claim(projectPath:from:)` | Walks the slots from `index` up (0 by default), creates each directory if needed, and takes the first whose lock it can get, calling itself with the next index when a lock is held: the `lock` file inside the slot is opened `O_CREAT \| O_CLOEXEC` and `flock`ed exclusively without waiting; a held lock means a live run of the same project owns that slot, and the next one is tried. The owner's pid is written into the file for anyone looking. The lock lives with the open descriptor — closed on `unlock`, or by the kernel when the process ends, however it ends — so a crashed or killed run leaves nothing stale and no staleness check is needed; `O_CLOEXEC` keeps the test and build processes from inheriting it. A lock file that cannot be opened, a directory in its place say, throws `LockError` naming its path |
+| `claim(projectPath:from:)` | Walks the slots from `index` up (0 by default), creates each directory if needed, and takes the first whose lock it can get, calling itself with the next index when a lock is held: the `lock` file inside the slot is opened `O_WRONLY \| O_CREAT \| O_CLOEXEC` and `flock`ed exclusively without waiting (`LOCK_EX \| LOCK_NB`); a held lock means a live run of the same project owns that slot, and the next one is tried. The owner's pid replaces the file's content, for anyone looking. The lock lives with the open descriptor — closed on `unlock`, or by the kernel when the process ends, however it ends — so a crashed or killed run leaves nothing stale and no staleness check is needed; `O_CLOEXEC` keeps the test and build processes from inheriting it. A lock file that cannot be opened, a directory in its place say, throws `LockError` naming its path |
 | `slots(of:)` | The project's slot directories, in order |
 | `removeAll(projectPath:)` | Removes every slot of the project whose lock can be taken — what `--no-warm-sandbox` does before its run; a slot a live run holds stays |
 | `prune(_:keeping:)` | Empties a slot for a refresh, keeping `.build` and `.xmr-derived-data` (`keptDirectories`), the lock, and the files in `kept` with the directories that lead to them; see **Kept sandboxes** under `SandboxFactory` |
 
-The schema sandbox is slot 0 of its run, and the warm sandboxes `IncompatibleMutantExecutor` creates with `createClean` the slots after it, in the order they are claimed; the schema sandbox is also the first warm sandbox, as before, so after the first run no build of a run is cold. Two runs of the same project at once take disjoint slots. The sweep of `SandboxCleaner.removeOrphaned` matches only `xmr-` names and leaves the kept slots alone; macOS removes entries of `$TMPDIR` unused for three days, and `--no-warm-sandbox` removes a project's at once. Each slot holds a full build — about 520 MB for swift-cpd with its tests.
+Every claim walks from slot 0, so the schema sandbox takes the first free slot — slot 0 unless another run of the project holds it — and the warm sandboxes `IncompatibleMutantExecutor` creates with `createClean` the free slots after it, in the order they are claimed; the schema sandbox is also the first warm sandbox, as before, so after the first run no build of a run is cold. Two runs of the same project at once take disjoint slots. The sweep of `SandboxCleaner.removeOrphaned` matches only `xmr-` names and leaves the kept slots alone; macOS removes entries of `$TMPDIR` unused for three days, and `--no-warm-sandbox` removes a project's at once. Each slot holds a full build — about 520 MB for swift-cpd with its tests.
 
 Not used by a reproduction (`Reproducer` builds its executor with the default factory), which keeps the cold sandbox it prints the path of.
 
@@ -333,7 +333,10 @@ Runs a single build inside the sandbox.
 
 ```mermaid
 flowchart TD
-    A["xcodebuild build-for-testing<br>-scheme -destination<br>-derivedDataPath sandbox/.xmr-derived-data<br>+ container arguments"] --> B{"exit code?"}
+    A["BuildStage.run: xcodebuild build-for-testing<br>-scheme -destination<br>-derivedDataPath sandbox/.xmr-derived-data<br>-skipPackagePluginValidation -skipMacroValidation<br>COMPILER_INDEX_STORE_ENABLE=NO<br>+ container and --xcodebuild-arg arguments"] --> S{"kept sandbox, and isStale?"}
+    S -- yes --> R["remove .build and .xmr-derived-data<br>launch once more"]
+    S -- no --> B{"exit code?"}
+    R --> B
     B -- "SPMResultParser.timedOutExitCode" --> TO["throw BuildError.timedOut"]
     B -- "other non-zero" --> FAIL["throw BuildError.compilationFailed"]
     B -- 0 --> C["first .xctestrun in Build/Products"]
@@ -346,11 +349,11 @@ flowchart TD
 
 Passes the resolved container as `-workspace <path>` or `-project <path>`, relative to the sandbox root; with none, `xcodebuild` is given no container. It no longer scans the sandbox for one: the first `.xcworkspace` of a directory listing is not a decision.
 
-**SPM path (`buildSPM`):** Runs `swift build --build-tests --disable-index-store` in the sandbox directory. Returns a `BuildArtifact` whose `derivedDataPath` is `<sandbox>/.build`, with no `.xctestrun` and no plist.
+**SPM path (`buildSPM`):** Runs `swift build --build-tests --disable-index-store` in the sandbox directory, through `run` like the Xcode build. Returns a `BuildArtifact` whose `derivedDataPath` is `<sandbox>/.build`, with no `.xctestrun` and no plist.
 
 On both paths the timeout exit code (`SPMResultParser.timedOutExitCode`) becomes `BuildError.timedOut(seconds:output:)` and any other non-zero exit `BuildError.compilationFailed(output:)`, each carrying the build output.
 
-Both requests come from `ToolRequests` (`buildForTesting(in:scheme:destination:container:timeout:)` and `swiftBuildTests(in:timeout:)`). Derived data is placed at `ToolRequests.derivedDataPath(in:)` — `<sandbox>/.xmr-derived-data` — to keep it inside the sandbox directory.
+Both requests come from `ToolRequests` (`buildForTesting(in:scheme:destination:arguments:timeout:)`, given `BuildOptions.xcodeArguments` — the container's arguments followed by the user's `--xcodebuild-arg` ones — and `swiftBuildTests(in:timeout:)`). Derived data is placed at `ToolRequests.derivedDataPath(in:)` — `<sandbox>/.xmr-derived-data` — to keep it inside the sandbox directory.
 
 ---
 
@@ -360,6 +363,7 @@ Both requests come from `ToolRequests` (`buildForTesting(in:scheme:destination:c
 enum ToolRequests {
     static let noTestDiagnostics: [String]   // ["-collect-test-diagnostics", "never"]
     static let skipPackageValidation: [String]   // ["-skipPackagePluginValidation", "-skipMacroValidation"]
+    static let noIndexStore: [String]   // ["COMPILER_INDEX_STORE_ENABLE=NO"]
     static func swiftBuildTests(in sandbox: Sandbox, timeout: Double) -> ProcessRequest
     static func swiftTest(
         in sandbox: Sandbox, filter: String?, environment: [String: String], timeout: Double
@@ -384,6 +388,7 @@ Every `swift` and `xcodebuild` invocation a run builds and tests a sandbox with,
 | `xcodebuild` | `xcodebuild` with the given arguments | `TestExecutionStage` (`test-without-building`), `IncompatibleMutantExecutor.testXcode` |
 | `derivedDataPath` | `<sandbox>/.xmr-derived-data` | every Xcode build and test |
 | `skipPackageValidation` | `-skipPackagePluginValidation -skipMacroValidation` | appended to every `build-for-testing`: a package's build tool plugins (SwiftLint's, `swift-openapi-generator`'s) and macros need a trust prompt that a headless build cannot answer, so without them every build of such a project fails at `Validate plug-in` |
+| `noIndexStore` | `COMPILER_INDEX_STORE_ENABLE=NO` | appended to every `build-for-testing` after `skipPackageValidation` and before the given arguments, so a user's own `COMPILER_INDEX_STORE_ENABLE` wins; `swiftBuildTests` passes `--disable-index-store` for the same reason: nothing reads a sandbox's index store, and skipping it took 1.1 s off a 15 s cold build of swift-cpd |
 | `noTestDiagnostics` | `-collect-test-diagnostics never` | appended to every `test-without-building`, in `TestExecutionStage` and `IncompatibleMutantExecutor.testXcode`; see [Execution](07-execution.md#executionincompatiblemutantexecutorxcodeswift) for why |
 
 Before, each caller built its own `ProcessRequest`, and the incompatible Xcode path put its derived data in `.derived-data` while the schematized build used `.xmr-derived-data`; there is now one directory.
