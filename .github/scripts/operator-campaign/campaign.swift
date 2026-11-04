@@ -186,14 +186,23 @@ func aggregate(
 ) throws {
     let campaign = try Campaign.load(from: directory)
     let reviews = try Reviews.load(from: equivalencePath)
-    var markdown: [String] = []
-    var csv = ["project,operator,generated,detected,undetected,noCoverage,unviable,killRate,costPerMutantMs"]
+    let projects = projectRows(of: campaign)
+    let markdown = operatorRows(of: campaign, reviews: reviews, minMutants: minMutants) + [""] + projects.markdown
+    let csv =
+        ["project,operator,generated,detected,undetected,noCoverage,unviable,killRate,costPerMutantMs"]
+        + projects.csv
 
-    markdown.append(
+    try write(markdown.joined(separator: "\n") + "\n", to: markdownPath)
+    try write(csv.joined(separator: "\n") + "\n", to: csvPath)
+    print("Wrote \(markdownPath) and \(csvPath)")
+}
+
+func operatorRows(of campaign: Campaign, reviews: Reviews, minMutants: Int) -> [String] {
+    var markdown = [
         "| Operator | Tier by the criteria | Projects (≥ \(minMutants) mutants) | Median kill rate | Unviable "
-            + "| Equivalent (reviewed) | Cost per mutant |"
-    )
-    markdown.append("|---|---|---|---|---|---|---|")
+            + "| Equivalent (reviewed) | Cost per mutant |",
+        "|---|---|---|---|---|---|---|",
+    ]
     for operatorName in campaign.operators {
         let cells = campaign.projects.compactMap { campaign.cells[$0]?[operatorName] }
         let qualified = cells.filter { $0.generated >= minMutants }
@@ -215,13 +224,16 @@ func aggregate(
                 + "| \(percent(unviable)) | \(percent(equivalent)) (\(reviewedCount)) | \(milliseconds(cost)) |"
         )
     }
+    return markdown
+}
 
-    markdown.append("")
-    markdown.append(
+func projectRows(of campaign: Campaign) -> (markdown: [String], csv: [String]) {
+    var markdown = [
         "| Project | Operator | Generated | Detected | Survived | No coverage | Unviable | Kill rate "
-            + "| Cost per mutant |"
-    )
-    markdown.append("|---|---|---|---|---|---|---|---|---|")
+            + "| Cost per mutant |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    var csv: [String] = []
     for project in campaign.projects {
         for operatorName in campaign.operators {
             guard let cell = campaign.cells[project]?[operatorName] else { continue }
@@ -237,10 +249,7 @@ func aggregate(
             )
         }
     }
-
-    try write(markdown.joined(separator: "\n") + "\n", to: markdownPath)
-    try write(csv.joined(separator: "\n") + "\n", to: csvPath)
-    print("Wrote \(markdownPath) and \(csvPath)")
+    return (markdown, csv)
 }
 
 func median(of sorted: [Double]) -> Double? {
