@@ -34,16 +34,13 @@ struct WarmSandboxes: Sendable {
         "\(prefix)\(key(for: projectPath))-\(slot)"
     }
 
-    func claim(projectPath: String) throws -> (URL, Slot) {
-        var index = 0
-        while true {
-            let url = directory.appendingPathComponent(Self.name(for: projectPath, slot: index))
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-            if let descriptor = try Self.lock(url.appendingPathComponent(Self.lockName)) {
-                return (url, Slot(index: index, lockDescriptor: descriptor))
-            }
-            index += 1
+    func claim(projectPath: String, from index: Int = 0) throws -> (URL, Slot) {
+        let url = directory.appendingPathComponent(Self.name(for: projectPath, slot: index))
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        guard let descriptor = try Self.lock(url.appendingPathComponent(Self.lockName)) else {
+            return try claim(projectPath: projectPath, from: index + 1)
         }
+        return (url, Slot(index: index, lockDescriptor: descriptor))
     }
 
     func slots(of projectPath: String) -> [URL] {
