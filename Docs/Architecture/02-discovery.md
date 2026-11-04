@@ -18,14 +18,20 @@ flowchart TD
     end
     MI --> PLAN[Plan + parsed sources]
     subgraph PlanMaterializer
+        IX[IndexedMutationPoint per plan mutant]
         SC[SchematizationStage]
         IR[IncompatibleRewritingStage]
+        ORD[MutantID.ordered]
     end
-    PLAN --> SC
-    PLAN --> IR
-    SC --> OUT[RunnerInput]
-    IR --> OUT
+    PLAN --> IX
+    IX --> SC
+    IX --> IR
+    SC --> ORD
+    IR --> ORD
+    ORD --> OUT[RunnerInput]
 ```
+
+`PlanMaterializer` does not take the indexed points from `Planner`: it rebuilds one `IndexedMutationPoint` per mutant of the plan, from the plan's fields and the parsed source of its file, so a run from a plan read from disk and a run that has just planned go through the same code. The two stages' descriptors are then put back in id order.
 
 ## Stages
 
@@ -38,7 +44,7 @@ Collects Swift source files under the configured sources path.
 | Input | `DiscoveryInput` — project path, sources path, exclude patterns |
 | Output | `[SourceFile]` — path + raw text content |
 
-Traverses the directory tree recursively, skipping hidden files. The sources path may also be a single `.swift` file; a path that does not exist, or a file that is not Swift, is a `FileDiscoveryError`. Excludes files matching any `--exclude` pattern (`ExcludePattern`) — a glob against the path relative to the project root, or a fragment of the path — and a fixed list of test-only and build locations: paths containing `/Tests/`, `/Mocks/`, `/Stubs/`, `/Fakes/`, `/TestHelpers/`, `/TestSupport/`, `/Snippets/`, `/.build/`, `/DerivedData/` or the cache directory, file names ending in `Tests.swift`, `Mock.swift` or `Spec.swift`, and package manifests. Each discovered file is read into a `SourceFile` value.
+Traverses the directory tree recursively, skipping hidden files. The sources path may also be a single `.swift` file; a path that does not exist, or a file that is not Swift, is a `FileDiscoveryError`. Excludes files matching any `--exclude` pattern (`ExcludePattern`) — a glob against the path relative to the project root, or a fragment of the path — and a fixed list of test-only and build locations: paths containing `/Tests/`, `/Mocks/`, `/Stubs/`, `/Fakes/`, `/TestHelpers/`, `/TestSupport/`, `/Snippets/`, `/.build/`, `/.swift-mutation-testing-derived-data/`, `/DerivedData/` or the cache directory, file names ending in `Tests.swift`, `Mock.swift` or `Spec.swift`, and package manifests. Each discovered file is read into a `SourceFile` value.
 
 ### ParsingStage
 
@@ -47,9 +53,9 @@ Parses each source file into a SwiftSyntax AST. Runs concurrently across files i
 | | |
 |---|---|
 | Input | `[SourceFile]` |
-| Output | `[ParsedSource]` — `SourceFile` + `SourceFileSyntax` tree + location converter + function scopes |
+| Output | `[ParsedSource]` — `SourceFile` + `SourceFileSyntax` tree + location converter + function scopes + loop conditions |
 
-SwiftParser recovers from syntax errors, so every file yields a `ParsedSource`. Building one does the per-file work every later stage shares, once: a `SourceLocationConverter` that the operators' visitors use for line and column, and the file's `FunctionBodyScopes`, collected by `TypeScopeVisitor`, that indexing and schematization use.
+SwiftParser recovers from syntax errors, so every file yields a `ParsedSource`. Building one does the per-file work every later stage shares, once: a `SourceLocationConverter` that the operators' visitors use for line and column, the file's `FunctionBodyScopes`, collected by `TypeScopeVisitor`, that indexing and schematization use, and its `LoopConditions`, the ranges of every `while` and `repeat` condition, that indexing uses. The results come back in completion order; every later stage looks a source up by its path.
 
 ### MutantDiscoveryStage
 
@@ -69,9 +75,9 @@ Assigns unique sequential IDs to each mutation point and classifies them as sche
 | | |
 |---|---|
 | Input | `[MutationPoint]`, `[ParsedSource]`, project path |
-| Output | `[IndexedMutationPoint]` — mutation point + index + schematizable flag + fingerprint |
+| Output | `[IndexedMutationPoint]` — mutation point + index + schematizable flag + fingerprint + loop-condition flag + enclosing body start |
 
-Each mutation point receives an index, a zero-based global counter over the points in source order, and its ID is `swift-mutation-testing_<index>`. `MutantID` is the one place that builds, reads and orders that format. A point is schematizable when it falls inside a function body: `ParsedSource.functionScopes.isSchematizable(utf8Offset:)` answers it from the scopes collected at parse time. The indexed points are consumed by the plan and the next two stages.
+Each mutation point receives an index, a zero-based global counter over the points in source order, and its ID is `swift-mutation-testing_<index>`. `MutantID` is the one place that builds, reads and orders that format. A point is schematizable when it falls inside a function body: `ParsedSource.functionScopes.isSchematizable(utf8Offset:)` answers it from the scopes collected at parse time. Each point also records the `bodyStartOffset` of the innermost body that holds it (`functionBodyStart`), the site its body's `reached` call reports and the coverage map is keyed by, and whether it sits in a `while` or `repeat` condition (`isInLoopCondition`), which `SlowestFirst` uses to start a `NegateConditional` or `RelationalOperatorReplacement` mutant there, the kind most likely to loop, before the other mutants with no recorded duration. The indexed points are consumed by the plan and the next two stages.
 
 The ID is only unique within one run: a mutant added earlier in any file renumbers every later one. Each point therefore also gets a **fingerprint** (`MutantFingerprint`) — a hash of its project-relative file, the declaration that contains it (`DeclarationPath`, e.g. `Parser.parse(_:)`), its operator, its change, and an ordinal that tells apart identical changes in one declaration — which stays the same when other code moves or changes. The quality gate matches baselines by fingerprint, and plans, shards and merges identify mutants by it.
 
@@ -103,13 +109,13 @@ All operators implement the `MutationOperator` protocol and are registered in `O
 
 | Operator | Tier | What it mutates | Example |
 |---|---|---|---|
-| `RelationalOperatorReplacement` | experimental | Comparison operators, each to a boundary and an opposite variant | `>` → `>=` and `<`, `<=` → `<` and `>=`, `==` → `!=` |
+| `RelationalOperatorReplacement` | experimental | Comparison operators, each to a boundary and an opposite variant; equality to its negation | `>` → `>=` and `<`, `>=` → `>` and `<=`, `<` → `<=` and `>`, `<=` → `<` and `>=`, `==` → `!=`, `!=` → `==` |
 | `BooleanLiteralReplacement` | experimental | Boolean literals, except in the patterns of an exhaustive `switch` over booleans | `true` → `false`, `false` → `true` |
 | `LogicalOperatorReplacement` | conservative | Logical connectives | `&&` → `\|\|`, `\|\|` → `&&` |
-| `ArithmeticOperatorReplacement` | experimental | Arithmetic operators | `+` → `-`, `-` → `+`, `*` → `/`, `/` → `*` |
-| `NegateConditional` | conservative | Conditional expressions | `condition` → `!(condition)` |
-| `SwapTernary` | conservative | Ternary branches | `a ? b : c` → `a ? c : b` |
-| `RemoveSideEffects` | experimental | Standalone function call statements | `doSomething()` → *(removed)* |
+| `ArithmeticOperatorReplacement` | experimental | Arithmetic operators, except `+`/`-` next to a string literal and the `*` of an availability argument | `+` → `-`, `-` → `+`, `*` → `/`, `/` → `*`, `%` → `*` |
+| `NegateConditional` | conservative | Expression conditions of `if`, `guard` and `while` (not `if let`, `case` patterns or `#available`) | `condition` → `!(condition)` |
+| `SwapTernary` | conservative | Ternary branches, unless the two are identical | `a ? b : c` → `a ? c : b` |
+| `RemoveSideEffects` | experimental | Standalone function call statements, except a deny-list (`print`, `assert`, `fatalError`, `super.init`, …) and the sole statement of a body | `doSomething()` → *(removed)* |
 
 The tiers are ordered `conservative` < `default` < `experimental`, and a tier runs every operator at or below it; no operator sits in `default` today, so the `default` tier runs the conservative set. `--operator` names the operators to run, whatever their tier. Without it, the operators of `--operator-tier` run — `default` unless configured otherwise — minus those named by `--disable-mutator` or set `active: false` under `mutators:`. The tiers and the measurements behind them are in [`Docs/OPERATORS.md`](../OPERATORS.md).
 
@@ -146,7 +152,8 @@ ParsedSource
 ├── file              — SourceFile
 ├── syntax            — SourceFileSyntax (SwiftSyntax AST)
 ├── locationConverter — SourceLocationConverter, built once per file
-└── functionScopes    — FunctionBodyScopes, collected once per file by TypeScopeVisitor
+├── functionScopes    — FunctionBodyScopes, collected once per file by TypeScopeVisitor
+└── loopConditions    — LoopConditions, the while/repeat condition ranges of the file
 
 MutationPoint
 ├── operatorIdentifier
@@ -162,7 +169,9 @@ IndexedMutationPoint
 ├── index             — global position in source order; mutantID = MutantID.make(index:)
 ├── mutation          — MutationPoint
 ├── isSchematizable   — whether the mutation is inside a function body
-└── fingerprint       — MutantFingerprint, stable across unrelated edits
+├── fingerprint       — MutantFingerprint, stable across unrelated edits
+├── isInLoopCondition — whether the mutation is in a while/repeat condition
+└── functionBodyStart — bodyStartOffset of the innermost enclosing body, nil outside every body
 
 MutantDescriptor
 ├── id                — unique ID (swift-mutation-testing_<index>)
@@ -177,7 +186,9 @@ MutantDescriptor
 ├── isSchematizable   — schematizable or incompatible
 ├── mutatedSourceContent — pre-computed full source (incompatible only)
 ├── sourceContentHash — SHA-256 of the unmutated file, part of the cache key
-└── fingerprint
+├── fingerprint
+├── isInLoopCondition — from IndexedMutationPoint, read by SlowestFirst
+└── functionBodyStart — from IndexedMutationPoint, the coverage map key with the file's hash
 
 RunnerInput
 ├── projectPath
@@ -185,7 +196,8 @@ RunnerInput
 ├── timeout, concurrency, noCache
 ├── schematizedFiles  — [SchematizedFile] (one per modified source file, each ending with its own support declarations)
 ├── mutants           — [MutantDescriptor] (all mutants, schematizable and incompatible, in id order)
-└── importStyle       — ImportStyle, for a schema regenerated after a failed build
+├── importStyle       — ImportStyle, for a schema regenerated later (batches, narrowing) and for instrumenting incompatible mutants
+└── sourceHashes      — project-relative path → SHA-256 of every planned file, which a stored coverage map must match to be reused
 ```
 
 ---
