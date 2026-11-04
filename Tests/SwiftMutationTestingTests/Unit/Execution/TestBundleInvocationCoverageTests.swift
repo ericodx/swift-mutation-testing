@@ -19,7 +19,7 @@ struct TestBundleInvocationCoverageTests {
     ) -> [ProcessRequest] {
         invocation.requests(
             filter: "Ignored", mutantID: "m0", workingDirectory: URL(fileURLWithPath: "/sandbox"), timeout: 30,
-            libraries: libraries, reaching: tests
+            options: TestBundleInvocation.Options(libraries: libraries, reaching: tests)
         )
     }
 
@@ -68,7 +68,7 @@ struct TestBundleInvocationCoverageTests {
         let directory = URL(fileURLWithPath: "/coverage")
         let built = invocation.requests(
             filter: nil, mutantID: "", workingDirectory: URL(fileURLWithPath: "/sandbox"), timeout: 30,
-            coverageDirectory: directory
+            options: TestBundleInvocation.Options(coverageDirectory: directory)
         )
 
         #expect(built.count == 2)

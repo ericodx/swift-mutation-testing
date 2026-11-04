@@ -56,7 +56,7 @@ struct TestBundleInvocationTests {
 
         let requests = invocation.requests(
             filter: nil, mutantID: "m0", workingDirectory: URL(fileURLWithPath: "/sandbox"), timeout: 30,
-            activationFile: "/sandbox/.xmr-activation/m0-1"
+            options: TestBundleInvocation.Options(activationFile: "/sandbox/.xmr-activation/m0-1")
         )
 
         #expect(requests.count == 2)
@@ -195,7 +195,7 @@ struct TestBundleInvocationTests {
             framework: .swiftTesting
         ).requests(
             filter: nil, mutantID: "m0", workingDirectory: URL(fileURLWithPath: "/sandbox"), timeout: 30,
-            libraries: libraries
+            options: TestBundleInvocation.Options(libraries: libraries)
         )
 
         #expect(requests.map { $0.arguments.first } == firstArguments)
