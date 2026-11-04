@@ -110,8 +110,8 @@ actor CacheStore {
         let key = MutantCacheKey.make(for: mutant)
         guard let status = result(for: key) else { return nil }
         return ExecutionResult(
-            descriptor: mutant, status: status, testDuration: 0, killerTestFile: killerTestFiles[key],
-            activated: activations[key], fromCache: true
+            descriptor: mutant, status: status, testDuration: 0, killerTestFile: killerTestFile(for: key),
+            activated: activated(for: key), fromCache: true
         )
     }
 

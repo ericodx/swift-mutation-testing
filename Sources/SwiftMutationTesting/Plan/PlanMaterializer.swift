@@ -114,12 +114,6 @@ struct PlanMaterializer: Sendable {
     }
 
     static func descriptor(
-        of mutant: Plan.Mutant, at index: Int, in plan: Plan, projectPath: String
-    ) -> MutantDescriptor {
-        descriptor(of: mutant, at: index, fileHashes: fileHashes(of: plan), projectPath: projectPath)
-    }
-
-    static func descriptor(
         of mutant: Plan.Mutant, at index: Int, fileHashes: [String: String], projectPath: String
     ) -> MutantDescriptor {
         MutantDescriptor(

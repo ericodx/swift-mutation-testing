@@ -13,17 +13,10 @@ enum StandardOutput {
     }
 
     final class Capture: Sendable {
-
-        var contents: String {
-            buffer.withLock { $0 }
-        }
+        let buffer = Mutex("")
 
         func append(_ text: String) {
             buffer.withLock { $0 += text }
         }
-
-        // MARK: - Private
-
-        private let buffer = Mutex("")
     }
 }

@@ -9,8 +9,4 @@ struct TestBundle: Sendable, Equatable {
     var name: String {
         url.deletingPathExtension().lastPathComponent
     }
-
-    static func all(in sandbox: Sandbox) -> [TestBundle] {
-        TestBundleInvocation.bundleURLs(in: sandbox).map { TestBundle(url: $0, libraries: allLibraries) }
-    }
 }

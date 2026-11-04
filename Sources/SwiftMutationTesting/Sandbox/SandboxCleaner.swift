@@ -1,7 +1,7 @@
 import Foundation
 import Synchronization
 
-private let signalTarget = Mutex(SandboxCleaner.SignalTarget.process)
+let signalTarget = Mutex(SandboxCleaner.SignalTarget.process)
 private let signalSources = Mutex<[any DispatchSourceSignal]>([])
 
 private func catchSignal(_: Int32) {}
@@ -28,19 +28,6 @@ enum SandboxCleaner {
         let registry: SandboxRegistry
         let processGroups: ProcessGroupRegistry
         let exit: @Sendable (Int32) -> Void
-    }
-
-    static func withSignalTarget<T>(_ target: SignalTarget, _ body: () throws -> T) rethrows -> T {
-        let previous = signalTarget.withLock { current in
-            defer { current = target }
-            return current
-        }
-        defer { signalTarget.withLock { $0 = previous } }
-        return try body()
-    }
-
-    static func cleanupActiveSandbox(in registry: SandboxRegistry = .shared) {
-        registry.cleanup()
     }
 
     static func terminate(
