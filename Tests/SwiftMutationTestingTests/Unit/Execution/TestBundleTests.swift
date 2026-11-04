@@ -15,8 +15,8 @@ struct TestBundleTests {
         #expect(bundle.name == "CoreATests")
     }
 
-    @Test("Given built bundles, when all are listed, then each one carries both libraries in name order")
-    func allListsEveryBundleWithBothLibraries() throws {
+    @Test("Given built bundles and other files, when the bundles are listed, then only the bundles come, in name order")
+    func bundleURLsListEveryBundleInNameOrder() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
         defer { FileHelpers.cleanup(dir) }
         let products = dir.appendingPathComponent(".build/out/Products/Debug")
@@ -26,10 +26,9 @@ struct TestBundleTests {
             )
         }
 
-        let bundles = TestBundle.all(in: Sandbox(rootURL: dir))
+        let bundles = TestBundleInvocation.bundleURLs(in: Sandbox(rootURL: dir))
 
-        #expect(bundles.map(\.name) == ["CoreATests", "CoreBTests"])
-        #expect(bundles.allSatisfy { $0.libraries == TestBundle.allLibraries })
+        #expect(bundles.map(\.lastPathComponent) == ["CoreATests.xctest", "CoreBTests.xctest"])
     }
 
     @Test("Given a suite with a test target, when its bundles are asked for, then only that target's bundle is used")
