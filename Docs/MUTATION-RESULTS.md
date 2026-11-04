@@ -33,7 +33,7 @@ This document explains every possible outcome for a mutant, what causes it, and 
 
 **What it tells you:** your tests are exercising this code path with a meaningful assertion. A high kill rate here is the goal.
 
-**How it is measured:** for a Swift package, the tests named after the mutated file — `FooTests` for `Foo.swift`, when such a suite exists — run first, and the whole suite runs only if they let the mutant live. Either way the run is stopped as soon as one test fails, and that test is the one reported. Running the rest of the suite would change nothing about the verdict — killed is killed — so it is not run. Which test is reported first can differ between runs when the library runs tests in parallel; the verdict cannot.
+**How it is measured:** when the run has a coverage map, a mutant runs only the tests that reached its function in the unmutated baseline — on Xcode through `-only-testing`, for a Swift package by filtering each test bundle. The baseline records the map when the cache has none, and the cache keeps it until a test file or a source file changes; there is none under `--no-cache`, and none for a mutant the map knows nothing about, such as an incompatible one (see below). Without it, for a Swift package, the tests named after the mutated file — `FooTests` for `Foo.swift`, when such a suite exists — run first, and the whole suite runs only if they let the mutant live. Either way the run is stopped as soon as one test fails, and that test is the one reported. Running the rest of the suite would change nothing about the verdict — killed is killed — so it is not run. Which test is reported first can differ between runs when the library runs tests in parallel; the verdict cannot.
 
 **A kill that depends on the worker count.** The workers of a Swift package run the same test bundles from one sandbox, at the same time. A test that writes a file at a fixed path — a fixture found through `#filePath`, a fixed name under `NSTemporaryDirectory()` — can fail because a copy of itself in another worker removed or rewrote that file. When the mutated code ran in that process, that failure is reported as a kill, with no integrity warning: the run cannot tell it from a real one. If a kill surprises you, or the test reported as the killer has nothing to do with the mutated code, run that mutant again with `--concurrency 1` and after deleting `.swift-mutation-testing-cache`; see [Parallelism](USAGE.MD#parallelism).
 
@@ -100,7 +100,7 @@ To address a survivor, add or strengthen a test that is sensitive to the origina
 
 ### Timeout ⏱
 
-**What it means:** the test process was still running when the per-mutant timeout expired — and it was still running when the mutant was run again on its own. A mutant that times out while the other workers are busy is not given this verdict straight away. The parallel pass allows twice the configured `--timeout`, and once it is over every mutant still unsettled is run once more on at most half the machine's cores, under the configured `--timeout`; only that second timeout is reported. That second run has no contention to blame, so the verdict describes the mutation rather than the machine. The process was killed and the mutant counts as detected in the score.
+**What it means:** the test process was still running when the per-mutant timeout expired — and it was still running when the mutant was run again on its own. A mutant that times out while the other workers are busy is not given this verdict straight away. The parallel pass allows twice the configured `--timeout`, and once it is over every mutant still unsettled is run once more on at most half the machine's cores, under the configured `--timeout`; only that second timeout is reported. That second run has no contention to blame, so the verdict describes the mutation rather than the machine. An incompatible mutant (see below) has no second run: it is run once, under the configured `--timeout`, and a timeout there is its verdict. The process was killed and the mutant counts as detected in the score.
 
 **What causes it:** the mutation introduced an infinite loop or a significantly longer execution path. Common sources:
 
@@ -118,7 +118,7 @@ Mutants that loop forever are largely prevented at discovery rather than timing 
 
 **What it means:** no test executed the mutated code. The tests all passed with the mutant active, and the mutant's own branch of the schema never ran.
 
-**How it is measured:** every `case` of the schema begins by recording that it ran — a marker file, named after the mutant, that the test process creates the first time the mutated code executes. After the run, a passing suite whose marker was never written is reported as no coverage instead of survived. The marker is checked after the targeted run and after the full run, and either one counts. Mutants that cannot be schematized (see below) have no `case`, so their mutated expression is wrapped instead, in a call that records the same marker and returns the value unchanged; a removed statement is replaced by the recording call. A few places cannot take a call, such as enum raw values, attribute arguments, macro arguments and `#if` conditions, and a mutant whose instrumented copy does not compile is built again without the call. Those mutants are not measured: a passing suite is reported as survived, and the summary counts them under "Activation not measured".
+**How it is measured:** every `case` of the schema begins by recording that it ran — a marker file, named after the mutant, that the test process creates the first time the mutated code executes. After the run, a passing suite whose marker was never written is reported as no coverage instead of survived. When the run has a coverage map from the baseline (see [Killed](#killed-)), a mutant in a function no test reached there is reported as no coverage without being run at all. The marker is checked after the targeted run and after the full run, and either one counts. Mutants that cannot be schematized (see below) have no `case`, so their mutated expression is wrapped instead, in a call that records the same marker and returns the value unchanged; a removed statement is replaced by the recording call. A few places cannot take a call, such as enum raw values, attribute arguments, macro arguments and `#if` conditions, and a mutant whose instrumented copy does not compile is built again without the call. Those mutants are not measured: a passing suite is reported as survived, and the summary counts them under "Activation not measured".
 
 **What causes it:** the mutated line is dead code for the test suite — no test triggers the code path that reaches it.
 
@@ -137,7 +137,7 @@ A mutant killed without activation is run once more, alone, after every other mu
 ```
 Integrity warnings (2): killed or timed out without the mutated code running
   Sources/Parser.swift:88:12   RelationalOperatorReplacement   killed without activation
-  Sources/Cache.swift:12:5     RemoveSideEffects               timed out without activation
+  Sources/Cache.swift:12:5   RemoveSideEffects   timed out without activation
 ```
 
 The JSON report carries the same fact as `statusReason`: `killed without activation`, `crash without activation` or `timed out without activation`. Treat a warning as a test suite problem, not a mutant to fix. To make CI fail on warnings, set `--max-integrity-warnings 0`; see [Quality Gate](USAGE.MD#quality-gate).
@@ -256,7 +256,7 @@ enum ExitCode: Int32 {
 }
 ```
 
-In all of these cases, the mutation site is not inside any executable scope that can host a `switch` statement. The tool falls back to applying the mutation directly to the source file and running a build + test cycle per mutant. Each worker gets a sandbox of its own, built once; for every mutant it writes the mutated file, rebuilds, runs the tests, and restores the original.
+In all of these cases, the mutation site is not inside any executable scope that can host a `switch` statement. The tool falls back to applying the mutation directly to the source file and running a build + test cycle per mutant. Each worker gets a sandbox of its own, built once — the first one reuses the sandbox the schematized mutants ran in; for every mutant it writes the mutated file, rebuilds, runs the tests, and restores the original.
 
 ### Performance implications
 
@@ -264,10 +264,10 @@ In all of these cases, the mutation site is not inside any executable scope that
 |---|---|---|
 | Builds required | 1 (shared) | 1 per worker, then 1 incremental rebuild per mutant |
 | Test command | `test-without-building` (Xcode) / the test bundles (SPM) | build + test per mutant |
-| Parallel execution | yes, `--concurrency` workers | half of the workers, at least 1 |
+| Parallel execution | yes, `--concurrency` workers | half of the workers, at least 1 (on Xcode, no more than the simulators) |
 | Typical cost | seconds per mutant | an incremental build + test per mutant |
 
-Incompatible mutants are the expensive ones: each needs its own rebuild before its tests can run. The rebuild is incremental — the sandbox is built once, and kept between runs, and only the mutated file is recompiled after that — and the mutants are spread over half of the workers, but a project with 10 incompatible mutants still pays roughly 10 rebuilds plus 10 test runs on top of the shared build for schematizable mutants. The progress output calls this out explicitly:
+Incompatible mutants are the expensive ones: each needs its own rebuild before its tests can run. The rebuild is incremental — the sandbox is built once, and kept between runs unless `--no-warm-sandbox` is given, and only the mutated file is recompiled after that — and the mutants are spread over half of the workers, but a project with 10 incompatible mutants still pays roughly 10 rebuilds plus 10 test runs on top of the shared build for schematizable mutants. The progress output calls this out explicitly:
 
 ```
   ✓ Discovery: 154 mutants (143 schematizable, 11 incompatible) in 2.3s
