@@ -14,16 +14,16 @@ struct XCTestRunPlist: Sendable, Equatable {
     func activating(
         _ mutantID: String,
         activationFile: String? = nil,
+        coverageFile: String? = nil,
         serialize: PlistSerializer = {
             try PropertyListSerialization.data(fromPropertyList: $0, format: .xml, options: 0)
         }
     ) -> Data {
-        guard
-            var dict = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil))
-                as? [String: Any]
-        else { return data }
+        guard var dict = dictionary() else { return data }
 
-        let activation = TestBundleInvocation.environment(mutantID: mutantID, activationFile: activationFile)
+        let activation = TestBundleInvocation.environment(
+            mutantID: mutantID, activationFile: activationFile, coverageFile: coverageFile
+        )
 
         if var configurations = dict["TestConfigurations"] as? [[String: Any]] {
             for index in configurations.indices {
@@ -49,5 +49,32 @@ struct XCTestRunPlist: Sendable, Equatable {
         }
 
         return (try? serialize(dict)) ?? data
+    }
+
+    func targetNames() -> [String: String] {
+        guard let dict = dictionary() else { return [:] }
+
+        var targets: [[String: Any]] = []
+        if let configurations = dict["TestConfigurations"] as? [[String: Any]] {
+            targets = configurations.flatMap { $0["TestTargets"] as? [[String: Any]] ?? [] }
+        } else {
+            targets = dict.filter { !$0.key.hasPrefix("__") }.compactMap { $0.value as? [String: Any] }
+        }
+
+        var names: [String: String] = [:]
+        for target in targets {
+            guard let blueprint = target["BlueprintName"] as? String else { continue }
+            if let module = target["ProductModuleName"] as? String { names[module] = blueprint }
+            if let bundlePath = target["TestBundlePath"] as? String {
+                names[URL(fileURLWithPath: bundlePath).deletingPathExtension().lastPathComponent] = blueprint
+            }
+        }
+        return names
+    }
+
+    // MARK: - Private
+
+    private func dictionary() -> [String: Any]? {
+        (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) as? [String: Any]
     }
 }

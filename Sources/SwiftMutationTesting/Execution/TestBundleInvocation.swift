@@ -65,10 +65,16 @@ struct TestBundleInvocation: Sendable {
         return collecting
     }
 
-    static func environment(mutantID: String, activationFile: String?) -> [String: String] {
+    static func environment(
+        mutantID: String, activationFile: String?, coverageFile: String? = nil
+    ) -> [String: String] {
         var environment = ["__SWIFT_MUTATION_TESTING_ACTIVE": mutantID]
         if let activationFile {
             environment[ActivationMarker.environmentVariable] = activationFile
+        }
+        if let coverageFile {
+            environment[SupportDeclarations.coverageEnvironmentVariable] = coverageFile
+            environment[SupportDeclarations.coverageRedirectVariable] = "1"
         }
         return environment
     }

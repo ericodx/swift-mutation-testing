@@ -100,7 +100,7 @@ struct TestExecutionStage: Sendable {
             return .settled(cached)
         }
 
-        if context.artifact.plist == nil, context.coverage?.reach(of: mutant) == .unreached {
+        if context.coverage?.reach(of: mutant) == .unreached {
             return .settled(
                 await recorder(in: context).record(mutant, status: .noCoverage, activated: false)
             )
@@ -130,13 +130,25 @@ struct TestExecutionStage: Sendable {
         return await recordResult(mutant: mutant, outcome: outcome, launched: launched, in: context)
     }
 
-    func requireXcodeBaselineToPass(in context: TestExecutionContext) async throws {
-        guard let plist = context.artifact.plist else { return }
+    @discardableResult
+    func requireXcodeBaselineToPass(
+        in context: TestExecutionContext, collectingCoverage: Bool = false
+    ) async throws -> TestCoverage? {
+        guard let plist = context.artifact.plist else { return nil }
 
         let timeout = context.configuration.build.timeout
-        let launched = try await launchOnAnySlot(plistData: plist.activating(""), in: context, timeout: timeout)
+        let coverageFile = collectingCoverage ? Self.coverageFile(in: context.sandbox) : nil
+        defer { coverageFile.map { try? FileManager.default.removeItem(at: $0) } }
+
+        let launched = try await launchOnAnySlot(
+            plistData: plist.activating("", coverageFile: coverageFile?.path), in: context, timeout: timeout,
+            arguments: Self.onlyTesting(reaching: nil, testTarget: context.configuration.build.testTarget)
+                + (collectingCoverage ? Self.serialTesting : [])
+        )
         defer { try? FileManager.default.removeItem(atPath: launched.xcresultPath) }
 
+        let records = coverageFile.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+        let output = records.isEmpty ? launched.output : launched.output + "\n" + records
         let outcome = try await ResultParser(launcher: deps.launcher).parse(
             exitCode: launched.exitCode,
             output: launched.output,
@@ -144,7 +156,31 @@ struct TestExecutionStage: Sendable {
             timeout: timeout
         )
         try BaselineProbe(configuration: context.configuration, launcher: deps.launcher)
-            .requirePassing(outcome, output: launched.output)
+            .requirePassing(outcome, output: output)
+
+        guard collectingCoverage else { return nil }
+        let targets = plist.targetNames()
+        return CoverageOutputParser(xcodeTargets: targets).parse(output).resolvingTargets(
+            identifiers: await ResultParser(launcher: deps.launcher)
+                .testIdentifiers(xcresultPath: launched.xcresultPath, timeout: timeout),
+            targets: Set(targets.values)
+        )
+    }
+
+    static let serialTesting = ["-parallel-testing-enabled", "NO"]
+
+    static func onlyTesting(reaching: [TestReference]?, testTarget: String?) -> [String] {
+        if let reaching {
+            let ids = reaching.map(\.id).filter { id in testTarget.map { id == $0 || id.hasPrefix($0 + "/") } ?? true }
+            if !ids.isEmpty { return ids.flatMap { ["-only-testing", $0] } }
+        }
+        return testTarget.map { ["-only-testing", $0] } ?? []
+    }
+
+    private static func coverageFile(in sandbox: Sandbox) -> URL {
+        let url = sandbox.rootURL.appendingPathComponent("coverage-\(UUID().uuidString).log")
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        return url
     }
 
     private func measure(
@@ -157,8 +193,10 @@ struct TestExecutionStage: Sendable {
         }
 
         let marker = ActivationMarker(for: mutant.id, in: context.sandbox)
+        let reaching = context.configuration.build.reproducing ? nil : context.coverage.reaching(mutant)
         var launched = try await launchOnAnySlot(
-            plistData: plist.activating(mutant.id, activationFile: marker.path), in: context, timeout: timeout
+            plistData: plist.activating(mutant.id, activationFile: marker.path), in: context, timeout: timeout,
+            arguments: Self.onlyTesting(reaching: reaching, testTarget: context.configuration.build.testTarget)
         )
         launched.activated = marker.wasWritten()
 
@@ -343,11 +381,14 @@ struct TestExecutionStage: Sendable {
     private func launchOnAnySlot(
         plistData: Data,
         in context: TestExecutionContext,
-        timeout: Double
+        timeout: Double,
+        arguments: [String]
     ) async throws -> TestLaunchResult {
         let slot = try await context.pool.acquire()
         do {
-            let launched = try await launch(plistData: plistData, slot: slot, in: context, timeout: timeout)
+            let launched = try await launch(
+                plistData: plistData, slot: slot, in: context, timeout: timeout, arguments: arguments
+            )
             await context.pool.release(slot)
             return launched
         } catch {
@@ -360,7 +401,8 @@ struct TestExecutionStage: Sendable {
         plistData: Data,
         slot: SimulatorSlot,
         in context: TestExecutionContext,
-        timeout: Double
+        timeout: Double,
+        arguments: [String]
     ) async throws -> TestLaunchResult {
         let baseURL =
             context.artifact.xctestrunURL?.deletingLastPathComponent()
@@ -373,19 +415,14 @@ struct TestExecutionStage: Sendable {
 
         try plistData.write(to: xctestrunURL)
 
-        var arguments =
+        let arguments =
             [
                 "test-without-building",
                 "-xctestrun", xctestrunURL.path,
                 "-destination", slot.destination,
                 "-resultBundlePath", xcresultPath,
                 "-derivedDataPath", context.artifact.derivedDataPath,
-            ] + ToolRequests.noTestDiagnostics
-
-        if let testTarget = context.configuration.build.testTarget {
-            arguments += ["-only-testing", testTarget]
-        }
-        arguments += context.configuration.build.xcodebuildArguments
+            ] + ToolRequests.noTestDiagnostics + arguments + context.configuration.build.xcodebuildArguments
 
         let start = Date()
         let captured = try await deps.launcher.launchCapturing(

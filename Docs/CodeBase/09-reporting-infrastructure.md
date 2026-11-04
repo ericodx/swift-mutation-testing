@@ -1129,13 +1129,19 @@ The capacity bounds how many runs can be tracked at once — 256, well above the
 struct XCTestRunPlist: Sendable, Equatable {
     typealias PlistSerializer = ([String: Any]) throws -> Data
     init?(_ data: Data)
-    func activating(_ mutantID: String, activationFile: String? = nil, serialize: PlistSerializer = …) -> Data
+    func activating(
+        _ mutantID: String, activationFile: String? = nil, coverageFile: String? = nil,
+        serialize: PlistSerializer = …
+    ) -> Data
+    func targetNames() -> [String: String]
 }
 ```
 
 Wraps the raw plist `Data` from the `.xctestrun` file; `init?` refuses data that is not a property-list dictionary.
 
-`activating(_:activationFile:)` merges `TestBundleInvocation.environment(mutantID:activationFile:)` — `__SWIFT_MUTATION_TESTING_ACTIVE` set to `mutantID`, and the activation marker's variable when a file is given — into `EnvironmentVariables` for every test target in the plist. Handles both the `TestConfigurations` format (Xcode 15+) and the legacy flat dictionary format. Returns a fresh XML plist `Data` — the original is not mutated; when `serialize` fails it returns the original data.
+`activating(_:activationFile:coverageFile:)` merges `TestBundleInvocation.environment(mutantID:activationFile:coverageFile:)` — `__SWIFT_MUTATION_TESTING_ACTIVE` set to `mutantID`, the activation marker's variable when a file is given, and `__SWIFT_MUTATION_TESTING_COVERAGE_FILE` with `__SWIFT_MUTATION_TESTING_COVERAGE_REDIRECT` when the baseline collects a coverage map — into `EnvironmentVariables` for every test target in the plist. Handles both the `TestConfigurations` format (Xcode 15+) and the legacy flat dictionary format. Returns a fresh XML plist `Data` — the original is not mutated; when `serialize` fails it returns the original data.
+
+`targetNames()` reads every test target of either format and maps its `ProductModuleName` (the module in XCTest's `-[Module.Class test]`) and the name of its `TestBundlePath` (the bundle in `Test Suite '<Bundle>.xctest' started`) to its `BlueprintName`, the target name `-only-testing` takes; `CoverageOutputParser(xcodeTargets:)` uses it.
 
 ---
 
