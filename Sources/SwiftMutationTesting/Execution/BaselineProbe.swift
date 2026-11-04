@@ -53,9 +53,11 @@ struct BaselineProbe: Sendable {
                 mutantID: "",
                 workingDirectory: sandbox.rootURL,
                 timeout: configuration.build.timeout,
-                libraries: [library],
-                stoppingAtFirstFailure: false,
-                coverageDirectory: coverage == nil ? nil : FileManager.default.temporaryDirectory
+                options: TestBundleInvocation.Options(
+                    libraries: [library],
+                    stoppingAtFirstFailure: false,
+                    coverageDirectory: coverage == nil ? nil : FileManager.default.temporaryDirectory
+                )
             )
 
             for request in requests {

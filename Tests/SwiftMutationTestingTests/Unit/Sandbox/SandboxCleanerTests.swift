@@ -325,6 +325,18 @@ struct SandboxCleanerTests {
     func aDirectoryThatCannotBeListedIsLeftAlone() {
         SandboxCleaner.removeOrphaned(in: URL(fileURLWithPath: "/does/not/exist/\(UUID().uuidString)"))
     }
+
+    @Test("Given a function with a result, when its result is ignored, then the code still reaches it")
+    func ignoringTheResultPassesTheCodeThrough() {
+        let recorder = ExitRecorder()
+
+        SandboxCleaner.SignalTarget.ignoringResult { (code: Int32) -> Int32 in
+            recorder.record(code)
+            return code
+        }(7)
+
+        #expect(recorder.code == 7)
+    }
 }
 
 private final class ExitRecorder: Sendable {

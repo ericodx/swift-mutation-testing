@@ -15,7 +15,15 @@ private func handleSignal() {
 enum SandboxCleaner {
 
     struct SignalTarget: Sendable {
-        static let process = SignalTarget(registry: .shared, processGroups: .shared, exit: { _exit($0) })
+        static let process = SignalTarget(
+            registry: .shared, processGroups: .shared, exit: ignoringResult(of: _exit)
+        )
+
+        static func ignoringResult<Result>(
+            of function: @escaping @Sendable (Int32) -> Result
+        ) -> @Sendable (Int32) -> Void {
+            { _ = function($0) }
+        }
 
         let registry: SandboxRegistry
         let processGroups: ProcessGroupRegistry

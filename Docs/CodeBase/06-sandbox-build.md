@@ -172,7 +172,7 @@ struct WarmSandboxes: Sendable {
 
     static func key(for projectPath: String) -> String
     static func name(for projectPath: String, slot: Int) -> String
-    func claim(projectPath: String) throws -> (URL, Slot)
+    func claim(projectPath: String, from index: Int = 0) throws -> (URL, Slot)
     func slots(of projectPath: String) -> [URL]
     func removeAll(projectPath: String)
     func prune(_ sandboxURL: URL, keeping kept: Set<String>) throws
@@ -185,7 +185,7 @@ The sandboxes a project keeps between runs, so that the schema build and the war
 |---|---|
 | `key(for:)` | The first 16 hex digits of the SHA-256 of the project's resolved path: one family of slots per project, whatever path spelling or symlink the run was started with |
 | `name(for:slot:)` | `warm-<key>-<slot>` |
-| `claim(projectPath:)` | Walks the slots from 0 up, creates each directory if needed, and takes the first whose lock it can get: the `lock` file inside the slot is opened `O_CREAT \| O_CLOEXEC` and `flock`ed exclusively without waiting; a held lock means a live run of the same project owns that slot, and the next one is tried. The owner's pid is written into the file for anyone looking. The lock lives with the open descriptor — closed on `unlock`, or by the kernel when the process ends, however it ends — so a crashed or killed run leaves nothing stale and no staleness check is needed; `O_CLOEXEC` keeps the test and build processes from inheriting it |
+| `claim(projectPath:from:)` | Walks the slots from `index` up (0 by default), creates each directory if needed, and takes the first whose lock it can get, calling itself with the next index when a lock is held: the `lock` file inside the slot is opened `O_CREAT \| O_CLOEXEC` and `flock`ed exclusively without waiting; a held lock means a live run of the same project owns that slot, and the next one is tried. The owner's pid is written into the file for anyone looking. The lock lives with the open descriptor — closed on `unlock`, or by the kernel when the process ends, however it ends — so a crashed or killed run leaves nothing stale and no staleness check is needed; `O_CLOEXEC` keeps the test and build processes from inheriting it. A lock file that cannot be opened, a directory in its place say, throws `LockError` naming its path |
 | `slots(of:)` | The project's slot directories, in order |
 | `removeAll(projectPath:)` | Removes every slot of the project whose lock can be taken — what `--no-warm-sandbox` does before its run; a slot a live run holds stays |
 | `prune(_:keeping:)` | Empties a slot for a refresh, keeping `.build` and `.xmr-derived-data` (`keptDirectories`), the lock, and the files in `kept` with the directories that lead to them; see **Kept sandboxes** under `SandboxFactory` |
@@ -215,6 +215,9 @@ enum SandboxCleaner {
 
     struct SignalTarget: Sendable {
         static let process: SignalTarget
+        static func ignoringResult<Result>(
+            of function: @escaping @Sendable (Int32) -> Result
+        ) -> @Sendable (Int32) -> Void
         let registry: SandboxRegistry
         let processGroups: ProcessGroupRegistry
         let exit: @Sendable (Int32) -> Void
@@ -233,6 +236,7 @@ Handles cleanup of orphaned and active sandbox directories.
 | `terminate(registry:processGroups:exit:)` | What a signal does: kills every test process group still in flight, removes the active sandbox, then calls `exit(1)` |
 | `installSignalHandlers()` | Installs an empty C handler for each of `handledSignals` (`SIGINT`, `SIGTERM`, `SIGHUP`), and once per process a dispatch signal source for each, on a global `.userInitiated` queue, that calls `terminate` with the current `SignalTarget` |
 | `withSignalTarget(_:_:)` | Points the installed signal sources at another registry and exit for the length of `body`, then restores `SignalTarget.process` |
+| `SignalTarget.ignoringResult(of:)` | Wraps a function of any result type as the `(Int32) -> Void` exit: `process` passes `_exit`, whose `(Int32) -> Never` Swift does not convert to `Void` |
 
 **The cleanup does not run in the signal handler.** It used to: the C handler took a lock, built a `String` and a `URL`, called `FileManager.removeItem` and freed memory, none of which is async-signal-safe — a signal landing while another thread held the malloc lock could deadlock the tool on its way out. The C handler is now empty, which is safe by definition, and the work runs on a `DispatchSourceSignal`, whose event handler is an ordinary block on a dispatch queue: kqueue records the signal whatever its disposition. The handler is a function rather than `SIG_IGN` because an ignored signal stays ignored across `exec`, and every test process would then ignore the `SIGTERM` a timeout sends; a caught signal is reset to its default in the child.
 

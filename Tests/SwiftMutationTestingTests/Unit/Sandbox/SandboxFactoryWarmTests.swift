@@ -39,6 +39,49 @@ struct SandboxFactoryWarmTests {
         )
     }
 
+    @Test("Given a slot that cannot be pruned, when a sandbox is made, then it throws and the slot is free again")
+    func aFailedPruneReleasesTheSlot() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        let (project, factory) = try makeProject(in: dir)
+        let first = try await factory.createClean(projectPath: project.path)
+        try first.cleanup()
+        let locked = first.rootURL.appendingPathComponent("Stale")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        try FileHelpers.write("stale", named: "inner.txt", in: locked)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: locked.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+            FileHelpers.cleanup(dir)
+        }
+
+        await #expect(throws: (any Error).self) { try await factory.createClean(projectPath: project.path) }
+
+        let (url, slot) = try #require(factory.warm).claim(projectPath: project.path)
+        defer { slot.unlock() }
+        #expect(slot.index == 0)
+        #expect(url.path == first.rootURL.path)
+    }
+
+    @Test(
+        "Given a project folder that cannot be read, when a sandbox is made, then it throws and the slot is free again")
+    func aFailedPopulateReleasesTheSlot() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        let (project, factory) = try makeProject(in: dir)
+        let unreadable = project.appendingPathComponent("Sources/Locked")
+        try FileManager.default.createDirectory(at: unreadable, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: unreadable.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: unreadable.path)
+            FileHelpers.cleanup(dir)
+        }
+
+        await #expect(throws: (any Error).self) { try await factory.createClean(projectPath: project.path) }
+
+        let (_, slot) = try #require(factory.warm).claim(projectPath: project.path)
+        defer { slot.unlock() }
+        #expect(slot.index == 0)
+    }
+
     @Test("Given a sandbox of an earlier run, when refreshed, then deleted files go and mutated copies are links again")
     func refreshFollowsTheProject() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
