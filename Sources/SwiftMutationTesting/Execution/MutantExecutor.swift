@@ -315,7 +315,7 @@ struct MutantExecutor: Sendable {
         let start = Date()
         do {
             let probed = try await probeBaseline(in: sandbox, deps: deps, collects: run.splitsOnSuiteFailure)
-            let context = TestExecutionContext(
+            var context = TestExecutionContext(
                 artifact: artifact, sandbox: sandbox, pool: pool,
                 configuration: configuration,
                 bundles: probed.bundles,
@@ -324,7 +324,13 @@ struct MutantExecutor: Sendable {
                 coverage: await deps.cacheStore.coverage
             )
             if case .xcode = configuration.build.projectType {
-                try await TestExecutionStage(deps: deps).requireXcodeBaselineToPass(in: context)
+                let collecting = run.splitsOnSuiteFailure && !configuration.build.noCache && context.coverage == nil
+                let collected = try await TestExecutionStage(deps: deps)
+                    .requireXcodeBaselineToPass(in: context, collectingCoverage: collecting)
+                if let collected, !collected.isEmpty {
+                    await deps.cacheStore.storeCoverage(collected)
+                    context.coverage = collected
+                }
             }
             await deps.timings.record(.baseline, start: start)
             return context

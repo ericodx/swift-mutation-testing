@@ -22,6 +22,7 @@ enum SupportDeclarations {
     }
 
     static let coverageEnvironmentVariable = "__SWIFT_MUTATION_TESTING_COVERAGE_FILE"
+    static let coverageRedirectVariable = "__SWIFT_MUTATION_TESTING_COVERAGE_REDIRECT"
     static let reachedMarker = "__swiftMutationTestingReached"
 
     static func reachedCall(for path: String, site: Int) -> String {
@@ -77,9 +78,13 @@ enum SupportDeclarations {
     private static func coverageSupport(suffix: String) -> String {
         """
 
-                nonisolated static let coverageDescriptor: Int32 =
-                    ProcessInfo.processInfo.environment["\(coverageEnvironmentVariable)"]
-                    .map { open($0, O_WRONLY | O_APPEND) } ?? -1
+                nonisolated static let coverageDescriptor: Int32 = {
+                    let environment = ProcessInfo.processInfo.environment
+                    guard let path = environment["\(coverageEnvironmentVariable)"] else { return -1 }
+                    let descriptor = open(path, O_WRONLY | O_APPEND)
+                    if descriptor >= 0, environment["\(coverageRedirectVariable)"] != nil { dup2(descriptor, 2) }
+                    return descriptor
+                }()
                 nonisolated(unsafe) static var reachedSites: Set<Int> = []
                 nonisolated(unsafe) static var reachedSize: off_t = -1
                 nonisolated static let reachedLock = NSLock()
