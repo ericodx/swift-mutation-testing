@@ -6,7 +6,7 @@
 
 ## Design
 
-The discovery pipeline is a **linear chain of stages**. Each stage receives an immutable input and produces an immutable output; only the first reads the file system. `DiscoveryPipeline.run` is `Planner` followed by `PlanMaterializer`: `Planner` runs the first four stages and writes their result down as a [plan](06-plans.md), and `PlanMaterializer` runs the two schematization stages over it.
+The discovery pipeline is a **linear chain of stages**. Each stage receives an immutable input and produces an immutable output; only the first reads the file system. A run is `Planner` followed by `PlanMaterializer`: `Planner` runs the first four stages and writes their result down as a [plan](06-plans.md), and `PlanMaterializer` runs the two schematization stages over it.
 
 ```mermaid
 flowchart TD
