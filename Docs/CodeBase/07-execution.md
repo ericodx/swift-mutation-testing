@@ -427,7 +427,7 @@ struct TestExecutionStage: Sendable {
 }
 ```
 
-Runs each mutant's tests in parallel — `xcodebuild test-without-building` on the Xcode path (the artifact has a plist), the test bundles directly on the SPM one. With a map in the context, on either path, `attempt` settles a mutant whose body no test reached (`TestCoverage.reach(of:)` is `.unreached`) as `noCoverage`, not activated, before any slot is taken; on SPM `measureSPMTargetedFirst` runs a mutant with reaching tests against those alone — `SPMRun.reaching`, each bundle given the tests of its module — instead of the targeted suite and the whole suite, and on Xcode `measure` passes `onlyTesting(reaching:testTarget:)` to the launch: one `-only-testing <id>` per reaching test, kept to the ids under `--target` when it names a target (`Target` or `Target/…`), and the plain `-only-testing <target>` when none remain or there is no map; a mutant reached outside every test (`.unknown`) and a mutant with no body start take the path as before. The first pass takes the mutants in the order `SlowestFirst` gives them from the cache's last known durations (`CacheStore.durations(for:)`), not in source order; only the order changes, the passes and their limits are as below. The three passes below are three calls of one private `forEach(_:concurrency:run:collect:)`: a `withThrowingTaskGroup` that starts `concurrency` tasks and starts the next element as each finishes, and hands every outcome to `collect` on the calling task, so the results and the two retry lists are plain local arrays. `classify` turns a survivor whose activation marker was not written into `.noCoverage`; `IncompatibleMutantExecutor` classifies with it too.
+Runs each mutant's tests in parallel — `xcodebuild test-without-building` on the Xcode path (the artifact has a plist), the test bundles directly on the SPM one. With a map in the context, on either path, `attempt` settles a mutant whose body no test reached (`TestCoverage.reach(of:)` is `.unreached`) as `noCoverage`, not activated, before any slot is taken; on SPM `measureSPMTargetedFirst` runs a mutant with reaching tests against those alone — `SPMRun.reaching`, each bundle given the tests of its module by `SPMRun.reaching(in:)` — instead of the targeted suite and the whole suite, and on Xcode `measure` passes `onlyTesting(reaching:testTarget:)` to the launch: one `-only-testing <id>` per reaching test, kept to the ids under `--target` when it names a target (`Target` or `Target/…`), and the plain `-only-testing <target>` when none remain or there is no map; a mutant reached outside every test (`.unknown`) and a mutant with no body start take the path as before. The first pass takes the mutants in the order `SlowestFirst` gives them from the cache's last known durations (`CacheStore.durations(for:)`), not in source order; only the order changes, the passes and their limits are as below. The three passes below are three calls of one private `forEach(_:concurrency:run:collect:)`: a `withThrowingTaskGroup` that starts `concurrency` tasks and starts the next element as each finishes, and hands every outcome to `collect` on the calling task, so the results and the two retry lists are plain local arrays. `classify` turns a survivor whose activation marker was not written into `.noCoverage`; `IncompatibleMutantExecutor` classifies with it too.
 
 A mutant whose run times out during that parallel pass is not recorded yet. Once the group has drained, every such mutant is run once more on half the machine's cores (`stragglerConcurrency`: `processorCount / 2`, never more than `concurrency`, never fewer than one), under the configured `--timeout`, and that second outcome is the one reported and cached. The parallel pass itself allows twice the configured timeout (`loadedTimeoutFactor`): a verdict that settles under load is the same verdict the mutant would get alone, so the wider limit only spares the second run, while a mutant that is still running at twice the limit is handed to the quieter pass, whose limit is the one the user asked for.
 
@@ -578,6 +578,14 @@ struct TestBundleInvocation: Sendable {
     static func reportsNoTests(exitCode: Int32, output: String) -> Bool
     static func bundleURLs(in sandbox: Sandbox) -> [URL]
 
+    struct Options: Sendable {
+        var libraries: Set<TestingFramework> = TestBundle.allLibraries
+        var stoppingAtFirstFailure = true
+        var activationFile: String?
+        var reaching: [TestReference]?
+        var coverageDirectory: URL?
+    }
+
     let bundleURL: URL
     let framework: TestingFramework
 
@@ -586,11 +594,7 @@ struct TestBundleInvocation: Sendable {
         mutantID: String,
         workingDirectory: URL,
         timeout: Double,
-        libraries: Set<TestingFramework> = [.xctest, .swiftTesting],
-        stoppingAtFirstFailure: Bool = true,
-        activationFile: String? = nil,
-        reaching: [TestReference]? = nil,
-        coverageDirectory: URL? = nil
+        options: Options = Options()
     ) -> [ProcessRequest]
 
     static func environment(mutantID: String, activationFile: String?) -> [String: String]
@@ -601,7 +605,7 @@ struct TestBundleInvocation: Sendable {
 }
 ```
 
-With `reaching`, the given tests replace `filter`: the XCTest ones go to `xctest` as one comma-separated `-XCTest` list, the Swift Testing ones to the helper as one `--filter` each, `^` + the id escaped (`NSRegularExpression.escapedPattern`) + `/`, so `Suite/test()` does not also match `Suite/test2()` or a test case's location suffix; a library with no reaching test gets no request, and no reaching test at all means no request. With a `coverageDirectory`, every request is made `collecting`: its output is captured at a fresh `coverage-<UUID>.log` there (`ProcessRequest.outputURL`), `__SWIFT_MUTATION_TESTING_COVERAGE_FILE` names that same file, and the Swift Testing one gets `coverageEventStreamArguments` — `--no-parallel --event-stream-output-path /dev/fd/2 --event-stream-version 0` — so its `testStarted`/`testEnded` events, the schema's records and `xctest`'s own serial `Test Case` lines all land in the one file, in order.
+`Options` holds what a caller may change from the defaults — the libraries to run, whether each request stops at the first failure, the activation marker, the reaching tests and the coverage directory — so `BaselineProbe` and `TestExecutionStage` name only what they set. With `reaching`, the given tests replace `filter`: the XCTest ones go to `xctest` as one comma-separated `-XCTest` list, the Swift Testing ones to the helper as one `--filter` each, `^` + the id escaped (`NSRegularExpression.escapedPattern`) + `/`, so `Suite/test()` does not also match `Suite/test2()` or a test case's location suffix; a library with no reaching test gets no request, and no reaching test at all means no request. With a `coverageDirectory`, every request is made `collecting`: its output is captured at a fresh `coverage-<UUID>.log` there (`ProcessRequest.outputURL`), `__SWIFT_MUTATION_TESTING_COVERAGE_FILE` names that same file, and the Swift Testing one gets `coverageEventStreamArguments` — `--no-parallel --event-stream-output-path /dev/fd/2 --event-stream-version 0` — so its `testStarted`/`testEnded` events, the schema's records and `xctest`'s own serial `Test Case` lines all land in the one file, in order.
 
 Builds the process requests that run a package's test bundle directly, skipping `swift test`'s own build check. Two requests per mutant at most, ordered so the configured `--testing-framework` goes first:
 
@@ -614,7 +618,7 @@ Builds the process requests that run a package's test bundle directly, skipping 
 
 `bundleURLs(in:)` lists every `.xctest` under `.build/out/Products/Debug` in name order, one per test target; the order is what makes a run's output and its first failing test reproducible.
 
-`reportsNoTests` recognises a library that has nothing to run — exit code 69 from SwiftPM's helper, or `Executed 0 tests` from `xctest` — which is what `BaselineProbe` uses to drop a library from every mutant's run. `stoppingAtFirstFailure` attaches `OutputStopRule.firstTestFailure` to each request; the probe passes `false`, because its job is to run the suite to the end.
+`reportsNoTests` recognises a library that has nothing to run — exit code 69 from SwiftPM's helper, or `Executed 0 tests` from `xctest` — which is what `BaselineProbe` uses to drop a library from every mutant's run. `Options.stoppingAtFirstFailure` attaches `OutputStopRule.firstTestFailure` to each request; the probe passes `false`, because its job is to run the suite to the end.
 
 **`DeveloperToolchain`** — resolves the active developer directory once per process:
 
