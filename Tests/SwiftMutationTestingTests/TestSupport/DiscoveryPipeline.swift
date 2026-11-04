@@ -1,3 +1,5 @@
+@testable import SwiftMutationTesting
+
 struct DiscoveryPipeline: Sendable {
     func run(input: DiscoveryInput) async throws -> RunnerInput {
         let planned = try await Planner().plan(input: input)

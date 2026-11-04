@@ -1155,7 +1155,7 @@ struct RunnerInput: Sendable {
 }
 ```
 
-The value produced by `DiscoveryPipeline` and consumed by `MutantExecutor`.
+The value produced by `PlanMaterializer` and consumed by `MutantExecutor`.
 
 | Field | Description |
 |---|---|

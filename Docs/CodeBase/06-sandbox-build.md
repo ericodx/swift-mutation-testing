@@ -203,7 +203,6 @@ enum SandboxCleaner {
     static func removeOrphaned(in directory: URL = SandboxName.directory)
     static func register(_ sandbox: Sandbox, in registry: SandboxRegistry = .shared)
     static func deregister(in registry: SandboxRegistry = .shared)
-    static func cleanupActiveSandbox(in registry: SandboxRegistry = .shared)
     static func terminate(
         registry: SandboxRegistry = .shared,
         processGroups: ProcessGroupRegistry = .shared,
@@ -211,7 +210,6 @@ enum SandboxCleaner {
     )
     static let handledSignals: [Int32]
     static func installSignalHandlers()
-    static func withSignalTarget<T>(_ target: SignalTarget, _ body: () throws -> T) rethrows -> T
 
     struct SignalTarget: Sendable {
         static let process: SignalTarget
@@ -232,15 +230,13 @@ Handles cleanup of orphaned and active sandbox directories.
 | `removeOrphaned(in:)` | Scans the directory for `xmr-*` entries and removes the ones whose owning process is gone; the kept `warm-*` slots are not looked at. Called through `SandboxCleaner.clearLeftovers()` (CLI/CommandSupport.swift) by `RunCommand` before `MutantExecutor` runs and by `ReproduceCommand`, to clean up sandboxes from interrupted runs |
 | `register(_:in:)` | Records the sandbox as the active one in the registry |
 | `deregister(in:)` | Forgets the active sandbox without touching the directory |
-| `cleanupActiveSandbox(in:)` | Removes the active sandbox directory, if one is registered |
 | `terminate(registry:processGroups:exit:)` | What a signal does: kills every test process group still in flight, removes the active sandbox, then calls `exit(1)` |
 | `installSignalHandlers()` | Installs an empty C handler for each of `handledSignals` (`SIGINT`, `SIGTERM`, `SIGHUP`), and once per process a dispatch signal source for each, on a global `.userInitiated` queue, that calls `terminate` with the current `SignalTarget` |
-| `withSignalTarget(_:_:)` | Points the installed signal sources at another registry and exit for the length of `body`, then restores `SignalTarget.process` |
 | `SignalTarget.ignoringResult(of:)` | Wraps a function of any result type as the `(Int32) -> Void` exit: `process` passes `_exit`, whose `(Int32) -> Never` Swift does not convert to `Void` |
 
 **The cleanup does not run in the signal handler.** It used to: the C handler took a lock, built a `String` and a `URL`, called `FileManager.removeItem` and freed memory, none of which is async-signal-safe — a signal landing while another thread held the malloc lock could deadlock the tool on its way out. The C handler is now empty, which is safe by definition, and the work runs on a `DispatchSourceSignal`, whose event handler is an ordinary block on a dispatch queue: kqueue records the signal whatever its disposition. The handler is a function rather than `SIG_IGN` because an ignored signal stays ignored across `exec`, and every test process would then ignore the `SIGTERM` a timeout sends; a caught signal is reset to its default in the child.
 
-The sources cannot capture anything that changes per run, so what they clean and how they exit come from a module-level `Mutex<SignalTarget>`. In a run it always holds `SignalTarget.process` — the shared registry and `_exit` — and nothing but the sources ever take the lock. `withSignalTarget` exists so a test can send a real signal to the sources that were really installed without removing another test's sandbox or ending the test process; it replaces the mutable exit-handler global the handler used to read, which tests swapped without any synchronisation.
+The sources cannot capture anything that changes per run, so what they clean and how they exit come from the module-level `signalTarget`, a `Mutex<SignalTarget>`. In a run it always holds `SignalTarget.process` — the shared registry and `_exit` — and nothing but the sources ever take the lock. The tests' `SandboxCleaner.withSignalTarget(_:_:)`, in the test target's support files, points it at another registry and exit for the length of a body and then restores it, so a test can send a real signal to the sources that were really installed without removing another test's sandbox or ending the test process; it replaces the mutable exit-handler global the handler used to read, which tests swapped without any synchronisation.
 
 **Test processes die with the run.** Every test process leads a process group of its own (Foundation's `Process` starts it so, and `ProcessRunner` checks it), which is what lets a timeout kill a whole test tree at once, but it also takes the process out of the terminal's foreground group: Ctrl-C reaches the tool and nothing else. The handler used to remove the sandbox and `_exit`, so a mutant stuck in a loop kept running with no parent and no deadline, from a bundle that no longer existed — one ran at ~900% CPU for ten hours before anyone looked (#105). `terminate` now kills the groups registered in `ProcessGroupRegistry` first, before the sandbox they run from is deleted. `SIGHUP` joins the handled signals because closing the terminal or the IDE that started the run sends it, and its default action ends the tool just as silently. `SIGKILL` and a crash cannot be handled; the next run's `OrphanedProcessReaper` cleans up after those.
 

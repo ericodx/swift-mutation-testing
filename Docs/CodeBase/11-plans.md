@@ -117,16 +117,15 @@ struct PlanMaterializer: Sendable {
                      execution: ExecutionOptions, mutants selection: [Plan.Mutant]? = nil) throws -> RunnerInput
     func load(plan: Plan, projectPath: String) throws -> [SourceFile]
     static func fileHashes(of plan: Plan) -> [String: String]
-    static func descriptor(of mutant: Plan.Mutant, at index: Int, in plan: Plan, projectPath: String) -> MutantDescriptor
     static func descriptor(of mutant: Plan.Mutant, at index: Int, fileHashes: [String: String],
                            projectPath: String) -> MutantDescriptor
     static func absolute(_ relativePath: String, in projectPath: String) -> String
 }
 ```
 
-The first form reads the plan's files from disk through `load` — which throws `missingFile` for a file that is gone, `unreadableFile` with the reason for one that is there but cannot be read as UTF-8 text, `stale` on any hash that differs and `corrupt` on a mutant whose text is not at its range, each file's bytes copied once for every mutant of it — parses them and calls the second. The second rebuilds an `IndexedMutationPoint` per selected mutant (index = position in the plan; the file path taken from the matching source, matched by relative path with `Uniquing.keepingFirst`, so later lookups by path agree; `missingFile` when no source matches; `isInLoopCondition` read off the source's `loopConditions`, so a plan need not carry it), runs `SchematizationStage` and `IncompatibleRewritingStage`, and assembles the `RunnerInput` with `ImportStyle.of(sources)`, its descriptors in id order (`MutantID.ordered`); a project type the plan cannot name throws `unknownProjectType`. `descriptor` rebuilds one plan mutant's `MutantDescriptor` without parsing anything, for the verdicts `PlanResumer` and `ResultMerger` take from a journal or a report: its id from the index, its path made absolute, no mutated source, and the file's plan hash as `sourceContentHash`, so the cache key matches the one a run computes. The `fileHashes:` form takes the `[path: sha256]` table `fileHashes(of:)` builds (`Uniquing.keepingFirst` over `plan.files`), so a loop over the plan's mutants builds it once instead of searching `plan.files` for each mutant; the `in:` form builds the table for a single call. `absolute` uses the root's real path (`CanonicalPath`), the way the file enumerator reports paths.
+The first form reads the plan's files from disk through `load` — which throws `missingFile` for a file that is gone, `unreadableFile` with the reason for one that is there but cannot be read as UTF-8 text, `stale` on any hash that differs and `corrupt` on a mutant whose text is not at its range, each file's bytes copied once for every mutant of it — parses them and calls the second. The second rebuilds an `IndexedMutationPoint` per selected mutant (index = position in the plan; the file path taken from the matching source, matched by relative path with `Uniquing.keepingFirst`, so later lookups by path agree; `missingFile` when no source matches; `isInLoopCondition` read off the source's `loopConditions`, so a plan need not carry it), runs `SchematizationStage` and `IncompatibleRewritingStage`, and assembles the `RunnerInput` with `ImportStyle.of(sources)`, its descriptors in id order (`MutantID.ordered`); a project type the plan cannot name throws `unknownProjectType`. `descriptor` rebuilds one plan mutant's `MutantDescriptor` without parsing anything, for the verdicts `PlanResumer` and `ResultMerger` take from a journal or a report: its id from the index, its path made absolute, no mutated source, and the file's plan hash as `sourceContentHash`, so the cache key matches the one a run computes. The `fileHashes:` form takes the `[path: sha256]` table `fileHashes(of:)` builds (`Uniquing.keepingFirst` over `plan.files`), so a loop over the plan's mutants builds it once instead of searching `plan.files` for each mutant. `absolute` uses the root's real path (`CanonicalPath`), the way the file enumerator reports paths.
 
-The second form also sets each point's `functionBodyStart` from the parsed source's scopes (`functionScopes.innermostScope(containing:)`), as `MutantIndexingStage` does, and fills `RunnerInput.sourceHashes` with every file of `plan.files` — the whole plan's, not only the selected mutants' files — as `[path: sha256]`, the first entry winning a duplicate path. `MutantExecutor` stores them in the cache's metadata and adopts the cached coverage map only when the stored hashes equal them and no test file changed (`CacheStore.adoptCoverage(unless:sourceHashes:)`), so a change to any source in scope makes the next run measure the map again. `DiscoveryPipeline.run` and a plain `run` are `Planner` then the second form; `run --plan` is `PlanStore.read` then the first, through `PlanResumer`. `ExecutionOptions(_ configuration:)` in `CLI/CommandSupport.swift` builds the options from a configuration.
+The second form also sets each point's `functionBodyStart` from the parsed source's scopes (`functionScopes.innermostScope(containing:)`), as `MutantIndexingStage` does, and fills `RunnerInput.sourceHashes` with every file of `plan.files` — the whole plan's, not only the selected mutants' files — as `[path: sha256]`, the first entry winning a duplicate path. `MutantExecutor` stores them in the cache's metadata and adopts the cached coverage map only when the stored hashes equal them and no test file changed (`CacheStore.adoptCoverage(unless:sourceHashes:)`), so a change to any source in scope makes the next run measure the map again. A plain `run`, and the tests' `DiscoveryPipeline.run`, are `Planner` then the second form; `run --plan` is `PlanStore.read` then the first, through `PlanResumer`. `ExecutionOptions(_ configuration:)` in `CLI/CommandSupport.swift` builds the options from a configuration.
 
 ## Plan/Shard.swift
 
@@ -134,9 +133,11 @@ The second form also sets each point's `functionBodyStart` from the parsed sourc
 struct Shard: Sendable, Equatable, CustomStringConvertible {
     let index: Int
     let count: Int
-    init?(parsing raw: String)
-    init(index: Int, count: Int)
     var description: String { get }
+}
+
+extension Shard {
+    init?(parsing raw: String)
 }
 
 enum ShardSelector {

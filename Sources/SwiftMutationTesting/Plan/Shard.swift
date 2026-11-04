@@ -2,22 +2,18 @@ struct Shard: Sendable, Equatable, CustomStringConvertible {
     let index: Int
     let count: Int
 
+    var description: String { "\(index)/\(count)" }
+}
+
+extension Shard {
     init?(parsing raw: String) {
         let parts = raw.split(separator: "/", omittingEmptySubsequences: false)
         guard
             parts.count == 2, let index = Int(parts[0]), let count = Int(parts[1]),
             count >= 1, index >= 1, index <= count
         else { return nil }
-        self.index = index
-        self.count = count
+        self.init(index: index, count: count)
     }
-
-    init(index: Int, count: Int) {
-        self.index = index
-        self.count = count
-    }
-
-    var description: String { "\(index)/\(count)" }
 }
 
 enum ShardSelector {

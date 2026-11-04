@@ -4,7 +4,7 @@
 
 ---
 
-## Discovery/DiscoveryPipeline.swift
+## Tests/…/TestSupport/DiscoveryPipeline.swift
 
 ```swift
 struct DiscoveryPipeline: Sendable {
@@ -12,7 +12,7 @@ struct DiscoveryPipeline: Sendable {
 }
 ```
 
-The discovery phase in one call. `run` is `Planner.plan` followed by `PlanMaterializer.materialize` on the sources the planner just parsed: the six stages below, with a `Plan` in the middle (see [11 — Plans](11-plans.md)). The commands call the two halves themselves — `RunCommand` through `Planner.plan(for:)`, `run --plan` from a plan read from disk — so every flow shares one materialization; `DiscoveryPipeline` is what the tests drive.
+The discovery phase in one call, kept in the test target's support files rather than in `Sources`, since no command uses it. `run` is `Planner.plan` followed by `PlanMaterializer.materialize` on the sources the planner just parsed: the six stages below, with a `Plan` in the middle (see [11 — Plans](11-plans.md)). The commands call the two halves themselves — `RunCommand` through `Planner.plan(for:)`, `run --plan` from a plan read from disk — so every flow shares one materialization; `DiscoveryPipeline` is what the tests drive.
 
 ```mermaid
 flowchart TD

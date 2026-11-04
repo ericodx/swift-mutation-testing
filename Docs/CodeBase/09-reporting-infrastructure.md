@@ -887,14 +887,12 @@ The default launcher for Xcode projects. Its timeout handler, `terminate(pid:esc
 
 ```swift
 enum SleepInhibitor {
-    typealias AssertionTable = () -> NSDictionary?
     static let reason: String
     static func preventingIdleSleep<T>(reason: String = reason, _ body: () async throws -> T) async rethrows -> T
-    static func isHeld(by pid: pid_t = getpid(), reason: String = reason, table: AssertionTable = assertionsByProcess) -> Bool
 }
 ```
 
-Holds an IOKit `PreventSystemSleep` assertion for as long as `body` runs, the same one `caffeinate -s` takes. `RunCommand` and `ReproduceCommand` wrap their whole run — discovery and execution — in it, so a run left unattended keeps going instead of pausing whenever the machine sleeps: with 15 test processes suspended mid-run, every one of them comes back past its timeout and the wall-clock time of the run grows by the length of the nap. `PreventUserIdleSystemSleep` (`caffeinate -i`) is not enough, because it only counts while the machine is fully awake; a machine that wakes briefly for maintenance goes straight back to sleep under it, and a mutation run can spend most of its life in exactly that state. Like `caffeinate -s`, the assertion only applies on AC power. `isHeld` reads the assertion table back and exists so tests can observe the assertion being taken and released. Both take the assertion's `reason`, because the table is per process: while one test checks that nothing is held, another may be running the whole pipeline in the same process and holding the default one. Tests pass a reason of their own.
+Holds an IOKit `PreventSystemSleep` assertion for as long as `body` runs, the same one `caffeinate -s` takes. `RunCommand` and `ReproduceCommand` wrap their whole run — discovery and execution — in it, so a run left unattended keeps going instead of pausing whenever the machine sleeps: with 15 test processes suspended mid-run, every one of them comes back past its timeout and the wall-clock time of the run grows by the length of the nap. `PreventUserIdleSystemSleep` (`caffeinate -i`) is not enough, because it only counts while the machine is fully awake; a machine that wakes briefly for maintenance goes straight back to sleep under it, and a mutation run can spend most of its life in exactly that state. Like `caffeinate -s`, the assertion only applies on AC power. The tests' `SleepInhibitor.isHeld(by:reason:table:)`, in the test target's support files, reads IOKit's assertion table back so they can observe the assertion being taken and released. Both take the assertion's `reason`, because the table is per process: while one test checks that nothing is held, another may be running the whole pipeline in the same process and holding the default one. Tests pass a reason of their own.
 
 ---
 
@@ -906,7 +904,7 @@ enum StandardOutput {
     static func write(_ line: String = "")
 
     final class Capture: Sendable {
-        var contents: String { get }
+        let buffer: Mutex<String>
         func append(_ text: String)
     }
 }
@@ -914,7 +912,7 @@ enum StandardOutput {
 
 Everything the tool prints to stdout goes through `write`, which prints the line — or, when the current task has a `capture` bound, appends it there instead. Task-locals are inherited by child tasks, so a capture bound around a whole run sees what the reporters print from inside task groups.
 
-It exists for the tests. They used to capture output by pointing file descriptor 1 at a pipe with `dup2`, which is process-wide: two tests doing it at once took each other's output, and when they finished in the wrong order one of them restored stdout to the other's pipe, so that pipe never saw end-of-file and the test waited on it forever. A capture bound to the task belongs to one test only.
+It exists for the tests. They used to capture output by pointing file descriptor 1 at a pipe with `dup2`, which is process-wide: two tests doing it at once took each other's output, and when they finished in the wrong order one of them restored stdout to the other's pipe, so that pipe never saw end-of-file and the test waited on it forever. A capture bound to the task belongs to one test only. The tests read it back through `contents`, an extension in their support files.
 
 ---
 

@@ -186,7 +186,10 @@ struct PlanMaterializerTests {
         #expect(throws: PlanError.missingFile(file: stray.file)) {
             try PlanMaterializer().load(plan: plan, projectPath: dir.path)
         }
-        #expect(PlanMaterializer.descriptor(of: stray, at: 0, in: plan, projectPath: dir.path).sourceContentHash == "")
+        #expect(
+            PlanMaterializer.descriptor(
+                of: stray, at: 0, fileHashes: PlanMaterializer.fileHashes(of: plan), projectPath: dir.path
+            ).sourceContentHash == "")
     }
 
     static func writeProject(in dir: URL) throws {

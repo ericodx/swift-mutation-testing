@@ -242,7 +242,8 @@ struct SwiftMutationTestingPlanTests {
         let journalPath = PlanJournal.path(
             projectPath: dir.path, planSha256: try PlanStore.sha256(of: plan), shard: nil
         )
-        let first = PlanMaterializer.descriptor(of: plan.mutants[0], at: 0, in: plan, projectPath: dir.path)
+        let first = PlanMaterializer.descriptor(
+            of: plan.mutants[0], at: 0, fileHashes: PlanMaterializer.fileHashes(of: plan), projectPath: dir.path)
         PlanJournal(path: journalPath, mutants: [first]).record(
             status: .killed(by: "Earlier.test"), for: MutantCacheKey.make(for: first), killerTestFile: nil,
             activated: true, duration: 1
@@ -280,7 +281,8 @@ struct SwiftMutationTestingPlanTests {
         let journalPath = PlanJournal.path(
             projectPath: dir.path, planSha256: try PlanStore.sha256(of: plan), shard: nil)
         let descriptors = plan.mutants.enumerated().map {
-            PlanMaterializer.descriptor(of: $0.element, at: $0.offset, in: plan, projectPath: dir.path)
+            PlanMaterializer.descriptor(
+                of: $0.element, at: $0.offset, fileHashes: PlanMaterializer.fileHashes(of: plan), projectPath: dir.path)
         }
         let journal = PlanJournal(path: journalPath, mutants: descriptors)
         for descriptor in descriptors {
