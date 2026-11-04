@@ -15,12 +15,28 @@ struct SandboxNameTests {
         #expect(SandboxName.isOwnerAlive(of: name))
     }
 
-    @Test("Given the sandbox directory, when located, then it is a folder of its own inside the temp directory")
+    @Test("Given no TMPDIR, when the sandbox directory is located, then it is its own folder inside the temp directory")
     func directoryIsItsOwnFolderInTemp() {
         let temp = FileManager.default.temporaryDirectory.standardizedFileURL
+        let directory = SandboxName.directory(environment: [:])
 
-        #expect(SandboxName.directory.deletingLastPathComponent().standardizedFileURL == temp)
-        #expect(SandboxName.directory.standardizedFileURL != temp)
+        #expect(directory.deletingLastPathComponent().standardizedFileURL == temp)
+        #expect(directory.standardizedFileURL != temp)
+    }
+
+    @Test("Given a TMPDIR, when the sandbox directory is located, then it is a folder of its own inside TMPDIR")
+    func directoryIsInsideTMPDIR() {
+        let directory = SandboxName.directory(environment: ["TMPDIR": "/private/tmp/project-root/.build/tmp/"])
+
+        #expect(directory.path == "/private/tmp/project-root/.build/tmp/swift-mutation-testing")
+    }
+
+    @Test("Given an empty TMPDIR, when the sandbox directory is located, then it is inside the temp directory")
+    func emptyTMPDIRUsesTempDirectory() {
+        let temp = FileManager.default.temporaryDirectory.standardizedFileURL
+        let directory = SandboxName.directory(environment: ["TMPDIR": ""])
+
+        #expect(directory.deletingLastPathComponent().standardizedFileURL == temp)
     }
 
     @Test("Given two names made in a row, when compared, then they differ")

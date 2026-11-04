@@ -126,6 +126,30 @@ struct SandboxFactoryTests {
         #expect(content == "original content")
     }
 
+    @Test(
+        "Given a regular resource file, when sandbox created, then its contents are copied without a symlink",
+        arguments: ["config.json", "Resources/Themes/Sleepy Hollow", "Resources/Images/dot.svg"]
+    )
+    func resourceFilesAreCopied(relativePath: String) async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let resource = projectDir.appendingPathComponent(relativePath)
+        try FileManager.default.createDirectory(
+            at: resource.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try "resource content".write(to: resource, atomically: true, encoding: .utf8)
+
+        let sandbox = try await factory.createClean(projectPath: projectDir.path)
+        defer { try? sandbox.cleanup() }
+
+        let sandboxFile = sandbox.rootURL.appendingPathComponent(relativePath)
+        let values = try sandboxFile.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+        #expect(values.isSymbolicLink == false)
+        #expect(values.isRegularFile == true)
+        #expect(try String(contentsOf: sandboxFile, encoding: .utf8) == "resource content")
+    }
+
     @Test("Given an Icon Composer bundle, when sandbox created, then its manifest and nested assets are copied")
     func iconComposerBundleCopiesFiles() async throws {
         let projectDir = try FileHelpers.makeTemporaryDirectory()

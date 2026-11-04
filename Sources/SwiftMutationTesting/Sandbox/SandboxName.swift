@@ -5,7 +5,14 @@ enum SandboxName {
     static let prefix = "xmr-"
 
     static var directory: URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("swift-mutation-testing")
+        directory(environment: ProcessInfo.processInfo.environment)
+    }
+
+    static func directory(environment: [String: String]) -> URL {
+        let temp =
+            environment["TMPDIR"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.temporaryDirectory
+        return temp.appendingPathComponent("swift-mutation-testing")
     }
 
     static func make(pid: pid_t = getpid()) -> String {
