@@ -208,7 +208,9 @@ struct SandboxFactory: Sendable {
     }
 
     private func writeFile(source: URL, destination: URL, copiesFiles: Bool) throws {
-        if copiesFiles {
+        // Xcode copies resources into the product as they are, so a link to the
+        // project would point outside the app, and the iOS installer rejects it.
+        if copiesFiles || source.pathExtension != "swift" {
             try FileManager.default.copyItem(at: source, to: destination)
             return
         }
