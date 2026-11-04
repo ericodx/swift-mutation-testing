@@ -31,6 +31,24 @@ struct WarmSandboxesTests {
         )
     }
 
+    @Test("Given a slot whose lock cannot be created, when claimed, then the error names the lock's path")
+    func aLockThatCannotBeCreatedFailsTheClaim() throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(dir) }
+        let project = try makeProject(in: dir)
+        let warm = WarmSandboxes(directory: dir.appendingPathComponent("sandboxes"))
+        let lock = warm.directory
+            .appendingPathComponent(WarmSandboxes.name(for: project.path, slot: 0))
+            .appendingPathComponent(WarmSandboxes.lockName)
+        try FileManager.default.createDirectory(at: lock, withIntermediateDirectories: true)
+
+        #expect(throws: WarmSandboxes.LockError.self) { try warm.claim(projectPath: project.path) }
+        #expect(
+            WarmSandboxes.LockError(path: lock.path).errorDescription
+                == "The warm sandbox lock at \(lock.path) could not be created."
+        )
+    }
+
     @Test("Given a released slot, when claimed again, then the same slot is taken")
     func aReleasedSlotIsClaimedAgain() throws {
         let dir = try FileHelpers.makeTemporaryDirectory()

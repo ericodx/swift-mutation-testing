@@ -141,6 +141,33 @@ struct SwiftMutationTestingExecutionPathTests {
         #expect(!output.contains("mutation score"))
     }
 
+    @Test("Given --no-warm-sandbox, when run called, then the project's warm sandboxes of earlier runs are removed")
+    func noWarmSandboxRemovesTheProjectsSlots() async throws {
+        let dir = try FileHelpers.makeTemporaryDirectory()
+        let slot = WarmSandboxes().directory.appendingPathComponent(WarmSandboxes.name(for: dir.path, slot: 0))
+        defer {
+            FileHelpers.cleanup(dir)
+            FileHelpers.cleanup(slot)
+        }
+        let build = slot.appendingPathComponent(".build")
+        try FileManager.default.createDirectory(at: build, withIntermediateDirectories: true)
+        try FileHelpers.write("built", named: "App.o", in: build)
+        try "scheme: App\ndestination: platform=macOS\n".write(
+            to: dir.appendingPathComponent(".swift-mutation-testing.yml"), atomically: true, encoding: .utf8
+        )
+        try "func f(_ a: Bool, _ b: Bool) -> Bool { a && b }\n".write(
+            to: dir.appendingPathComponent("Foo.swift"), atomically: true, encoding: .utf8
+        )
+
+        _ = await captureOutput {
+            _ = await SwiftMutationTesting.run(
+                args: [dir.path, "--no-warm-sandbox"], launcher: MockProcessLauncher(exitCode: 1)
+            )
+        }
+
+        #expect(!FileManager.default.fileExists(atPath: slot.path))
+    }
+
     @Test("Given quiet is off and the project has mutants, when run called, then discovery is reported")
     func quietFalseReportsWhatDiscoveryFound() async throws {
         let dir = try FileHelpers.makeTemporaryDirectory()
