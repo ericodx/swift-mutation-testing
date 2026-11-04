@@ -109,6 +109,7 @@ swift-mutation-testing \
 Building for testing...
   ✓ Built in 18.4s
   ✓ 3 simulators ready
+    The clones' first boot keeps the machine busy for a few minutes; the first mutants take longer
 
 Testing mutants...
   ✓ 1/147  NegateConditional           Calculator.swift:12
@@ -583,6 +584,8 @@ swift-mutation-testing reproduce swift-mutation-testing_12      # by the id in a
 
 A package's mutants run the compiled test bundles directly, not through `swift test`, so the workers do not queue on the lock SwiftPM takes on `.build`. An Xcode run on a simulator destination gives each worker a simulator of its own: the destination's simulator is cloned once per worker (`✓ 3 simulators ready`) and the clones are deleted when the run ends. A destination with no `platform=`, or with a `Simulator` platform, counts as a simulator; `platform=macOS` has nothing to clone.
 
+Each clone copies the simulator's data, one clone at a time, within a minute plus half a minute per GB of it: a device Xcode has used for a while can hold gigabytes, and eight clones of a 5 GB one take over a minute, where clones of a fresh device take a second. A clone that runs past its time ends the run with `Failed to clone simulator`, naming the size; `xcrun simctl erase <udid>` or a device created for mutation testing clones faster. The clones' first boot then keeps the machine busy for a few minutes — the readiness line says so — and the first mutants take longer while it lasts.
+
 `--concurrency` is resolved down to 1 for the last two rows rather than accepted and quietly ignored, so the number the configuration reports is the number of mutants actually tested at once.
 
 **The workers of a package share one sandbox.** Every worker runs the same compiled test bundles from the same sandbox, with the same working directory, the same temporary directory and the same `#filePath` paths, so a test runs at the same time as copies of itself in other processes. That asks more of a suite than `swift test --parallel`, which runs each test once. A test that writes a file at a fixed path — a fixture next to its source found through `#filePath`, a fixed name under `NSTemporaryDirectory()`, a file relative to the working directory — can then fail because another worker deleted or overwrote it. When the mutated code ran in that process, the failure is recorded as a kill like any other: no integrity warning and no reason in the report. On macOS, setting `TMPDIR` would not separate them: `NSTemporaryDirectory()` and `FileManager.default.temporaryDirectory` ignore it and return the user's temporary directory. Give each test's files a unique name or a directory of its own (a `UUID` in the path), or run with `--concurrency 1` (or `concurrency: 1` in `.swift-mutation-testing.yml`); a kill that disappears with one worker came from this. See [Mutation Results](MUTATION-RESULTS.md#killed-).
@@ -656,6 +659,7 @@ Streams build events and per-mutant results to stdout during execution.
 Building for testing...
   ✓ Built in 18.4s
   ✓ 3 simulators ready
+    The clones' first boot keeps the machine busy for a few minutes; the first mutants take longer
 
 Testing mutants...
   ✓ 1/147  ArithmeticOperatorReplacement  Calculator.swift:12
@@ -684,7 +688,7 @@ Otherwise, or when a batch's build fails the suite too, those mutants are built 
   ⚠ The unmutated suite fails against the schema build but passes without it: building its mutants one by one
 ```
 
-The readiness line names simulators on a simulator destination and workers elsewhere (`✓ 4 workers ready`). A run whose every mutant has a verdict in the cache prints `✓ Loaded 147 mutants from cache` instead of building.
+The readiness line names simulators on a simulator destination and workers elsewhere (`✓ 4 workers ready`), and under simulators it says that their first boot keeps the machine busy, since the first mutants take longer while it lasts. A run whose every mutant has a verdict in the cache prints `✓ Loaded 147 mutants from cache` instead of building.
 
 Those mutants are not lost: each gets a build of its own, like an incompatible mutant, which is slower. Their build errors are in the `--keep-logs` output.
 

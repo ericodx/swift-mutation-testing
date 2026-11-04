@@ -169,7 +169,7 @@ struct SimulatorPoolTests {
         await pool.release(slot)
     }
 
-    @Test("Given the second of three clones fails, when setUp called, then the clones that succeeded are deleted")
+    @Test("Given the second of three clones fails, when setUp called, then the first is deleted and the third not made")
     func aFailedCloneDeletesTheClonesThatSucceeded() async throws {
         let mock = SimulatorCloneFailureMock(failingCloneIndices: [1])
         let pool = SimulatorPool(
@@ -183,7 +183,70 @@ struct SimulatorPoolTests {
             try await pool.setUp()
         }
 
-        #expect(mock.deletedUDIDs == ["CLONE-0", "CLONE-2"])
+        #expect(mock.deletedUDIDs == ["CLONE-0"])
+        #expect(mock.cloneTimeouts.count == 2)
+    }
+
+    @Test("Given a base whose data holds 5.3 GB, when the clones are made, then each clone's timeout grows with it")
+    func theCloneTimeoutGrowsWithTheBaseData() async throws {
+        let list = """
+            {"devices":{"com.apple.runtime.iOS":[{"udid":"BASE-UDID","name":"iPhone 17","state":"Shutdown",\
+            "dataPath":"/Devices/BASE-UDID/data"},{"udid":"CLONE-0","name":"XMR","state":"Booted"},\
+            {"udid":"CLONE-1","name":"XMR","state":"Booted"}]}}
+            """
+        let mock = SimulatorCloneFailureMock(listOutput: list, dataKilobytes: 5_291_480)
+        let pool = SimulatorPool(
+            baseUDID: "BASE-UDID",
+            size: 2,
+            destination: "platform=iOS Simulator,name=iPhone 17",
+            launcher: mock
+        )
+
+        try await pool.setUp()
+
+        #expect(mock.cloneTimeouts.map { Int($0) } == [222, 222])
+    }
+
+    @Test("Given a base whose data cannot be sized, when the clones are made, then the timeout is a minute")
+    func theCloneTimeoutFallsBackToAMinute() async throws {
+        let list = SimulatorCommandMock.bootedDevicesJSON(udid: "CLONE-0")
+        let mock = SimulatorCloneFailureMock(listOutput: list)
+        let pool = SimulatorPool(
+            baseUDID: "BASE-UDID",
+            size: 1,
+            destination: "platform=iOS Simulator,name=iPhone 17",
+            launcher: mock
+        )
+
+        try await pool.setUp()
+
+        #expect(mock.cloneTimeouts == [60])
+    }
+
+    @Test("Given data sizes, when the clone timeout is computed, then it is a minute plus half a minute per GB")
+    func theCloneTimeoutFormula() {
+        #expect(SimulatorPool.cloneTimeout(dataSize: nil) == 60)
+        #expect(abs(SimulatorPool.cloneTimeout(dataSize: 17_000_000) - 60.51) < 0.001)
+        #expect(SimulatorPool.cloneTimeout(dataSize: 5_000_000_000) == 210)
+    }
+
+    @Test("Given a clone that fails on a sized base, when setUp throws, then the error carries the data size")
+    func aFailedCloneNamesTheDataSize() async throws {
+        let list = """
+            {"devices":{"com.apple.runtime.iOS":[{"udid":"BASE-UDID","name":"iPhone 17","state":"Shutdown",\
+            "dataPath":"/Devices/BASE-UDID/data"}]}}
+            """
+        let mock = SimulatorCloneFailureMock(failingCloneIndices: [0], listOutput: list, dataKilobytes: 5_291_480)
+        let pool = SimulatorPool(
+            baseUDID: "BASE-UDID",
+            size: 1,
+            destination: "platform=iOS Simulator,name=iPhone 17",
+            launcher: mock
+        )
+
+        let error = await #expect(throws: SimulatorError.self) { try await pool.setUp() }
+
+        #expect(error?.errorDescription?.contains("5.4 GB") == true)
     }
 
     @Test("Given every clone succeeds but booting fails, when setUp called, then every clone is deleted")

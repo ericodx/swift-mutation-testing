@@ -5,14 +5,22 @@ import Synchronization
 
 final class SimulatorCloneFailureMock: ProcessLaunching, Sendable {
 
-    init(failingCloneIndices: Set<Int> = [], bootFails: Bool = false, listOutput: String = "") {
+    init(
+        failingCloneIndices: Set<Int> = [], bootFails: Bool = false, listOutput: String = "",
+        dataKilobytes: Int64? = nil
+    ) {
         self.failingCloneIndices = failingCloneIndices
         self.bootFails = bootFails
         self.listOutput = listOutput
+        self.dataKilobytes = dataKilobytes
     }
 
     var deletedUDIDs: [String] {
         deleted.withLock { $0.sorted() }
+    }
+
+    var cloneTimeouts: [Double] {
+        timeouts.withLock { $0 }
     }
 
     func launch(
@@ -37,6 +45,10 @@ final class SimulatorCloneFailureMock: ProcessLaunching, Sendable {
         if request.arguments.contains("list") {
             return (0, listOutput)
         }
+        if request.executableURL.lastPathComponent == "du" {
+            guard let dataKilobytes else { return (1, "") }
+            return (0, "\(dataKilobytes)\t\(request.arguments.last ?? "")\n")
+        }
         guard
             request.arguments.contains("clone"),
             let name = request.arguments.last,
@@ -44,6 +56,7 @@ final class SimulatorCloneFailureMock: ProcessLaunching, Sendable {
         else {
             return (0, "")
         }
+        timeouts.withLock { $0.append(request.timeout) }
         if failingCloneIndices.contains(index) {
             return (1, "")
         }
@@ -55,5 +68,7 @@ final class SimulatorCloneFailureMock: ProcessLaunching, Sendable {
     private let failingCloneIndices: Set<Int>
     private let bootFails: Bool
     private let listOutput: String
+    private let dataKilobytes: Int64?
     private let deleted = Mutex<[String]>([])
+    private let timeouts = Mutex<[Double]>([])
 }

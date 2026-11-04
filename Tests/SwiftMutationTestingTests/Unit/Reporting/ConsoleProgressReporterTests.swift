@@ -115,6 +115,7 @@ struct ConsoleProgressReporterTests {
 
         #expect(output.contains("Testing mutants..."))
         #expect(output.contains("4 simulators ready"))
+        #expect(output.contains("first boot keeps the machine busy"))
     }
 
     @Test("Given workersReady without simulators, when reported, then they are not called simulators")
@@ -125,6 +126,7 @@ struct ConsoleProgressReporterTests {
 
         #expect(output.contains("1 worker ready"))
         #expect(!output.contains("simulator"))
+        #expect(!output.contains("first boot"))
     }
 
     @Test("Given mutantFinished, when reported, then line contains filename and line number inline")

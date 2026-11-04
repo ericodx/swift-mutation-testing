@@ -20,5 +20,13 @@ struct SimulatorErrorTests {
     func cloneFailed() {
         let error = SimulatorError.cloneFailed(udid: "DEF-456")
         #expect(error.errorDescription?.contains("DEF-456") == true)
+        #expect(error.errorDescription?.contains("GB") == false)
+    }
+
+    @Test("Given cloneFailed with the base's data size, when errorDescription accessed, then it names the size and a cure")
+    func cloneFailedWithDataSize() {
+        let error = SimulatorError.cloneFailed(udid: "DEF-456", dataSize: 5_291_480 * 1024)
+        #expect(error.errorDescription?.contains("5.4 GB") == true)
+        #expect(error.errorDescription?.contains("xcrun simctl erase DEF-456") == true)
     }
 }
