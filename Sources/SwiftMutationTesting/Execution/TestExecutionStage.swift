@@ -298,6 +298,10 @@ struct TestExecutionStage: Sendable {
         let bundles: [TestBundle]
         let activationFile: String
         var reaching: [TestReference]?
+
+        func reaching(in bundle: TestBundle) -> [TestReference]? {
+            reaching?.filter { $0.module == bundle.name }
+        }
     }
 
     private func launchSPM(
@@ -361,10 +365,12 @@ struct TestExecutionStage: Sendable {
                         mutantID: mutant.id,
                         workingDirectory: context.sandbox.rootURL,
                         timeout: timeout,
-                        libraries: bundle.libraries,
-                        stoppingAtFirstFailure: !configuration.build.reproducing,
-                        activationFile: run.activationFile,
-                        reaching: run.reaching.map { tests in tests.filter { $0.module == bundle.name } }
+                        options: TestBundleInvocation.Options(
+                            libraries: bundle.libraries,
+                            stoppingAtFirstFailure: !configuration.build.reproducing,
+                            activationFile: run.activationFile,
+                            reaching: run.reaching(in: bundle)
+                        )
                     )
             }
         }
