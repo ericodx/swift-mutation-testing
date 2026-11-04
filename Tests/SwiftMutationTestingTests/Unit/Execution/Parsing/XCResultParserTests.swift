@@ -105,4 +105,19 @@ struct XCResultParserTests {
 
         #expect(result == .crashed)
     }
+
+    @Test("Given test nodes with identifier URLs, when the identifiers are read, then each is Target/path")
+    func testIdentifiersDropTheSchemeAndTheScheme() {
+        let json = """
+            {"testNodes":[{"nodeType":"Test Plan","children":[{"nodeType":"Unit test bundle","children":[
+            {"nodeType":"Test Case","nodeIdentifierURL":"test://com.apple.xcode/CalcApp/CalcAppTests/add()"},
+            {"nodeType":"Test Suite","children":[{"nodeType":"Test Case",
+            "nodeIdentifierURL":"test://com.apple.xcode/CalcApp/CalcAppTests/ProbeXCTests/testAddX"}]},
+            {"nodeType":"Test Case","nodeIdentifierURL":"other://x"},
+            {"nodeType":"Test Case"}]}]}]}
+            """
+
+        #expect(XCResultParser().testIdentifiers(in: json) == ["CalcAppTests/add()", "CalcAppTests/ProbeXCTests/testAddX"])
+        #expect(XCResultParser().testIdentifiers(in: "{}") == [])
+    }
 }
