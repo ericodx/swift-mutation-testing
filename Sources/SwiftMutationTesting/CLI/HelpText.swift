@@ -21,7 +21,7 @@ enum HelpText {
           --project-path <path>         The project a merge reports on (merge only; default: .)
 
         ARGUMENTS:
-          <project-path>                Path to the Xcode project root (default: .)
+          <project-path>                Path to the Xcode project or SPM package root (default: .)
 
         OPTIONS:
           --scheme <scheme>             Xcode scheme to build and test (Xcode projects only)
@@ -30,7 +30,7 @@ enum HelpText {
           --project <path>              The .xcodeproj to build, relative to the project (Xcode only).
                                         Without either, the one container at the root; two are an error
           --xcodebuild-arg <arg>        Append an argument to every xcodebuild call (repeatable, Xcode only)
-          --testing-framework <fw>       Testing framework: xctest or swift-testing (default: swift-testing)
+          --testing-framework <fw>      Testing framework: xctest or swift-testing (default: swift-testing)
           --target <test-target>        Test target name
           --timeout <seconds>           Per-mutant test timeout in seconds (default: 120 Xcode, 30 SPM)
           --build-timeout <seconds>     Build timeout in seconds (default: 120)
