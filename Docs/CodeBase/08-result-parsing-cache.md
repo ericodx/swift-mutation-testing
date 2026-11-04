@@ -36,6 +36,7 @@ struct ResultParser: Sendable {
         xcresultPath: String,
         timeout: Double
     ) async throws -> TestRunOutcome
+    func testIdentifiers(xcresultPath: String, timeout: Double) async -> [String]
 }
 ```
 
@@ -55,7 +56,9 @@ flowchart TD
     STDOUT -->|".unviable"| UNVIABLE[".unviable"]
 ```
 
-Exit code `-1` is the sentinel `ProcessRunner` returns when it ended the process itself, at the timeout or on cancellation. Exit code `0` is `.testsSucceeded` (survived). For any other exit code, `xcresulttool` is run through the launcher, with the same `timeout`, against the `.xcresult` bundle; when it succeeds, its JSON alone decides the outcome, and a bundle that names no failed test case is a crash. `TestOutputParser` over stdout/stderr is the fallback only when `xcresulttool` itself fails.
+Exit code `-1` is the sentinel `ProcessRunner` returns when it ended the process itself, at the timeout or on cancellation. Exit code `0` is `.testsSucceeded` (survived). For any other exit code, `xcresulttool` is run through the launcher, with the same `timeout`, against the `.xcresult` bundle; when it succeeds, its JSON alone decides the outcome, and a bundle that names no failed test case is a crash. `TestOutputParser` over stdout/stderr is the fallback only when `xcresulttool` itself fails. The `xcrun` request runs from `/tmp` with its standard error discarded (`discardingStandardError()`).
+
+`testIdentifiers(xcresultPath:timeout:)` runs the same `xcresulttool get test-results tests` request and returns `XCResultParser.testIdentifiers(in:)` over its output — every test case of the bundle as `<target>/<rest>` — or `[]` when the tool cannot be launched or exits non-zero. `TestExecutionStage.requireXcodeBaselineToPass` calls it after the baseline that collects coverage, so `TestCoverage.resolvingTargets(identifiers:targets:)` can fill in the target of the coverage ids the console left without one (see [07 — Execution](07-execution.md)).
 
 ---
 
@@ -168,10 +171,14 @@ struct XCResultParser: Sendable {
     }
 
     func parse(_ json: String) -> Result
+    static let identifierScheme: String
+    func testIdentifiers(in json: String) -> [String]
 }
 ```
 
 Parses the JSON `xcresulttool get test-results tests` prints; `ResultParser` runs the tool and hands the output over. Walks the `testNodes` tree depth-first for the first node with `nodeType == "Test Case"` and `result == "Failed"`, and returns its `nodeIdentifier` as `.killed(by:)`. JSON that does not parse, has no `testNodes`, or names no failed test case is `.crashed`: the tests exited non-zero without a test failing.
+
+`testIdentifiers(in:)` walks the same tree and collects the `nodeIdentifierURL` of every `Test Case` node, in order (a test case's children are not searched). A URL is kept only when it starts with `identifierScheme` (`"test://com.apple.xcode/"`); the scheme and the first path component after it are dropped, leaving `<target>/<class or suite>/<test>` — the form `-only-testing` takes. JSON that does not parse or has no `testNodes` gives `[]`.
 
 ---
 
@@ -272,7 +279,9 @@ Up to 1.5.0 any decode failure ended the run. 1.4.0 added `filePath` to `MutantC
 | `store(status:for:killerTestFile:activated:duration:)` | Stores an execution result with optional killer test file and activation metadata |
 | `changedTestFiles(current:)` | Compares current per-file test hashes against stored metadata to produce a `TestFileDiff` |
 | `invalidate(diff:)` | When the diff has changes: keeps `unviable` verdicts, keeps a kill unless its killer test file was modified or removed — or is unknown — and forgets every other verdict, since a new or changed test may now detect it |
-| `persistMetadata(_:)` | Writes `CacheMetadata` (format version, test file hashes and test selection) to disk alongside the results cache |
+| `persistMetadata(_:)` | Writes `CacheMetadata` (format version, test file hashes, test selection, source hashes, and the store's `coverage` in place of the one given) to disk alongside the results cache |
+| `adoptCoverage(unless:sourceHashes:)` | Takes the stored coverage map as `coverage` when the test file diff has no changes and the stored `sourceHashes` equal the given ones; otherwise leaves `coverage` as it is |
+| `storeCoverage(_:)` | Sets `coverage` to a map the baseline just collected; does nothing under `noCache` |
 | `discard(unlessMadeWith:)` | Forgets every verdict, and the journal, when the stored metadata names another `CacheTestSelection`, or none; returns whether it did (`@discardableResult`). Without metadata, or with no verdict loaded, it keeps everything |
 
 **The test selection.** A verdict says what one set of tests did to a mutant, and nothing about another set. `CacheTestSelection`, built from `RunnerConfiguration.BuildOptions`, records what the tests ran against: the Xcode scheme, destination, container and `--xcodebuild-arg` arguments, `--target`, and the testing library. `MutantExecutor.prepareCacheStore` calls `discard(unlessMadeWith:)` right after `load()`, printing a note through `StandardError` when it discards, and the metadata written at the start of the run carries the selection, so an interrupted run's journal is tied to it too. Before this, a run with another `--target` replayed nearly every verdict of the previous one (#135). The selection stays out of `MutantCacheKey`: two targets cannot share one cache, but keying verdicts per target would make every lookup depend on the configuration, for a case — alternating targets over one cache — that a CI job avoids by caching per job.

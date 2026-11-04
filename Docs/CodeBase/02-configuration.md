@@ -12,7 +12,7 @@ struct CommandLineParser: Sendable {
 }
 ```
 
-No arguments at all yield the default `ParsedArguments` — `run` on `.`. `--help` (or `-h`) and `--version` as the first word yield `.help` and `.version` at once; `init` yields `.initialize` with the next word as its project path unless it starts with `-`, and reads nothing after it. Otherwise the first word may be a command — `run` (the default when none is given), `plan`, `merge` or `reproduce` — then the words before the first flag are the command's positionals (the project path for `run` and `plan`; the result files for `merge`; the mutant and an optional project path for `reproduce`), then the flags. Iterates the flags left-to-right, dispatching each token to an internal `applyFlag` method that writes straight into the `ParsedArguments` it returns. Throws `UsageError` for unrecognised flags, for a flag without its value, for more positionals than the command takes, for `merge` without result files and `reproduce` without a mutant, for `--shard` outside `run` and for a shard that is not `i/n` — `--shard` is parsed into a `Shard` on the spot, with `PlanError.invalidShard`'s message. For `plan`, `--output` is the plan's path, not a report's. `--project-path <path>` sets the project path of `merge`, whose positionals are the result files, and is refused elsewhere. `--workspace` and `--project` name the Xcode container.
+No arguments at all yield the default `ParsedArguments` — `run` on `.`. `--help` (or `-h`) and `--version` as the first word yield `.help` and `.version` at once (anywhere else they are unknown options); `init` yields `.initialize` with the next word as its project path unless it starts with `-`, and reads nothing after it. Otherwise the first word may be a command — `run` (the default when none is given), `plan`, `merge` or `reproduce` — then the words before the first flag are the command's positionals (the project path for `run` and `plan`; the result files for `merge`; the mutant and an optional project path for `reproduce`), then the flags. Iterates the flags left-to-right, dispatching each token to an internal `applyFlag` method that writes straight into the `ParsedArguments` it returns. Throws `UsageError` for unrecognised flags, for a flag without its value, for more positionals than the command takes, for `merge` without result files and `reproduce` without a mutant, for `--shard` outside `run` and for a shard that is not `i/n` — `--shard` is parsed into a `Shard` on the spot, with `PlanError.invalidShard`'s message. For `plan`, `--output` is the plan's path, not a report's. `--project-path <path>` sets the project path of `merge`, whose positionals are the result files, and is refused elsewhere. `--workspace` and `--project` name the Xcode container.
 
 Multi-value flags (`--exclude`, `--operator`, `--disable-mutator`) accumulate into arrays. Boolean flags (`--no-cache`, `--no-warm-sandbox`, `--quiet`, `--timing`) set a single Bool. All other flags consume the next token as their value: `--timeout` and `--build-timeout` must be positive numbers, `--min-score` and `--max-score-drop` numbers of at least 0, and `--concurrency`, `--max-new-survivors` and `--max-integrity-warnings` integers; their range is checked later, by `ConfigurationResolver`.
 
@@ -40,9 +40,11 @@ struct ParsedArguments: Sendable {
         var buildTimeout: Double?
         var concurrency: Int?
         var noCache: Bool = false
+        var noWarmSandbox: Bool = false
         var testingFramework: String?
         var workspace: String?
         var xcodeProject: String?
+        var xcodebuildArguments: [String] = []
     }
 
     struct ReportingOptions: Sendable {
@@ -124,17 +126,17 @@ struct ParsedArguments: Sendable {
 
 ```swift
 struct RunnerConfiguration: Sendable {
+    static let defaultXcodeTimeout: Double = 120.0
+    static let defaultSPMTimeout: Double = 30.0
+    static let defaultBuildTimeout: Double = 120.0
+    static let defaultConcurrency = concurrency(forProcessors: ProcessInfo.processInfo.processorCount)
+    static func concurrency(forProcessors processorCount: Int) -> Int   // max(1, processorCount - 1)
+
     let projectPath: String
     var build: BuildOptions
     var reporting: ReportingOptions
     var filter: FilterOptions
     var gate: GateOptions = GateOptions()
-
-    static let defaultXcodeTimeout: Double   // 120.0
-    static let defaultSPMTimeout: Double     // 30.0
-    static let defaultBuildTimeout: Double   // 120.0
-    static let defaultConcurrency: Int       // concurrency(forProcessors: processorCount)
-    static func concurrency(forProcessors processorCount: Int) -> Int   // max(1, processorCount - 1)
 
     struct BuildOptions: Sendable {
         var projectType: ProjectType
@@ -145,7 +147,8 @@ struct RunnerConfiguration: Sendable {
         var buildTimeout: Double
         var concurrency: Int
         var noCache: Bool
-        var testingFramework: TestingFramework  // default: .swiftTesting
+        var warmSandboxes: Bool = true
+        var testingFramework: TestingFramework = .swiftTesting
         var reproduction: Reproduction?
         var reproducing: Bool { get }
         var xcodeArguments: [String] { get }   // container arguments, then xcodebuildArguments
@@ -165,7 +168,7 @@ struct RunnerConfiguration: Sendable {
     }
 
     struct GateOptions: Sendable {
-        var policy: GatePolicy          // default: no policy
+        var policy = GatePolicy()       // no policy
         var baselinePath: String?
         var writeBaselinePath: String?
         var isActive: Bool { get }      // a policy is set, or a baseline is given
@@ -175,7 +178,7 @@ struct RunnerConfiguration: Sendable {
 
 Fully resolved configuration passed to both pipelines. Organized into four nested option groups: build, reporting, filter and gate. `gate` defaults to an inactive gate, so a run without gate settings behaves as it did before the gate existed.
 
-The groups are `var` so that a plan can replace what it fixes: `applying(_:)` (`RunnerConfiguration+Plan.swift`, see [11 — Plans](11-plans.md)) sets the project type, test target, Xcode container, sources path, exclusions and operators from the plan. `xcodeContainer` is the `.xcworkspace` or `.xcodeproj` the build names, `nil` for SPM. `reproduction` is set only by `Reproducer`: the executors then keep each sandbox for it instead of removing it, and `reproducing` (`reproduction != nil`) makes an SPM test run skip the targeted suite and go on past the first failure.
+The groups are `var` so that a plan can replace what it fixes: `applying(_:)` (`RunnerConfiguration+Plan.swift`, see [11 — Plans](11-plans.md)) sets the project type, test target, Xcode container, sources path, exclusions and operators from the plan. `xcodeContainer` is the `.xcworkspace` or `.xcodeproj` the build names, `nil` for SPM. `warmSandboxes` is `false` under `--no-warm-sandbox` or `no-warm-sandbox: true`: `RunCommand` then removes the project's `warm-` sandboxes and gives `MutantExecutor` a `SandboxFactory` without `WarmSandboxes`, so every sandbox is a fresh `xmr-` one. `reproduction` is set only by `Reproducer`: the executors then keep each sandbox for it instead of removing it, and `reproducing` (`reproduction != nil`) makes a test run ignore the coverage map (no reaching-tests filter, no `-only-testing` per mutant), skip the targeted SPM suite and go on past the first failure, and an Xcode incompatible mutant build cold instead of on a warm sandbox.
 
 | Constant | Value |
 |---|---|
@@ -228,7 +231,7 @@ enum XcodeContainerLocator {
 ## Configuration/TestingFramework.swift
 
 ```swift
-enum TestingFramework: String, Sendable {
+enum TestingFramework: String, Sendable, Codable {
     case xctest
     case swiftTesting = "swift-testing"
 }
@@ -253,13 +256,14 @@ struct ConfigurationResolver: Sendable {
 }
 ```
 
-Merges `ParsedArguments` (CLI, higher priority) with `[String: String]` from the YAML parser (lower priority). CLI values always win; a repeatable flag given at least once replaces the file's list instead of adding to it. `fileName` is the one spelling of the file name in messages, and `fileKeys` every key the file may hold, the report keys taken from `ReportFormat.allCases.map(\.fileKey)`. The project path is made absolute with `fileSystem.projectPath(_:)` (`.` or empty is the current directory), and the `Package.swift` and baseline existence checks go through the same `FileSystem`.
+Merges `ParsedArguments` (CLI, higher priority) with `[String: String]` from the YAML parser (lower priority). CLI values always win; a repeatable flag given at least once replaces the file's list instead of adding to it, except `--disable-mutator`, whose identifiers are added to the file's. `fileName` is the one spelling of the file name in messages, and `fileKeys` every key the file may hold, the report keys taken from `ReportFormat.allCases.map(\.fileKey)`. The project path is made absolute with `fileSystem.projectPath(_:)` (`.` or empty is the current directory), and the `Package.swift` and baseline existence checks go through the same `FileSystem`.
 
 The project is SPM when neither `scheme` nor `destination` is given, no container is named (`--workspace`/`--project`, else `workspace`/`project`; a CLI pair replaces the file's) and a `Package.swift` exists at the root. Otherwise it is Xcode, and `UsageError` is thrown if `scheme` or `destination` is absent in both sources; the container is then resolved with `XcodeContainerLocator.locate`.
 
 `timeout` defaults to `defaultXcodeTimeout` or `defaultSPMTimeout` by project type, `build-timeout` to `defaultBuildTimeout`, `concurrency` to `defaultConcurrency`; `--concurrency` below 1 is a `UsageError` too, and `--testing-framework` must be `xctest` or `swift-testing`. `effectiveConcurrency` then decides the workers: SPM keeps the requested count, and Xcode keeps it only for a destination that needs a simulator pool (`SimulatorManager.requiresSimulatorPool`) and a framework other than `.xctest` — one worker otherwise. Exclusions come from `--exclude`, else `exclude`, else `exclude-patterns`.
 
-**File values are checked, not dropped.** A value the file gets wrong used to fall back to the default without a word: `timeout: 0` was accepted, `timeout: soon` became the default, `quiet: yes` was false, and a misspelled key did nothing. Now `timeout` and `build-timeout` must be positive numbers and `concurrency` an integer of at least 1 — the same rules as their flags, in an error that names the file rather than the flag — and `quiet`, `no-cache` and `no-warm-sandbox` accept `true`/`yes`/`on` and `false`/`no`/`off` in any case and reject anything else. Every key outside `fileKeys` is reported through `warn` as `Warning: unknown key '<key>' in .swift-mutation-testing.yml is ignored`; it is a warning rather than an error so that a file written for a newer version still runs.
+**File values are checked, not dropped.** A value the file gets wrong used to fall back to the default without a word: `timeout: 0` was accepted, `timeout: soon` became the default, `quiet: yes` was false, and a misspelled key did nothing. Now `timeout` and `build-timeout` must be positive numbers and `concurrency` an integer of at least 1 — the same rules as their flags, in an error that names the file rather than the flag — and `quiet`, `timing`, `no-cache` and `no-warm-sandbox` accept `true`/`yes`/`on` and `false`/`no`/`off` in any case and reject anything else. Every key outside `fileKeys` is reported through `warn` as `Warning: unknown key '<key>' in .swift-mutation-testing.yml is ignored`; it is a warning rather than an error so that a file written for a newer version still runs.
+
 **Operator resolution** (`resolveOperators`), which always yields the full list of identifiers to run:
 
 1. An explicit list — `--operator` (CLI) or `operators` (file), CLI first — is used as is, whatever the operators' tiers
@@ -267,7 +271,7 @@ The project is SPM when neither `scheme` nor `destination` is given, no containe
 
 **xcodebuild arguments** (`resolveXcodebuildArguments`, called with the container from `resolveXcodeOptions`): `--xcodebuild-arg`, else the `xcodebuild-args` list. Any argument on a package is a `UsageError` (`--xcodebuild-arg applies to Xcode projects only`), and so is any argument in `reservedXcodebuildArguments` — the actions (`build`, `build-for-testing`, `test`, `test-without-building`, `clean`, `archive`, `analyze`) and the flags the tool sets on its own calls (`-scheme`, `-destination`, `-derivedDataPath`, `-workspace`, `-project`, `-xctestrun`, `-resultBundlePath`, `-only-testing`, `-parallel-testing-enabled`, `-collect-test-diagnostics`), which a second copy would contradict. `BuildOptions.xcodeArguments` puts them after the container's arguments; every `build-for-testing` and `test-without-building` of a run ends with them.
 
-**Gate resolution** (`resolveGate`): each policy comes from its flag or, failing that, from `min-score`, `max-score-drop`, `max-new-survivors` and `max-integrity-warnings` in the file. `baseline` and `--write-baseline` are resolved against the project path unless absolute. Throws `UsageError` when `min-score` is outside 0–100, a maximum is negative, a file value is not a number, `max-score-drop` or `max-new-survivors` is set without a baseline, or the baseline file does not exist.
+**Gate resolution** (`resolveGate`): each policy comes from its flag or, failing that, from `min-score`, `max-score-drop`, `max-new-survivors` and `max-integrity-warnings` in the file. `baseline` and `--write-baseline` are resolved against the project path unless absolute. Throws `UsageError` when `min-score` is outside 0–100, a maximum is negative, a file value is not a number (an integer for `max-new-survivors` and `max-integrity-warnings`), `max-score-drop` or `max-new-survivors` is set without a baseline, or the baseline file does not exist.
 
 ---
 
@@ -304,7 +308,7 @@ Generates YAML content using `DetectedProject` values where available, falling b
 - `timeout: 120` for Xcode, `timeout: 30` for SPM — the `defaultXcodeTimeout` and `defaultSPMTimeout` of `RunnerConfiguration`; `build-timeout` commented
 - `concurrency` — Xcode only: `concurrency: 1` for XCTest, `concurrency: 4` otherwise; the code default (`max(1, CPU count - 1)`) applies when absent
 - `no-cache` and `no-warm-sandbox` commented; one line per `ReportFormat`, `fileKey: exampleFile`, only `output` active
-- `exclude` — the detected test target as a fragment (`"/<target>/"`), else a commented glob example
+- `exclude` — the detected test target as a fragment (`"/<target>/"`), else a commented glob example (`**/Generated/**` for Xcode, `**/Tests/**` for SPM)
 - quality gate keys — `min-score`, `baseline`, `max-score-drop`, `max-new-survivors` and `max-integrity-warnings`, all commented
 - `operator-tier: default`, commented, with a link to `Docs/OPERATORS.md`
 - `mutators:` block — one `- name: / active: true` entry per operator from `OperatorRegistry.allOperatorNames`; user sets `active: false` to disable individual operators
@@ -320,13 +324,17 @@ struct ProjectDetector: Sendable {
     let launcher: any ProcessLaunching
     var fileSystem = FileSystem()
     func detect(at projectPath: String) async -> DetectedProject
-    private func detectXcode(at: URL, candidates: XcodeContainerLocator.Candidates) async -> DetectedProject
-    private func listProject(container:workingDirectory:) async -> (schemes: [String], projectName: String?, testTarget: String?)
-    private func listSPMTestTargets(in: URL) async -> [String]
-    private func selectScheme(from: [String], projectName: String?) -> String?
-    private func detectDestination(in: URL, container: XcodeContainer?) async -> String
-    private func detectTestingFramework(at:testTarget:) -> TestingFramework
-    private static let simulatorPlatforms: [SimulatorPlatform]   // sdkroot, platform, device selector
+    private func detectXcode(at projectURL: URL, candidates: XcodeContainerLocator.Candidates) async -> DetectedProject
+    private func listProject(container: (flag: String, path: String), workingDirectory: URL) async -> (schemes: [String], projectName: String?, testTarget: String?)
+    private func listSPMTestTargets(in projectURL: URL) async -> [String]
+    private func parseListOutput(_ output: String) -> (schemes: [String], projectName: String?, testTarget: String?)
+    private func selectScheme(from schemes: [String], projectName: String?) -> String?
+    private func detectDestination(in projectURL: URL, container: XcodeContainer?) async -> String
+    private struct SimulatorPlatform: Sendable { let sdkroot: String; let platform: String; let selecting: @Sendable ([String]) -> String? }
+    private static let simulatorPlatforms: [SimulatorPlatform]
+    private func queryBestDevice(for platform: String, selecting: ([String]) -> String?) async -> String?
+    private func detectTestingFramework(at projectURL: URL, testTarget: String?) -> TestingFramework
+    private func runtimeVersion(from key: String) -> (Int, Int)
 }
 ```
 
@@ -353,7 +361,7 @@ flowchart TD
 
 Containers at the root win over a `Package.swift`; containers found only below the root are used when there is no `Package.swift` either, and then `locate` fails with the list of them, which becomes the `containerNote`. `selectScheme` takes the scheme named like the project, else the first. The test target is the first target ending in `Tests` but not `UITests`, else the first ending in `Tests`, read from the targets `xcodebuild -list` reports, or from its schemes when it reports no targets, as for a workspace.
 
-`detectDestination` reads the `SDKROOT` of the project the container builds (the project itself, the first one a workspace references, or the first at the root) and walks the `simulatorPlatforms` table — iOS, tvOS, watchOS, visionOS, in that order, each with the `SDKROOT` that names it and how to pick its device. For the first platform whose `SDKROOT` matches and for which `xcrun simctl list devices available --json` has a device, it returns `platform=<platform> Simulator,OS=latest,name=<device>`, searching the newest runtime first. Anything else falls back to `platform=macOS`. Adding a platform is one entry in the table.
+`detectDestination` reads the `SDKROOT` of the project the container builds (the project itself, the first one a workspace references, or the first at the root) and walks the `simulatorPlatforms` table — iOS, tvOS, watchOS, visionOS, in that order, each with the `SDKROOT` that names it and how to pick its device. For the first platform whose `SDKROOT` matches and for which `xcrun simctl list devices available --json` has a device, it returns `platform=<platform> Simulator,OS=latest,name=<device>`, searching the newest runtime first (`runtimeVersion` reads the major and minor version off the runtime key). Anything else falls back to `platform=macOS`. Every query runs through the injected `launcher` with stderr discarded; `xcodebuild -list -json` and `swift package dump-package` time out after 30 seconds, `simctl` after 10, and a failed or non-zero query counts as finding nothing. Adding a platform is one entry in the table.
 
 The project path (`fileSystem.projectPath(_:)`), the container candidates, the `Package.swift` check and the test-target directory check go through the injected `FileSystem`.
 

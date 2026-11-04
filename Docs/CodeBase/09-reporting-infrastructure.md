@@ -37,7 +37,7 @@ Serialises progress output to stdout. Each `RunnerEvent` case maps to one or two
 | `.buildFinished` | `✓ Built in X.Xs` |
 | `.schemaNarrowed` | `⚠ Schema did not build: retrying without N mutants, to be built one by one` (`1 mutant, to be built on its own` for one) |
 | `.schemaSuiteFailed` | `⚠ The unmutated suite fails against the schema build but passes without it: testing its largest functions in batches` (`building its mutants one by one` when not splitting) |
-| `.workersReady` | `✓ N simulators ready` or `✓ N workers ready` (singular for one) + blank line + `Testing mutants...` |
+| `.workersReady` | `✓ N simulators ready` or `✓ N workers ready` (singular for one); with simulators, a note indented by four spaces — `The clones' first boot keeps the machine busy for a few minutes; the first mutants take longer`; then a blank line + `Testing mutants...` |
 | `.mutantFinished` | `<icon> <index>/<total>  <operator>  <filename>:<line>` |
 
 Progress icon is provided by `ExecutionStatus.progressIcon`.
@@ -85,6 +85,7 @@ Lifecycle events emitted by `MutantExecutor` and its stages to the `ProgressRepo
 struct RunnerSummary: Sendable {
     let results: [ExecutionResult]
     let totalDuration: Double
+    let phases: [PhaseTiming]
 
     let killed: [ExecutionResult]
     let survived: [ExecutionResult]
@@ -97,7 +98,7 @@ struct RunnerSummary: Sendable {
     let integrityWarnings: [ExecutionResult]
     let activationNotMeasured: [ExecutionResult]
 
-    init(results: [ExecutionResult], totalDuration: Double)
+    init(results: [ExecutionResult], totalDuration: Double, phases: [PhaseTiming] = [])
 
     var detected: [ExecutionResult]
     var undetected: [ExecutionResult]
@@ -107,7 +108,7 @@ struct RunnerSummary: Sendable {
 }
 ```
 
-Aggregates all `ExecutionResult` values and computes the mutation score. `init` sorts the results into the five status buckets in one pass, and in the same pass works out the score, groups the results by file and collects the cached results, the integrity warnings and the results with no activation measured — so every report reads stored values, where each property used to filter `results` again on every access (`score` alone ran four filters). `files` is still built on demand from the stored `resultsByFile`, since storing it would make each per-file summary build its own. `killed` includes `.killedByCrash`.
+Aggregates all `ExecutionResult` values and computes the mutation score. `init` sorts the results into the five status buckets in one pass, and in the same pass works out the score, groups the results by file and collects the cached results, the integrity warnings and the results with no activation measured — so every report reads stored values, where each property used to filter `results` again on every access (`score` alone ran four filters). `files` is still built on demand from the stored `resultsByFile`, since storing it would make each per-file summary build its own. `killed` includes `.killedByCrash`. `phases` are the run's `PhaseTiming` entries, as `PhaseTimings` recorded them, which `TimingReporter` reads; they default to none, which is what a per-file summary from `files` has.
 
 **Score formula:**
 
@@ -201,6 +202,7 @@ Output sections:
 struct TimingReporter: Sendable {
     struct Line: Equatable, Sendable { let label: String; let duration: Double; let count: Int }
     struct Document: Codable, Equatable, Sendable { let totalDuration: Double; let phases: [PhaseTiming] }
+    static let otherLabel: String
 
     func report(_ summary: RunnerSummary)
     func format(_ summary: RunnerSummary) -> String?
@@ -209,7 +211,7 @@ struct TimingReporter: Sendable {
 }
 ```
 
-The time by phase, from `RunnerSummary.phases`. `lines` walks `RunPhase.allCases` in order, sums the entries of each phase that has any and counts them, then appends `Other`: `totalDuration` minus every phase but `discovery`, never below zero — discovery runs before the total starts. `format` lays the lines out as a table under `Time by phase:`, labels padded to the longest, durations to one decimal, and `N×` after a phase recorded more than once; it is `nil` when there are no phases, so a merge prints nothing. `json` encodes the total and every entry, dates in ISO 8601, keys sorted. `RunConclusion.reportTiming` prints the table under `--timing` and writes the JSON through `MutantLogWriter.write(timing:)` under `--keep-logs`.
+The time by phase, from `RunnerSummary.phases`. `lines` walks `RunPhase.allCases` in order, sums the entries of each phase that has any and counts them, then appends `Other` (`otherLabel`): `totalDuration` minus every phase but `discovery`, never below zero — discovery runs before the total starts. `format` lays the lines out as a table under `Time by phase:`, each line indented by two spaces, labels padded to the longest, durations to one decimal right-aligned in eight columns, and `N×` after a phase recorded more than once; it is `nil` when there are no phases, so a merge prints nothing. `json` encodes the total and every entry, dates in ISO 8601, keys sorted. `RunConclusion.reportTiming`, which does nothing when there are no phases, prints the table under `--timing` and writes the JSON through `MutantLogWriter.write(timing:)` under `--keep-logs`.
 
 ## Reporting/JsonReporter.swift
 
@@ -707,6 +709,7 @@ struct MutantLogWriter: Sendable {
         mutant: MutantDescriptor, status: ExecutionStatus, duration: Double, output: String, activated: Bool? = nil
     )
     func write(baselineOutput output: String)
+    static let timingFileName: String
     func write(timing: Data)
 }
 ```
@@ -761,16 +764,17 @@ struct ProcessRequest: Sendable {
     let executableURL: URL
     let arguments: [String]
     let environment: [String: String]?
-    let additionalEnvironment: [String: String]
+    var additionalEnvironment: [String: String]
     let workingDirectoryURL: URL
     var timeout: Double
     var stopRule: OutputStopRule?
-    var discardsStandardError: Bool = false
+    var discardsStandardError = false
     var outputURL: URL?
 
     func withTimeout(_ timeout: Double) -> ProcessRequest
     func stopping(at rule: OutputStopRule) -> ProcessRequest
     func discardingStandardError() -> ProcessRequest
+    func capturingOutput(at url: URL) -> ProcessRequest
 }
 ```
 
@@ -784,11 +788,11 @@ struct ProcessRequest: Sendable {
 | `timeout` | Maximum execution time in seconds |
 | `stopRule` | When set, the runner ends the process as soon as a line of its output is what the rule stops at, and reports the rule's exit code instead of the process's own |
 | `discardsStandardError` | When set, `launchCapturing` sends stderr to `/dev/null`, so the output is stdout alone |
-| `outputURL` | When set (`capturingOutput(at:)`), `launchCapturing` captures the output in that file instead of a temporary one, so the process — and any process it spawns — can be told its path: the baseline's coverage collection names it in `__SWIFT_MUTATION_TESTING_COVERAGE_FILE` and the schema appends its records there, between the test library's own lines |
+| `outputURL` | When set (`capturingOutput(at:)`), `launchCapturing` captures the output in that file instead of a temporary one, so the process — and any process it spawns — can be told its path: the SPM baseline's coverage collection (`TestBundleInvocation.collecting(_:in:)`) creates `coverage-<UUID>.log` in the coverage directory, names it in `__SWIFT_MUTATION_TESTING_COVERAGE_FILE` through `additionalEnvironment` — which is a `var` for that — and the schema appends its records there, between the test library's own lines. The Xcode baseline does not use it: its records file is named in the `.xctestrun` instead (`XCTestRunPlist.activating`) |
 
-`withTimeout(_:)`, `stopping(at:)` and `discardingStandardError()` return a copy with that one field changed.
+`withTimeout(_:)`, `stopping(at:)`, `discardingStandardError()` and `capturingOutput(at:)` return a copy with that one field changed.
 
-**Reading JSON from a tool.** Every call whose output is parsed as JSON asks for `discardingStandardError()`. That covers `xcodebuild -list -json`, `swift package dump-package`, `xcrun simctl list devices --json` (in `ProjectDetector`, `SimulatorManager` and `SimulatorPool`) and `xcresulttool get test-results`. Those tools print warnings to stderr, such as `CoreSimulator is out of date` from `xcodebuild` when the simulator framework and Xcode disagree. With both streams in one file, the warning came before the JSON, the parse failed, and each caller fell back to "nothing found": `init` wrote no scheme, and an Xcode kill was read as a crash with no killer test. Test runs keep both streams, since a failure or a crash can be reported on either.
+**Reading JSON from a tool.** Every call whose output is parsed as JSON asks for `discardingStandardError()`. That covers `xcodebuild -list -json`, `swift package dump-package`, `xcrun simctl list devices --json` (in `ProjectDetector`, `SimulatorManager` and `SimulatorPool`) and `xcresulttool get test-results`. Those tools print warnings to stderr, such as `CoreSimulator is out of date` from `xcodebuild` when the simulator framework and Xcode disagree. With both streams in one file, the warning came before the JSON, the parse failed, and each caller fell back to "nothing found": `init` wrote no scheme, and an Xcode kill was read as a crash with no killer test. `du -sk` in `SimulatorManager`, whose first field is read as the size of the device data the clone timeout is sized from, asks for it too. Test runs keep both streams, since a failure or a crash can be reported on either.
 
 **`OutputStopRule`** (`Infrastructure/OutputStopRule.swift`) names the kind of line to stop at and the exit code to report when one is seen. `.firstTestFailure` stops at a line `TestOutputParser.failingTest(in:)` reads as a failed test — the XCTest `Test Case '-[…]' failed` line, at the start of the line, and Swift Testing's `✘ Test "…" recorded an issue` and `failed after` — with exit code 1, which is what both libraries exit with on a failure anyway. A line that merely quotes such text, such as the `started` line of a parameterized test whose argument is a failure line, does not stop the run: the rule asks the same parser that would name the kill, so a stop happens exactly where a kill would be read.
 
@@ -830,7 +834,7 @@ This is what makes a killed mutant cheap. A mutant is killed by its *first* fail
 
 **Cancellation handling:** `onCancel` marks the flag and calls `onTimeout(pid)` immediately, ensuring the continuation is always resumed via the `terminationHandler`. A task that is already cancelled runs `onCancel` before the process exists, with pid 0, which signals nothing; `run` therefore checks for cancellation before `process.run()` (`Task.checkCancellation`) and resumes with `CancellationError` without starting anything, and checks again right after through `isCancelled`, so a cancellation that lands while the process starts still stops it through `onTimeout`. `isCancelled` defaults to `Task.isCancelled`; a test hands in one that answers `true` to make that window happen.
 
-**Post-termination cleanup:** `postTerminationCleanup` is called after every process termination (success or failure), used by `SPMProcessLauncher` to kill the process group.
+**Post-termination cleanup:** `postTerminationCleanup` is called after every process termination (success or failure), right after the timeout task is cancelled and before the continuation resumes; `SPMProcessLauncher` uses it to kill the process group, `XcodeProcessLauncher` to cancel a pending escalation (see below).
 
 `launchCapturing` writes output to a temporary file (UUID-named, or the request's `outputURL`), opened with `O_APPEND` so that every write by the process, and by anything else appending to the file by name, goes to its end in time order, and reads it in the `terminationHandler` to avoid pipe buffer limits.
 
@@ -890,7 +894,7 @@ enum SleepInhibitor {
 }
 ```
 
-Holds an IOKit `PreventSystemSleep` assertion for as long as `body` runs, the same one `caffeinate -s` takes. The entry point wraps discovery and execution in it, so a run left unattended keeps going instead of pausing whenever the machine sleeps: with 15 test processes suspended mid-run, every one of them comes back past its timeout and the wall-clock time of the run grows by the length of the nap. `PreventUserIdleSystemSleep` (`caffeinate -i`) is not enough, because it only counts while the machine is fully awake; a machine that wakes briefly for maintenance goes straight back to sleep under it, and a mutation run can spend most of its life in exactly that state. Like `caffeinate -s`, the assertion only applies on AC power. `isHeld` reads the assertion table back and exists so tests can observe the assertion being taken and released. Both take the assertion's `reason`, because the table is per process: while one test checks that nothing is held, another may be running the whole pipeline in the same process and holding the default one. Tests pass a reason of their own.
+Holds an IOKit `PreventSystemSleep` assertion for as long as `body` runs, the same one `caffeinate -s` takes. `RunCommand` and `ReproduceCommand` wrap their whole run — discovery and execution — in it, so a run left unattended keeps going instead of pausing whenever the machine sleeps: with 15 test processes suspended mid-run, every one of them comes back past its timeout and the wall-clock time of the run grows by the length of the nap. `PreventUserIdleSystemSleep` (`caffeinate -i`) is not enough, because it only counts while the machine is fully awake; a machine that wakes briefly for maintenance goes straight back to sleep under it, and a mutation run can spend most of its life in exactly that state. Like `caffeinate -s`, the assertion only applies on AC power. `isHeld` reads the assertion table back and exists so tests can observe the assertion being taken and released. Both take the assertion's `reason`, because the table is per process: while one test checks that nothing is held, another may be running the whole pipeline in the same process and holding the default one. Tests pass a reason of their own.
 
 ---
 
@@ -1194,7 +1198,7 @@ enum Uniquing {
 }
 ```
 
-Builds a dictionary from key-value pairs that may repeat a key, keeping the first or the last value for it. `keepingFirst` serves the lookups by path or key — `MutantIndexingStage`, `SandboxFactory`, `TestBundleInvocation`'s environment, `PlanMaterializer` and `PlanJournal`'s fingerprints — and `keepingLast` reads `PlanJournal`'s entries, where the latest line wins. Both are plain loops rather than `Dictionary(_:uniquingKeysWith:)` with a function: a function passed as an argument compiles to a thunk that only runs on a duplicate key, which is a region no ordinary input covers (see **Regions the suite deliberately does not cover** in the [CodeBase index](README.md)).
+Builds a dictionary from key-value pairs that may repeat a key, keeping the first or the last value for it. `keepingFirst` serves the lookups by path or key — `SandboxFactory`, `TestBundleInvocation`'s environment, `PlanMaterializer` and `PlanJournal`'s fingerprints — and `keepingLast` reads `PlanJournal`'s entries, where the latest line wins. Both are plain loops rather than `Dictionary(_:uniquingKeysWith:)` with a function: a function passed as an argument compiles to a thunk that only runs on a duplicate key, which is a region no ordinary input covers (see **Regions the suite deliberately does not cover** in the [CodeBase index](README.md)).
 
 ---
 
