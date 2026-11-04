@@ -139,9 +139,7 @@ struct Reviews {
     static func load(from path: String?) throws -> Reviews {
         var reviews = Reviews()
         guard let path, FileManager.default.fileExists(atPath: path) else { return reviews }
-        let rows = try String(contentsOfFile: path, encoding: .utf8).components(separatedBy: "\n").dropFirst()
-        for row in rows where !row.isEmpty {
-            let fields = splitCSV(row)
+        for fields in parseCSV(try String(contentsOfFile: path, encoding: .utf8)).dropFirst() {
             guard fields.count >= 7 else { continue }
             let operatorName = fields[1]
             switch fields[6] {
@@ -188,14 +186,23 @@ func aggregate(
 ) throws {
     let campaign = try Campaign.load(from: directory)
     let reviews = try Reviews.load(from: equivalencePath)
-    var markdown: [String] = []
-    var csv = ["project,operator,generated,detected,undetected,noCoverage,unviable,killRate,costPerMutantMs"]
+    let projects = projectRows(of: campaign)
+    let markdown = operatorRows(of: campaign, reviews: reviews, minMutants: minMutants) + [""] + projects.markdown
+    let csv =
+        ["project,operator,generated,detected,undetected,noCoverage,unviable,killRate,costPerMutantMs"]
+        + projects.csv
 
-    markdown.append(
+    try write(markdown.joined(separator: "\n") + "\n", to: markdownPath)
+    try write(csv.joined(separator: "\n") + "\n", to: csvPath)
+    print("Wrote \(markdownPath) and \(csvPath)")
+}
+
+func operatorRows(of campaign: Campaign, reviews: Reviews, minMutants: Int) -> [String] {
+    var markdown = [
         "| Operator | Tier by the criteria | Projects (≥ \(minMutants) mutants) | Median kill rate | Unviable "
-            + "| Equivalent (reviewed) | Cost per mutant |"
-    )
-    markdown.append("|---|---|---|---|---|---|---|")
+            + "| Equivalent (reviewed) | Cost per mutant |",
+        "|---|---|---|---|---|---|---|",
+    ]
     for operatorName in campaign.operators {
         let cells = campaign.projects.compactMap { campaign.cells[$0]?[operatorName] }
         let qualified = cells.filter { $0.generated >= minMutants }
@@ -217,13 +224,16 @@ func aggregate(
                 + "| \(percent(unviable)) | \(percent(equivalent)) (\(reviewedCount)) | \(milliseconds(cost)) |"
         )
     }
+    return markdown
+}
 
-    markdown.append("")
-    markdown.append(
+func projectRows(of campaign: Campaign) -> (markdown: [String], csv: [String]) {
+    var markdown = [
         "| Project | Operator | Generated | Detected | Survived | No coverage | Unviable | Kill rate "
-            + "| Cost per mutant |"
-    )
-    markdown.append("|---|---|---|---|---|---|---|---|---|")
+            + "| Cost per mutant |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    var csv: [String] = []
     for project in campaign.projects {
         for operatorName in campaign.operators {
             guard let cell = campaign.cells[project]?[operatorName] else { continue }
@@ -239,10 +249,7 @@ func aggregate(
             )
         }
     }
-
-    try write(markdown.joined(separator: "\n") + "\n", to: markdownPath)
-    try write(csv.joined(separator: "\n") + "\n", to: csvPath)
-    print("Wrote \(markdownPath) and \(csvPath)")
+    return (markdown, csv)
 }
 
 func median(of sorted: [Double]) -> Double? {
@@ -424,26 +431,47 @@ func csvField(_ value: String) -> String {
         : value
 }
 
-func splitCSV(_ row: String) -> [String] {
+func parseCSV(_ text: String) -> [[String]] {
+    var records: [[String]] = []
     var fields: [String] = []
     var field = ""
     var quoted = false
-    var iterator = row.makeIterator()
-    while let character = iterator.next() {
-        switch (character, quoted) {
-        case ("\"", true):
-            quoted = false
-        case ("\"", false):
+    let characters = Array(text)
+    var index = 0
+    while index < characters.count {
+        let character = characters[index]
+        index += 1
+        if quoted {
+            if character != "\"" {
+                field.append(character)
+            } else if index < characters.count, characters[index] == "\"" {
+                field.append("\"")
+                index += 1
+            } else {
+                quoted = false
+            }
+            continue
+        }
+        switch character {
+        case "\"":
             quoted = true
-        case (",", false):
+        case ",":
             fields.append(field)
+            field = ""
+        case "\n", "\r\n":
+            fields.append(field)
+            records.append(fields)
+            fields = []
             field = ""
         default:
             field.append(character)
         }
     }
-    fields.append(field)
-    return fields
+    if !field.isEmpty || !fields.isEmpty {
+        fields.append(field)
+        records.append(fields)
+    }
+    return records
 }
 
 func option(_ name: String, in arguments: [String]) -> String? {

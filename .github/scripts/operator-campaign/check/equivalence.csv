@@ -2,3 +2,9 @@ project,operator,fingerprint,file,line,mutation,verdict,note
 alpha,OperatorA,fa1,/Sources/A.swift,2,< → <=,equivalent,the bound is never reached
 beta,OperatorA,fx9,/Sources/B.swift,9,x → y,not-equivalent,a test is missing
 beta,OperatorB,fb2,/Sources/B.swift,3,"a, b → b, a",,
+beta,OperatorB,fb3,/Sources/B.swift,5,"if ""a"" {
+x
+} → if ""b"" {
+x
+}",not-equivalent,"a test reads ""b""
+on its second line"

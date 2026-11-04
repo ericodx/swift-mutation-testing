@@ -1,7 +1,7 @@
 | Operator | Tier by the criteria | Projects (≥ 1 mutants) | Median kill rate | Unviable | Equivalent (reviewed) | Cost per mutant |
 |---|---|---|---|---|---|---|
 | `OperatorA` | experimental (insufficient data) | 2 of 2 | 75.0% | 20.0% | 50.0% (2) | 350 ms |
-| `OperatorB` | experimental (insufficient data) | 2 of 2 | 25.0% | 0.0% | — (0) | 175 ms |
+| `OperatorB` | experimental (insufficient data) | 2 of 2 | 25.0% | 0.0% | 0.0% (1) | 175 ms |
 
 | Project | Operator | Generated | Detected | Survived | No coverage | Unviable | Kill rate | Cost per mutant |
 |---|---|---|---|---|---|---|---|---|
