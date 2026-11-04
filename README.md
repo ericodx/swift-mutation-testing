@@ -6,6 +6,7 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=ericodx-swift-mutation-testing&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=ericodx-swift-mutation-testing)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=ericodx-swift-mutation-testing&metric=coverage)](https://sonarcloud.io/summary/new_code?id=ericodx-swift-mutation-testing)
 [![Mutation score](https://img.shields.io/badge/mutation%20score-98.3%25-lightgray?logo=jest&logoColor=white)](https://github.com/ericodx/swift-mutation-testing/blob/main/Docs/MUTATION-RESULTS.md)
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/ericodx/badge.svg)](https://hub.xerj.org/contributors/ericodx)
 
 **Measure and improve test effectiveness in Swift codebases using mutation testing.**
 
