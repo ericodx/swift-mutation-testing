@@ -139,9 +139,7 @@ struct Reviews {
     static func load(from path: String?) throws -> Reviews {
         var reviews = Reviews()
         guard let path, FileManager.default.fileExists(atPath: path) else { return reviews }
-        let rows = try String(contentsOfFile: path, encoding: .utf8).components(separatedBy: "\n").dropFirst()
-        for row in rows where !row.isEmpty {
-            let fields = splitCSV(row)
+        for fields in parseCSV(try String(contentsOfFile: path, encoding: .utf8)).dropFirst() {
             guard fields.count >= 7 else { continue }
             let operatorName = fields[1]
             switch fields[6] {
@@ -424,26 +422,47 @@ func csvField(_ value: String) -> String {
         : value
 }
 
-func splitCSV(_ row: String) -> [String] {
+func parseCSV(_ text: String) -> [[String]] {
+    var records: [[String]] = []
     var fields: [String] = []
     var field = ""
     var quoted = false
-    var iterator = row.makeIterator()
-    while let character = iterator.next() {
-        switch (character, quoted) {
-        case ("\"", true):
-            quoted = false
-        case ("\"", false):
+    let characters = Array(text)
+    var index = 0
+    while index < characters.count {
+        let character = characters[index]
+        index += 1
+        if quoted {
+            if character != "\"" {
+                field.append(character)
+            } else if index < characters.count, characters[index] == "\"" {
+                field.append("\"")
+                index += 1
+            } else {
+                quoted = false
+            }
+            continue
+        }
+        switch character {
+        case "\"":
             quoted = true
-        case (",", false):
+        case ",":
             fields.append(field)
+            field = ""
+        case "\n", "\r\n":
+            fields.append(field)
+            records.append(fields)
+            fields = []
             field = ""
         default:
             field.append(character)
         }
     }
-    fields.append(field)
-    return fields
+    if !field.isEmpty || !fields.isEmpty {
+        fields.append(field)
+        records.append(fields)
+    }
+    return records
 }
 
 func option(_ name: String, in arguments: [String]) -> String? {
