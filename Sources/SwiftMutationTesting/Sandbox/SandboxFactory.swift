@@ -78,8 +78,7 @@ struct SandboxFactory: Sendable {
                 source: projectURL,
                 destination: sandbox.rootURL,
                 replacements: replacements,
-                relativePath: "",
-                copiesFiles: false
+                relativePath: ""
             )
         } catch {
             sandbox.slot?.unlock()
@@ -131,8 +130,7 @@ struct SandboxFactory: Sendable {
         source: URL,
         destination: URL,
         replacements: Replacements,
-        relativePath: String,
-        copiesFiles: Bool
+        relativePath: String
     ) throws {
         let items = try FileManager.default.contentsOfDirectory(
             at: source,
@@ -162,10 +160,7 @@ struct SandboxFactory: Sendable {
                     source: item,
                     destination: dest,
                     replacements: replacements,
-                    relativePath: itemRelativePath,
-                    copiesFiles: copiesFiles
-                        || item.pathExtension == "icon"
-                        || (name == "xcshareddata" && source.pathExtension == "xcworkspace")
+                    relativePath: itemRelativePath
                 )
             } else if !replacements.isEmpty,
                 let content = replacements.content(for: item, relativePath: itemRelativePath, isSymlink: isSymlink)
@@ -173,7 +168,7 @@ struct SandboxFactory: Sendable {
                 guard !replacements.kept.contains(itemRelativePath) else { continue }
                 try LintSuppression.wrapping(content).write(to: dest, atomically: true, encoding: .utf8)
             } else {
-                try writeFile(source: item, destination: dest, copiesFiles: copiesFiles)
+                try writeFile(source: item, destination: dest, isSymlink: isSymlink)
             }
         }
     }
@@ -207,13 +202,13 @@ struct SandboxFactory: Sendable {
         }
     }
 
-    private func writeFile(source: URL, destination: URL, copiesFiles: Bool) throws {
-        if copiesFiles {
-            try FileManager.default.copyItem(at: source, to: destination)
+    private func writeFile(source: URL, destination: URL, isSymlink: Bool) throws {
+        if isSymlink || source.pathExtension == "swift" {
+            try FileManager.default.createSymbolicLink(at: destination, withDestinationURL: source)
             return
         }
 
-        try FileManager.default.createSymbolicLink(at: destination, withDestinationURL: source)
+        try FileManager.default.copyItem(at: source, to: destination)
     }
 
     private func disableSwiftLintBuildPhases(in sandboxURL: URL) throws {
