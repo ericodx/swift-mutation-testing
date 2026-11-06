@@ -59,19 +59,19 @@ flowchart TD
     SKIP -- ".build, DerivedData, .xmr-*" --> DROP["skip"]
     SKIP -- no --> XCODEPROJ{".xcodeproj?"}
     XCODEPROJ -- yes --> PROJ["xcuserdata: empty directory<br>xcshareddata: copy<br>everything else: symlink"]
-    XCODEPROJ -- no --> RECURSE["mkdir and recurse<br>copy flag set under .xcworkspace/xcshareddata<br>and under an .icon bundle"]
+    XCODEPROJ -- no --> RECURSE["mkdir and recurse"]
     KIND -- no --> REPLACED{"Replacements.content: by relative path,<br>or by resolved path for a symlink"}
     REPLACED -- found --> WRITE["write its content, wrapped by LintSuppression<br>left alone when kept unchanged in a warm slot"]
-    REPLACED -- "none, or nothing replaced" --> SHARED{"copy flag set?"}
-    SHARED -- yes --> COPY["copy"]
-    SHARED -- no --> SYMLINK["symlink to original"]
+    REPLACED -- "none, or nothing replaced" --> KINDOFFILE{"a .swift file, or itself a symlink?"}
+    KINDOFFILE -- yes --> SYMLINK["symlink to original"]
+    KINDOFFILE -- no --> COPY["copy, modification date kept"]
 ```
 
 **Wrapping the replaced files.** Every replaced file is written through `LintSuppression.wrapping`, so a SwiftLint build tool plugin skips it; see [LintSuppression](#sandboxlintsuppressionswift).
 
-**Matching the replaced files.** The schematized or mutated paths are resolved once, and each is keyed by its path relative to the resolved project root; the walk builds each item's relative path as it descends and looks it up, so no file is resolved for that. Only a file that is itself a symlink is resolved, and matched by where it points. When nothing is replaced — `createClean`, or a run with no schematized file — the lookup is skipped altogether. The walk used to resolve every file of the project and search its path for `.xcworkspace/xcshareddata/`, once per sandbox; a flag passed down the recursion now marks that directory.
+**Matching the replaced files.** The schematized or mutated paths are resolved once, and each is keyed by its path relative to the resolved project root; the walk builds each item's relative path as it descends and looks it up, so no file is resolved for that. Only a file that is itself a symlink is resolved, and matched by where it points. When nothing is replaced — `createClean`, or a run with no schematized file — the lookup is skipped altogether.
 
-**Icon Composer bundles.** The same flag is set on entering a `.icon` directory, so its `icon.json` and every layer image below it are copied. `actool` rejects a symlinked manifest ("The “icon.json” entry must be a regular file.") and does not find a symlinked layer image, so with links the unmutated project failed the baseline build.
+**Links and copies.** An unchanged `.swift` file is a symlink to the original, and so is any file that is already a symlink in the project, whatever it points at. Every other unchanged file — resources, manifests, scheme files, a workspace's `xcshareddata`, the contents of an Icon Composer `.icon` bundle — is a copy, with its modification date kept (`FileManager.copyItem` preserves it), so an incremental build sees it unchanged. Links were once the rule for every file, and two compilers rejected them: `actool` refuses a symlinked `icon.json` ("The “icon.json” entry must be a regular file.") and does not find a symlinked layer image; and Xcode preserves the links inside a folder reference when it copies it into the bundle, so an embedded framework's resource folder reached the app as symlinks pointing outside it, and the simulator refused to install the unmutated test host (`MIInstallerErrorDomain` code 70, `InvalidSymlink`). The copy rule covers both without a special case.
 
 **Off the cooperative pool.** All three are `async` but the work is synchronous file system calls, which used to occupy a cooperative thread for the whole walk — threads that simulator and process work wait on. `offCooperativePool` runs it on a global dispatch queue and resumes the caller through a continuation.
 
@@ -149,7 +149,7 @@ enum SandboxName {
 }
 ```
 
-The one place that knows how a sandbox directory is named and where it lives, so that the side that creates them and the side that deletes them cannot drift apart. `directory` is `$TMPDIR/swift-mutation-testing/`; `make()` produces `xmr-<pid>-<UUID>`; `ownerPID(of:)` reads the pid back, or `nil` when the name was not made by this scheme; `isOwnerAlive(of:)` answers whether that process still exists. See **Ownership** under `SandboxCleaner` below for what the sweep does with the answer.
+The one place that knows how a sandbox directory is named and where it lives, so that the side that creates them and the side that deletes them cannot drift apart. `directory` is `$TMPDIR/swift-mutation-testing/` — `temporaryRoot(environment:)` reads `TMPDIR` from the environment and falls back to `FileManager.default.temporaryDirectory` when it is absent or empty, since on macOS Foundation's temporary directory comes from `confstr(_CS_DARWIN_USER_TEMP_DIR)` and ignores the variable; `make()` produces `xmr-<pid>-<UUID>`; `ownerPID(of:)` reads the pid back, or `nil` when the name was not made by this scheme; `isOwnerAlive(of:)` answers whether that process still exists. See **Ownership** under `SandboxCleaner` below for what the sweep does with the answer.
 
 ---
 

@@ -156,6 +156,56 @@ struct SandboxFactoryTests {
         #expect(isSymlink("Main.swift"))
     }
 
+    @Test("Given a folder of resource files, when sandbox created, then they are copies and the Swift source a link")
+    func resourceFilesAreCopied() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        let themesDir = projectDir.appendingPathComponent("Example/Resources/Themes")
+        try FileManager.default.createDirectory(at: themesDir, withIntermediateDirectories: true)
+        try FileHelpers.write("dark", named: "dark.theme", in: themesDir)
+        try FileHelpers.write("{}", named: "config.json", in: projectDir)
+        try FileHelpers.write("let x = 1", named: "Main.swift", in: projectDir)
+
+        let sandbox = try await factory.createClean(projectPath: projectDir.path)
+        defer { try? sandbox.cleanup() }
+
+        func isSymlink(_ relative: String) -> Bool {
+            let url = sandbox.rootURL.appendingPathComponent(relative)
+            return (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink ?? false
+        }
+        func content(_ relative: String) throws -> String {
+            try String(contentsOf: sandbox.rootURL.appendingPathComponent(relative), encoding: .utf8)
+        }
+
+        #expect(!isSymlink("Example/Resources/Themes/dark.theme"))
+        #expect(!isSymlink("config.json"))
+        #expect(try content("Example/Resources/Themes/dark.theme") == "dark")
+        #expect(try content("config.json") == "{}")
+        #expect(isSymlink("Main.swift"))
+    }
+
+    @Test("Given a resource that is itself a symlink in the project, when sandbox created, then it stays a link")
+    func symlinkedResourceStaysALink() async throws {
+        let projectDir = try FileHelpers.makeTemporaryDirectory()
+        defer { FileHelpers.cleanup(projectDir) }
+
+        try FileHelpers.write("shared", named: "shared.json", in: projectDir)
+        try FileManager.default.createSymbolicLink(
+            at: projectDir.appendingPathComponent("alias.json"),
+            withDestinationURL: projectDir.appendingPathComponent("shared.json")
+        )
+
+        let sandbox = try await factory.createClean(projectPath: projectDir.path)
+        defer { try? sandbox.cleanup() }
+
+        let alias = sandbox.rootURL.appendingPathComponent("alias.json")
+        let isSymlink = (try? alias.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink ?? false
+
+        #expect(isSymlink)
+        #expect(try String(contentsOf: alias, encoding: .utf8) == "shared")
+    }
+
     @Test("Given mutated file path and content, when single-file sandbox created, then mutated content is written")
     func writesMutatedContentInSingleFileSandbox() async throws {
         let projectDir = try FileHelpers.makeTemporaryDirectory()
